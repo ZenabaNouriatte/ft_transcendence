@@ -14,17 +14,13 @@ db.serialize(() => {
     ts TEXT NOT NULL
   )`);
 });
-
 // Ajoute une visite (INSERT)
 function addVisit() {
   return new Promise((resolve, reject) => {
-    db.run(
-      `INSERT INTO visits (ts) VALUES (datetime('now'))`,
-      function (err) {
-        if (err) return reject(err);
-        resolve(this.lastID);
-      }
-    );
+    db.run(`INSERT INTO visits (ts) VALUES (datetime('now'))`, function (err) {
+      if (err) return reject(err);
+      resolve(this.lastID);
+    });
   });
 }
 

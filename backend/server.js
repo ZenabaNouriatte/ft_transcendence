@@ -1,50 +1,56 @@
-const express = require("express");
-const app = express();
+const fastify = require('fastify')({ logger: true });
 
-app.disable('x-powered-by');
-app.use(express.json({ limit: '100kb' }));
-app.use(express.urlencoded({ extended: false, limit: '100kb' }));
-
-
-const { addVisit, countVisits } = require("./db");
-
-app.get("/api/ping", (req, res) => {
-  res.json({ ok: true });
+// ---------- Middlewares / plugins ----------
+fastify.register(require('@fastify/helmet'), { 
+  contentSecurityPolicy: false 
 });
+fastify.register(require('@fastify/formbody'));
 
-app.get("/api/hello", (req, res) => {
-  res.json({ message: "hello from backend" });
-});
+// ---------- DB ----------
+const { addVisit, countVisits } = require('./db');
 
-// ajout route healthz (pour healthcheck Docker)
-app.get("/healthz", (req, res) => {
-  res.send("ok");
-});
+// ---------- Routes ----------
+fastify.get("/healthz", async () => "ok");
 
-app.post("/api/visit", async (_, res) => {
+fastify.get("/api/ping", async () => ({ ok: true }));
+
+fastify.get("/api/hello", async () => ({ message: "hello from backend" }));
+
+fastify.post("/api/visit", async (req, reply) => {
   try {
     await addVisit();
     const total = await countVisits();
-    res.json({ total });
+    return { total };
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "db_error" });
+    req.log.error(e);
+    reply.code(500);
+    return { error: 'db_error' };
   }
 });
 
-app.get("/api/visits", async (_, res) => {
+fastify.get("/api/visits", async (req, reply) => {
   try {
     const total = await countVisits();
-    res.json({ total });
+    return { total };
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "db_error" });
+    req.log.error(e);
+    reply.code(500);
+    return { error: "db_error" };
   }
 });
 
+// ---------- Start ----------
 const PORT = process.env.PORT || 8000;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Backend running on port ${PORT}`);
-});
+const HOST = '0.0.0.0';
 
- 
+const start = async () => {
+  try {
+    await fastify.listen({ port: PORT, host: HOST });
+    fastify.log.info(`Backend running on port ${PORT}`);
+  } catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
+};
+
+start();
