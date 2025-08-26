@@ -1,0 +1,54 @@
+groups:
+- name: recording_rules
+  rules:
+    # Taux d'erreur global (5xx)
+    - record: job:error_rate_5xx
+      expr: |
+        sum(rate(http_request_duration_seconds_count{status_code=~"5.."}[5m]))
+        /
+        sum(rate(http_request_duration_seconds_count[5m]))
+
+    # p95 par route
+    - record: route:latency_p95_seconds
+      expr: |
+        histogram_quantile(0.95,
+          sum by (le, route) (rate(http_request_duration_seconds_bucket[5m]))
+        )
+
+- name: alerting_rules
+  rules:
+    # Instance DOWN (backend)
+    - alert: BackendDown
+      expr: up{job="backend"} == 0
+      for: 1m
+      labels: { severity: critical }
+      annotations:
+        summary: "Backend cible DOWN"
+        description: "Le job backend ne répond plus au scrape /metrics."
+
+    # Erreur HTTP élevée
+    - alert: HighErrorRate
+      expr: job:error_rate_5xx > 0.05
+      for: 5m
+      labels: { severity: warning }
+      annotations:
+        summary: "Taux d'erreur 5xx > 5%"
+        description: "Sur les 5 dernières minutes, le ratio 5xx dépasse 5%."
+
+    # Latence p95 anormale
+    - alert: HighLatencyP95
+      expr: route:latency_p95_seconds > 0.5
+      for: 5m
+      labels: { severity: warning }
+      annotations:
+        summary: "p95 latence > 500ms"
+        description: "La latence p95 d'une ou plusieurs routes dépasse 500ms."
+
+    # CPU conteneur backend trop élevé (via cAdvisor)
+    - alert: BackendHighCPU
+      expr: rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service="backend"}[2m]) > 0.8
+      for: 10m
+      labels: { severity: warning }
+      annotations:
+        summary: "CPU backend > 80% (moy 10min)"
+        description: "Charge CPU élevée persistante sur le conteneur backend."
