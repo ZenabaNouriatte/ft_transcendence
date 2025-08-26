@@ -29,8 +29,6 @@ services:
     build: ./backend
     env_file :
       - .env
-    environment:
-    - B_PATH=$DB_PATH
     volumes:
     - db_data:/app/data
     expose: 
