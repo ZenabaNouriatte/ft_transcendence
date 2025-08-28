@@ -27,6 +27,7 @@ services:
 
   backend:
     build: ./backend
+    container_name: backend
     env_file :
       - .env
     volumes:
@@ -46,15 +47,23 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
     volumes:
-      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./ops/prometheus/rules.yml:/etc/prometheus/rules.yml:ro
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules.yml:/etc/prometheus/rules.yml:ro
       - prometheus-data:/prometheus
     ports:
     - "9090:9090"
     restart: unless-stopped
     depends_on: 
       - backend
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports: ["9093:9093"]
+    restart: unless-stopped
 
   grafana: 
     image: grafana/grafana:11.1.4
@@ -63,7 +72,9 @@ services:
       - .env
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "3000:3000"
     restart: unless-stopped

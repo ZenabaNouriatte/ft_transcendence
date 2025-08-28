@@ -52,3 +52,32 @@ groups:
       annotations:
         summary: "CPU backend > 80% (moy 10min)"
         description: "Charge CPU élevée persistante sur le conteneur backend."
+
+      # CPU process backend (sans cAdvisor)
+    - alert: BackendProcessHighCPU
+      expr: rate(process_cpu_seconds_total{job="backend"}[2m]) > 0.8
+      for: 10m
+      labels: { severity: warning, service: backend }
+      annotations:
+        summary: "CPU process élevé (~{{ $value | humanizePercentage }})"
+        description: "Le process du backend consomme >80% d’un cœur (moy. 2m) depuis 10 min."
+
+    # Mémoire process backend (sans cAdvisor)
+    # Choisis un seuil absolu cohérent avec ta machine (ex ici 300 MiB)
+    - alert: BackendProcessHighMemory
+      expr: process_resident_memory_bytes{job="backend"} > 300 * 1024 * 1024
+      for: 5m
+      labels: { severity: warning, service: backend }
+      annotations:
+        summary: "Mémoire process élevée ({{ $value | humanize1024 }}B)"
+        description: "RSS du process backend > 300MiB depuis 5 min."
+
+    # (Optionnel mais utile) Fuite mémoire: dérive de la mémoire process
+    - alert: BackendProcessMemoryLeakSuspected
+      expr: rate(process_resident_memory_bytes{job="backend"}[15m]) > 5 * 1024 * 1024
+      for: 30m
+      labels: { severity: warning, service: backend }
+      annotations:
+        summary: "Suspicion de fuite mémoire"
+        description: "RSS du process backend augmente >5MiB/min (moy. 15m) depuis 30 min."
+
