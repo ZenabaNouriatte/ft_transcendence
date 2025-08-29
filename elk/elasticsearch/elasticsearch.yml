@@ -1,0 +1,5 @@
+cluster.name: "ftt-elk"
+network.host: 0.0.0.0
+xpack.security.enabled: false
+discovery.type: single-node
+node.store.allow_mmap: false

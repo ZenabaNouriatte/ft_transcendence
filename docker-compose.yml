@@ -41,6 +41,8 @@ services:
       retries: 5
     restart: unless-stopped
 
+#--------------------------PROMETHEUS GRAFANA -------------------------
+
   prometheus:
     image: prom/prometheus:v2.55.1
     container_name: prometheus
@@ -93,6 +95,53 @@ services:
       - /sys:/sys:ro
     restart: unless-stopped
 
+#-----------------------ELK ----------------------------
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELK_VERSION:-8.14.0}
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms256m -Xmx256m
+    ports:
+      - "9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+      - ./elk/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:${ELK_VERSION:-8.14.0}
+    container_name: kibana
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - XPACK_SECURITY_ENABLED=false
+    ports:
+      - "5601:5601"
+    volumes:
+      - ./elk/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:${ELK_VERSION:-8.14.0}
+    container_name: logstash
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - "5000:5000" # entrée TCP pour tests
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+    volumes:
+      - ./elk/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./elk/logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
 
 
 volumes:
@@ -100,3 +149,4 @@ volumes:
   certs: {}
   grafana-data: {}
   prometheus-data: {}
+  esdata: {}
