@@ -134,8 +134,10 @@ services:
     depends_on:
       elasticsearch:
         condition: service_healthy
+    # expose:
+    #   - "5000"
     ports:
-      - "5000:5000" # entrée TCP pour tests
+      - "127.0.0.1:5000:5000"
     environment:
       - LS_JAVA_OPTS=-Xms256m -Xmx256m
     volumes:
