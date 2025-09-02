@@ -1,10 +1,18 @@
-FROM node:20
+# Build stage
+FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
-COPY . .
-RUN mkdir -p /app/data
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+RUN npm ci
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
 
-EXPOSE 8000
-CMD ["node", "server.js"]
+# Runtime stage
+FROM node:20-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY --from=build /app/dist ./dist
+ENV PORT=8000
+CMD ["node", "dist/index.js"]
