@@ -1,7 +1,9 @@
 .PHONY: up down re logs ps clean certs
 
 up:
-	docker compose up --build -d
+	docker compose up -d
+	./elk-init.sh
+	docker compose restart kibana
 
 down:
 	docker compose down
@@ -16,3 +18,5 @@ ps:
 
 clean:
 	docker compose down -v
+
+restart: clean up
