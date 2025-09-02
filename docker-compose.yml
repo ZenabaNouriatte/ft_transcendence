@@ -102,15 +102,18 @@ services:
     container_name: elasticsearch
     environment:
       - discovery.type=single-node
-      - xpack.security.enabled=false
+      - xpack.security.enabled=true
       - ES_JAVA_OPTS=-Xms256m -Xmx256m
+      - xpack.security.transport.ssl.enabled=false  # Pas de SSL pour transport
+      - xpack.security.http.ssl.enabled=false       # Pas de SSL pour HTTP
+      - ELASTIC_PASSWORD=elastic  # Mot de passe pour elastic user
     ports:
-      - "9200:9200"
+      - "127.0.0.1:9200:9200"
     volumes:
       - esdata:/usr/share/elasticsearch/data
       - ./elk/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s"]
+      test: ["CMD", "curl", "-fsS", "-u", "elastic:elastic", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s"]
       interval: 10s
       timeout: 3s
       retries: 30
@@ -123,8 +126,11 @@ services:
         condition: service_healthy
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_SERVICEACCOUNTTOKEN=${KIBANA_SERVICE_TOKEN}
+#      - ELASTICSEARCH_USERNAME=elastic
+#      - ELASTICSEARCH_PASSWORD=mdp
     ports:
-      - "5601:5601"
+      - "127.0.0.1:5601:5601"
     volumes:
       - ./elk/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
 
@@ -134,12 +140,12 @@ services:
     depends_on:
       elasticsearch:
         condition: service_healthy
-    # expose:
-    #   - "5000"
     ports:
       - "127.0.0.1:5000:5000"
     environment:
       - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=elastic
     volumes:
       - ./elk/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
       - ./elk/logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
