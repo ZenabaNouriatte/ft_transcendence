@@ -53,6 +53,13 @@ export async function sendMetrics(reply: FastifyReply) {
   reply.send(await register.metrics());
 }
 
+export const wsConnections = new client.Gauge({
+  name: "ws_connections_active",
+  help: "Active WebSocket connections"
+});
+register.registerMetric(wsConnections);
+
+
 // Instrumentation globale Fastify
 export function registerHttpTimingHooks(app: FastifyInstance) {
   app.addHook("onRequest", (req, _reply, done) => {

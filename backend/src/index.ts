@@ -6,6 +6,7 @@ import gameHttp from "./modules/game/http.js";
 import chatHttp from "./modules/chat/http.js";
 import tournamentHttp from "./modules/tournament/http.js";
 import visitsHttp from "./modules/visits/http.js";
+import { registerWs } from "./ws.js";
 
 
 import { registerHttpTimingHooks, sendMetrics } from "./common/metrics.js";
@@ -21,6 +22,7 @@ await app.register(gameHttp,       { prefix: "/api/games" });
 await app.register(chatHttp,       { prefix: "/api/chat" });
 await app.register(tournamentHttp, { prefix: "/api/tournaments" });
 await app.register(visitsHttp,     { prefix: "/api" });
+await registerWs(app);
 
 // Hooks métriques (latences HTTP)
 registerHttpTimingHooks(app);

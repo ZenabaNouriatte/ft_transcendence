@@ -19,4 +19,7 @@ ps:
 clean:
 	docker compose down -v
 
-restart: clean up
+build:
+	docker compose build --no-cache --pull
+
+restart: clean build up
