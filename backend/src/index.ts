@@ -1,3 +1,4 @@
+// src/index.ts
 import Fastify from "fastify";
 import helmet from "@fastify/helmet";
 import cors from "@fastify/cors";
@@ -7,17 +8,25 @@ import gameHttp from "./modules/game/http.js";
 import chatHttp from "./modules/chat/http.js";
 import tournamentHttp from "./modules/tournament/http.js";
 import visitsHttp from "./modules/visits/http.js";
-import { registerWs } from "./ws.js";
+import { registerRawWs } from "./ws-raw.js"; // Correction du nom d'export
 
 import { registerHttpTimingHooks, sendMetrics } from "./common/metrics.js";
 
 const app = Fastify({ logger: true });
 
-// IMPORTANT : WebSocket DOIT être enregistré en premier
-await registerWs(app);
+// WebSocket en PREMIER - avant tout autre middleware
+registerRawWs(app);
 
 // Puis les autres plugins
-await app.register(helmet, { contentSecurityPolicy: false });
+await app.register(helmet, { 
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      connectSrc: ["'self'", "https:", "wss:"],
+    }
+  }
+});
+
 await app.register(cors, {
   origin: true,
   credentials: true
