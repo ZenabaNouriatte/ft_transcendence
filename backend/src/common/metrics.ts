@@ -20,6 +20,13 @@ export const httpDuration = new client.Histogram({
 });
 register.registerMetric(httpDuration);
 
+// visits
+export const visitTotal = new client.Counter({
+  name: "visits_total",
+  help: "Total page visits (top-level navigate/reload only)"
+});
+register.registerMetric(visitTotal);
+
 // (optionnel) compteur total de requêtes
 export const httpRequestsTotal = new client.Counter({
   name: "http_requests_total",

@@ -1,6 +1,12 @@
 import Fastify from "fastify";
 import helmet from "@fastify/helmet";
 import underPressure from "@fastify/under-pressure";
+import authHttp from "./modules/auth/http.js";
+import gameHttp from "./modules/game/http.js";
+import chatHttp from "./modules/chat/http.js";
+import tournamentHttp from "./modules/tournament/http.js";
+import visitsHttp from "./modules/visits/http.js";
+
 
 import { registerHttpTimingHooks, sendMetrics } from "./common/metrics.js";
 
@@ -9,6 +15,12 @@ const app = Fastify({ logger: true });
 // Plugins de base
 await app.register(helmet, { contentSecurityPolicy: false });
 await app.register(underPressure);
+
+await app.register(authHttp,       { prefix: "/api/users" });
+await app.register(gameHttp,       { prefix: "/api/games" });
+await app.register(chatHttp,       { prefix: "/api/chat" });
+await app.register(tournamentHttp, { prefix: "/api/tournaments" });
+await app.register(visitsHttp,     { prefix: "/api" });
 
 // Hooks métriques (latences HTTP)
 registerHttpTimingHooks(app);

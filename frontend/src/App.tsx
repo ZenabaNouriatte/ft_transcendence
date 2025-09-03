@@ -1,42 +1,39 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 
+/** Envoie une visite au backend avec le type (navigate|reload). */
+function sendVisit(type: "navigate" | "reload") {
+  fetch("/api/visit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Nav-Type": type },
+    body: JSON.stringify({ path: location.pathname }),
+  }).catch(() => {});
+}
+
 /**
- * Incrémente le compteur UNE SEULE FOIS au vrai chargement de l’onglet :
- * - navigate / reload  -> +1
- * - back_forward       -> pas d’incrément
- * Le ref évite le double run en dev (React StrictMode).
+ * Compte UNE fois par vrai chargement d’onglet :
+ * - navigate / reload -> +1
+ * - back/forward (BFCache) -> ne compte pas
+ * - navigation SPA -> ne compte pas (pas d’événement pageshow)
  */
-function useIncrementOnRealLoad() {
-  const ranRef = useRef(false);
-
+function useCountVisitOnceInline() {
   useEffect(() => {
-    if (ranRef.current) return;
-    ranRef.current = true;
-
-    // Détection du type de navigation (API moderne)
-    let navType: "navigate" | "reload" | "back_forward" | "prerender" | "unknown" = "unknown";
+    let type: string | undefined;
     try {
-      const entries = performance.getEntriesByType?.("navigation") as PerformanceNavigationTiming[] | undefined;
-      if (entries && entries.length) {
-        navType = entries[0].type;
-      } else {
-        // Fallback (API dépréciée) pour certains navigateurs
-        const legacy: any = (performance as any).navigation;
-        if (legacy) {
-          // 0: TYPE_NAVIGATE, 1: TYPE_RELOAD, 2: TYPE_BACK_FORWARD
-          if (legacy.type === 0) navType = "navigate";
-          else if (legacy.type === 1) navType = "reload";
-          else if (legacy.type === 2) navType = "back_forward";
-        }
-      }
+      const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+      if (nav?.type) type = nav.type; // "navigate" | "reload" | "back_forward" | "prerender"
+      // Fallback ultra-vieux navigateurs
+      // @ts-ignore
+      else if (performance.navigation?.type === 1) type = "reload";
+      // @ts-ignore
+      else if (performance.navigation?.type === 2) type = "back_forward";
+      else type = "navigate";
     } catch {
-      navType = "unknown";
+      type = "navigate";
     }
 
-    if (navType === "navigate" || navType === "reload" || navType === "unknown") {
-      // unknown -> on préfère compter plutôt que rater une visite
-      fetch("/api/visit", { method: "POST" }).catch(() => {});
+    if (type === "navigate" || type === "reload") {
+      sendVisit(type);
     }
   }, []);
 }
@@ -46,10 +43,10 @@ function Home() {
   const [visits, setVisits] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
-  // Ping de l'API pour la démo
+  // Ping d'un module existant (users)
   useEffect(() => {
-    fetch("/api/ping")
-      .then((r) => r.json())
+    fetch("/api/users/ping")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d) => setApi(JSON.stringify(d)))
       .catch(() => setApi("(error)"));
   }, []);
@@ -62,23 +59,27 @@ function Home() {
       .catch((e) => setError(`visit read error: ${e}`));
   }, []);
 
-  // Bouton pour tester l'incrément manuellement
+  // Bouton test : simule un vrai "navigate"
   const increment = () =>
-    fetch("/api/visit", { method: "POST" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((d) => setVisits((d?.total as number) ?? 0))
-      .catch((e) => setError(`visit post error: ${e}`));
+  fetch("/api/visit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Nav-Type": "navigate" },
+    body: JSON.stringify({ path: location.pathname }),
+  })
+  .then(r => r.json())
+  .then(d => setVisits(d.total))
+  .catch(e => setError(`visit post error: ${e}`));
 
   return (
     <section>
       <h1>ft_transcendence (React + TS)</h1>
 
       <p>
-        API test: <code>/api/ping</code> → <b>{api}</b>
+        API test: <code>/api/users/ping</code> → <b>{api}</b>
       </p>
 
       <p>
-        Visites totales (DB): <b>{visits}</b>{" "}
+        Visites totales : <b>{visits}</b>{" "}
         <button onClick={increment} style={{ marginLeft: 8 }}>
           +1 (test)
         </button>
@@ -86,7 +87,7 @@ function Home() {
 
       {error && (
         <p style={{ color: "crimson" }}>
-          {error} — vérifie que les routes <code>POST /api/visit</code> et <code>GET /api/visits</code> sont bien exposées.
+          {error} — vérifie <code>POST /api/visit</code> et <code>GET /api/visits</code>.
         </p>
       )}
     </section>
@@ -103,8 +104,8 @@ function About() {
 }
 
 export default function App() {
-  // Incrémente au vrai chargement (navigate/reload), pas sur back/forward
-  useIncrementOnRealLoad();
+  // Compte 1x au vrai chargement (navigate/reload), pas sur BFCache/SPAs
+  useCountVisitOnceInline();
 
   return (
     <BrowserRouter>
@@ -122,3 +123,4 @@ export default function App() {
     </BrowserRouter>
   );
 }
+
