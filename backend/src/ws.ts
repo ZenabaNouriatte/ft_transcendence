@@ -1,65 +1,45 @@
 import websocket from "@fastify/websocket";
-import type { FastifyInstance } from "fastify";
-import { wsConnections } from "./common/metrics.js";
-
-// Alias minimal pour éviter @types/ws
-type WS = {
-  send: (data: any) => void;
-  on: (event: string, listener: (...args: any[]) => void) => void;
-  readyState: number;
-  OPEN: number;
-  ping?: () => void;
-};
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { wsConnections } from "./common/metrics.js"; // keep if you have it
 
 export async function registerWs(app: FastifyInstance) {
-  await app.register(websocket);
+  await app.register(websocket, { options: { perMessageDeflate: false } });
 
-  app.get("/ws", { websocket: true }, (conn: any /*, req */) => {
-    const socket = (conn?.socket as WS) || null;
-    if (!socket) {
-      app.log.warn("WS handler without socket");
-      return;
-    }
+  app.get("/ws", { websocket: true }, (conn, req: FastifyRequest) => {
+    const ws = conn.socket;
 
-    wsConnections.inc();
-    app.log.info("WS connected");
+    // wsConnections?.inc?.();
+    app.log.info({ ip: req.socket?.remoteAddress, state: ws.readyState }, "WS handler entered");
 
-    try {
-      socket.send("hello: connected");
-    } catch (err) {
-      app.log.error({ err }, "WS hello send failed");
-    }
-
-    socket.on("message", (msg: any) => {
-      const text = Buffer.isBuffer(msg) ? msg.toString() : String(msg);
-      app.log.info({ text }, "WS message in");
-      try {
-        socket.send(`echo:${text}`);
-      } catch (err) {
-        app.log.error({ err }, "WS echo send failed");
-      }
-    });
-
-    // keepalive (optionnel)
-    const iv = setInterval(() => {
-      if (socket.readyState === socket.OPEN) {
-        try { socket.ping?.(); } catch (err) { app.log.error({ err }, "WS ping failed"); }
+    const safeSend = (data: string) => {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(data, (err?: Error) => {
+          if (err) app.log.error({ err }, "WS send cb error");
+        });
       } else {
-        clearInterval(iv);
+        app.log.warn({ state: ws.readyState }, "WS not OPEN, skip send");
       }
-    }, 30000);
+    };
 
-    socket.on("error", (err: any) => {
+    ws.on("error", (err: unknown) => {
       app.log.error({ err }, "WS error");
-      clearInterval(iv);
     });
 
-    socket.on("close", (code: any, reason: any) => {
-      clearInterval(iv);
-      wsConnections.dec();
-      app.log.info({ code, reason: String(reason ?? "") }, "WS closed");
+    ws.on("close", (code: number, reason: Buffer) => {
+      // wsConnections?.dec?.();
+      app.log.info({ code, reason: reason?.toString() }, "WS closed");
     });
+
+    ws.on("message", (buf: Buffer) => {
+      const txt = buf.toString();
+      app.log.info({ txt }, "WS message in");
+      safeSend(`echo:${txt}`);
+    });
+
+    setTimeout(() => {
+      app.log.info({ state: ws.readyState }, "WS state before hello");
+      safeSend("hello");
+    }, 10);
   });
 }
-
 

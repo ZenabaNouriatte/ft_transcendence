@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import helmet from "@fastify/helmet";
+import cors from "@fastify/cors";
 import underPressure from "@fastify/under-pressure";
 import authHttp from "./modules/auth/http.js";
 import gameHttp from "./modules/game/http.js";
@@ -8,21 +9,27 @@ import tournamentHttp from "./modules/tournament/http.js";
 import visitsHttp from "./modules/visits/http.js";
 import { registerWs } from "./ws.js";
 
-
 import { registerHttpTimingHooks, sendMetrics } from "./common/metrics.js";
 
 const app = Fastify({ logger: true });
 
-// Plugins de base
+// IMPORTANT : WebSocket DOIT être enregistré en premier
+await registerWs(app);
+
+// Puis les autres plugins
 await app.register(helmet, { contentSecurityPolicy: false });
+await app.register(cors, {
+  origin: true,
+  credentials: true
+});
 await app.register(underPressure);
 
+// Routes API
 await app.register(authHttp,       { prefix: "/api/users" });
 await app.register(gameHttp,       { prefix: "/api/games" });
 await app.register(chatHttp,       { prefix: "/api/chat" });
 await app.register(tournamentHttp, { prefix: "/api/tournaments" });
 await app.register(visitsHttp,     { prefix: "/api" });
-await registerWs(app);
 
 // Hooks métriques (latences HTTP)
 registerHttpTimingHooks(app);
@@ -33,10 +40,8 @@ app.get("/healthz", async () => "ok");
 // Metrics (Registry unique = default + histogramme custom)
 app.get("/metrics", async (_req, reply) => sendMetrics(reply));
 
-// (Routes API viendront plus tard en S1+)
-
 // Boot
-const PORT = Number(process.env.PORT || 8000); // ← garde 8000 si Prom scrape déjà ce port
+const PORT = Number(process.env.PORT || 8000);
 const HOST = "0.0.0.0";
 
 await app.listen({ host: HOST, port: PORT });
