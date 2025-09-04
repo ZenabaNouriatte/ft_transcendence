@@ -14,6 +14,13 @@ import { registerHttpTimingHooks, sendMetrics } from "./common/metrics.js";
 
 const app = Fastify({ logger: true });
 
+app.addHook("onRequest", (req, _reply, done) => {
+  const hdr = req.headers["x-request-id"];
+  if (typeof hdr === "string" && hdr.length > 0) (req as any).id = hdr;
+  done();
+});
+
+
 // WebSocket en PREMIER - avant tout autre middleware
 registerRawWs(app);
 
@@ -42,6 +49,13 @@ await app.register(visitsHttp,     { prefix: "/api" });
 
 // Hooks métriques (latences HTTP)
 registerHttpTimingHooks(app);
+
+// Renvoyer l'ID au client pour faciliter le support/debug
+app.addHook("onSend", async (req, reply, payload) => {
+  reply.header("X-Request-ID", req.id);
+  return payload;
+});
+
 
 // Health
 app.get("/healthz", async () => "ok");
