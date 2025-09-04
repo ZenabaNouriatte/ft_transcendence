@@ -18,13 +18,26 @@ scrape_configs:
   - job_name: grafana
     static_configs:
       - targets: ["grafana:3000"]
-    metrics_path: /metrics
 
   - job_name: cadvisor
     static_configs:
       - targets: ["cadvisor:8080"]
 
-  - job_name: backend
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["backend:8000"]
+  - job_name: 'gateway'
+    static_configs: [{ targets: ['gateway:8000'] }]
+
+  - job_name: 'svc-auth'
+    static_configs: [{ targets: ['auth:8101'] }]
+
+  - job_name: 'svc-game'
+    static_configs: [{ targets: ['game:8102'] }]
+
+  - job_name: 'svc-chat'
+    static_configs: [{ targets: ['chat:8103'] }]
+
+  - job_name: 'svc-tournament'
+    static_configs: [{ targets: ['tournament:8104'] }]
+
+  - job_name: 'svc-visits'
+    static_configs: [{ targets: ['visits:8105'] }]
+
