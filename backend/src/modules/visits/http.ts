@@ -1,39 +1,35 @@
-import type { FastifyPluginAsync } from "fastify";
-import { visitTotal } from "../../common/metrics.js";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
+import { getVisitTotal, incrementVisit, openDb } from "../../data/index.js";
 
-let VISITS_TOTAL = 0;
 
 const visitsHttp: FastifyPluginAsync = async (app) => {
-  // Ping module -> /api/visits/ping
-  app.get("/visits/ping", async () => ({ ok: true, service: "visits" }));
+  openDb(); // s’assure que la DB et le schéma sont prêts
 
-  // Incrémente pour navigate/reload UNIQUEMENT
-  app.post("/visit", async (req) => {
-    const ntype = String(req.headers["x-nav-type"] || "");
-    const site  = String(req.headers["sec-fetch-site"] || "same-origin"); // chrome met "same-origin"
-    const origin = String(req.headers["origin"] || "");
-    const referer = String(req.headers["referer"] || "");
+  app.get("/visits", async () => ({ total: getVisitTotal() }));
 
-    const isNavType = ntype === "navigate" || ntype === "reload";
-    const isSameSite = site === "same-origin"
-      || (origin.startsWith("https://localhost") || referer.startsWith("https://localhost"));
+  app.post("/visit", async (req: FastifyRequest) => {
+    const h = req.headers;
 
-    const shouldCount = isNavType && isSameSite;
+    const ntype   = String(h["x-nav-type"] ?? "").toLowerCase(); // "navigate" | "reload" (from your client)
+    const site    = String(h["sec-fetch-site"] ?? "same-origin").toLowerCase();
+    const origin  = String(h["origin"] ?? "");
+    const referer = String(h["referer"] ?? "");
 
-    app.log.info(
-      `Visit detected: ${shouldCount ? "YES" : "NO"} (site:${site}, type:${ntype}, origin:${origin || "-"}, referer:${referer || "-"})`
-    );
+    const isNav = ntype === "navigate" || ntype === "reload";
 
-    if (shouldCount) {
-      VISITS_TOTAL++;
-      visitTotal.inc();
-    }
+    // same-origin via Sec-Fetch-Site OR Origin/Referer fallback
+    const isSameSite =
+      site === "same-origin" ||
+      origin.startsWith("https://localhost") ||
+      referer.startsWith("https://localhost");
 
-    return { total: VISITS_TOTAL };
+    const shouldCount = isNav && isSameSite;
+
+    app.log.info({ ntype, site, origin, referer, shouldCount }, "visit check");
+
+    const total = shouldCount ? incrementVisit() : getVisitTotal();
+    return { ok: true, total };
   });
-
-  // Lecture simple
-  app.get("/visits", async () => ({ total: VISITS_TOTAL }));
 };
-
 export default visitsHttp;
+

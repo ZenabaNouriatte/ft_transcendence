@@ -52,12 +52,23 @@ function Home() {
   }, []);
 
   // Lecture du total (n'incrémente pas)
-  useEffect(() => {
+useEffect(() => {
+  // existing GET
+  fetch("/api/visits")
+    .then(r => r.json())
+    .then(d => setVisits(d?.total ?? 0))
+    .catch(e => setError(`visit read error: ${e}`));
+
+  // re-check after the POST likely finished
+  const t = setTimeout(() => {
     fetch("/api/visits")
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((d) => setVisits((d?.total as number) ?? 0))
-      .catch((e) => setError(`visit read error: ${e}`));
-  }, []);
+      .then(r => r.json())
+      .then(d => setVisits(d?.total ?? 0))
+      .catch(() => {});
+  }, 400);
+
+  return () => clearTimeout(t);
+}, []);
 
   // Bouton test : simule un vrai "navigate"
   const increment = () =>
