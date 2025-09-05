@@ -1,0 +1,28 @@
+name: CI - Build & Test
+
+on:
+  push:
+    branches: [ main ]   # uniquement sur la branche main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Récupérer le code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Nettoyer et compiler avec make
+      - name: Clean and Build project
+        run: |
+          make fclean || true
+          make
+
+      # 3. Rendre le testeur exécutable
+      - name: Make test script executable
+        run: chmod +x ./scripts/testeur.sh
+
+      # 4. Lancer le testeur
+      - name: Run testeur.sh
+        run: ./scripts/testeur.sh
