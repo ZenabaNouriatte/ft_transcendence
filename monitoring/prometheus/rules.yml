@@ -26,7 +26,7 @@ groups:
         summary: "Backend cible DOWN"
         description: "Le job backend ne répond plus au scrape /metrics."
 
-    # Erreur HTTP élevée
+    # Erreur HTTP elevee
     - alert: HighErrorRate
       expr: job:error_rate_5xx > 0.05
       for: 5m
@@ -44,7 +44,7 @@ groups:
         summary: "p95 latence > 500ms"
         description: "La latence p95 d'une ou plusieurs routes dépasse 500ms."
 
-    # CPU conteneur backend trop élevé (via cAdvisor)
+    # CPU conteneur backend trop eleve (via cAdvisor)
     - alert: BackendHighCPU
       expr: rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service="backend"}[2m]) > 0.8
       for: 10m

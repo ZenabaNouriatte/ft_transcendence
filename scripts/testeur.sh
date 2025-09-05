@@ -95,6 +95,28 @@ else
   ko "X-Request-ID manquant sur 404"
 fi
 
+# ───────────────────────── Services (pings via Gateway) ─────────────────────
+sec "API – pings par service (via Gateway)"
+
+declare -A SVC_PINGS=(
+  [users]="/api/users/ping"
+  [games]="/api/games/ping"
+  [chat]="/api/chat/ping"
+  [tournaments]="/api/tournaments/ping"
+  # visits a déjà des tests dédiés plus haut (GET/POST)
+)
+
+for svc in "${!SVC_PINGS[@]}"; do
+  url="${SVC_PINGS[$svc]}"
+  body=$(curl -ks "$PROXY_HTTPS$url" || true)
+  if echo "$body" | grep -q '"ok"[[:space:]]*:[[:space:]]*true' ; then
+    ok "$svc: $url"
+  else
+    sk "$svc: $url (pas de stub ?)"
+  fi
+done
+
+
 # ─────────────────────────────────── WS ────────────────────────────────────
 sec "WebSocket (via Gateway interne)"
 
@@ -185,6 +207,37 @@ v=$(prom_wait_value_ge 'max by() (visits_db_total)' 0 8 5)
 # h) Visites — incréments (type=test) sur 2 min (plus fiable que petit rate)
 #v=$(prom_wait_value_ge 'increase(visits_api_increments_total{type="test"}[2m])' 0.5 8 5)
 #[ -n "$v" ] && ok "Increments visits_api_increments_total{type=\"test\"} > 0 (Δ=$v)" || sk "Aucun increment observé (attends un scrape)"
+
+# ────────────── (Option) Services internes (réseau docker) ────────────────
+if [ "${TEST_INTERNAL:-0}" = "1" ]; then
+  sec "Services internes (healthz/metrics dans chaque conteneur)"
+  for svc in auth game chat tournament visits; do
+    # /healthz sur le port exposé dans l'env $PORT du conteneur
+    if dc exec -T "$svc" sh -lc 'curl -sf "http://localhost:${PORT}/healthz" >/dev/null'; then
+      ok "$svc: /healthz"
+    else
+      ko "$svc: /healthz"
+    fi
+    # /metrics présence des métriques HTTP (histogramme)
+    if dc exec -T "$svc" sh -lc 'curl -s "http://localhost:${PORT}/metrics" | grep -q "^# HELP http_request_duration_seconds "'; then
+      ok "$svc: /metrics (http_request_duration_seconds)"
+    else
+      sk "$svc: /metrics (absent ou non joignable)"
+    fi
+  done
+fi
+
+# ─────────── 404 ciblés par service (routage OK mais ressource absente) ───────────
+sec "API – 404 attendus (routage par préfixe OK)"
+for pfx in users games chat tournaments; do
+  code=$(http_code "$PROXY_HTTPS/api/$pfx/__does_not_exist__")
+  if [ "$code" = "404" ]; then
+    ok "/api/$pfx/** → 404 (routage OK)"
+  else
+    ko "/api/$pfx/** → code $code (attendu: 404)"
+  fi
+done
+
 
 # ─────────────────────────────────── ELK ───────────────────────────────────
 sec "ELK (Elasticsearch/Kibana)"

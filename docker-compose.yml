@@ -23,17 +23,19 @@ services:
     build: ./frontend
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost/ >/dev/null 2>&1 || exit 1"]
+      #test: ["CMD-SHELL", "wget -q -O - http://localhost/ >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -kfsS https://localhost/healthz >/dev/null || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 5
 
   gateway:
     build: ./backend
+    env_file: [.env]
     environment:
       - SERVICE_ROLE=gateway
       - PORT=8000
-      - DB_PATH=/data/app.sqlite
+      - DB_PATH=${DB_PATH}
     volumes:
       - sqlite_data:/data
     expose:
@@ -47,47 +49,52 @@ services:
 
   auth:
     build: ./backend
+    env_file: [.env]
     environment:
       - SERVICE_ROLE=svc-auth
       - PORT=8101
-      - DB_PATH=/data/app.sqlite
+      - DB_PATH=${DB_PATH}
     volumes: [ sqlite_data:/data ]
     expose: [ "8101" ]
 
   game:
     build: ./backend
+    env_file: [.env]
     environment:
       - SERVICE_ROLE=svc-game
       - PORT=8102
-      - DB_PATH=/data/app.sqlite
+      - DB_PATH=${DB_PATH}
     volumes: [ sqlite_data:/data ]
     expose: [ "8102" ]
 
   chat:
     build: ./backend
+    env_file: [.env]
     environment:
       - SERVICE_ROLE=svc-chat
       - PORT=8103
-      - DB_PATH=/data/app.sqlite
+      - DB_PATH=${DB_PATH}
     volumes: [ sqlite_data:/data ]
     expose: [ "8103" ]
 
   tournament:
     build: ./backend
+    env_file: [.env]
     environment:
       - SERVICE_ROLE=svc-tournament
       - PORT=8104
-      - DB_PATH=/data/app.sqlite
+      - DB_PATH=${DB_PATH}
     volumes: [ sqlite_data:/data ]
     expose: [ "8104" ]
 
   # CONTAINER TEST WS ET API
   visits:
     build: ./backend
+    env_file: [.env]
     environment:
       - SERVICE_ROLE=svc-visits
       - PORT=8105
-      - DB_PATH=/data/app.sqlite
+      - DB_PATH=${DB_PATH}
     volumes: [ sqlite_data:/data ]
     expose: [ "8105" ]
 
@@ -149,7 +156,7 @@ services:
 #-----------------------ELK ----------------------------
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:${ELK_VERSION:-8.14.0}
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELK_VERSION}
     container_name: elasticsearch
     environment:
       - discovery.type=single-node
@@ -157,12 +164,12 @@ services:
       - ES_JAVA_OPTS=-Xms256m -Xmx256m
       - xpack.security.transport.ssl.enabled=false  
       - xpack.security.http.ssl.enabled=false      
-      - ELASTIC_PASSWORD=elastic  #
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
     ports:
       - "127.0.0.1:9200:9200"
     volumes:
       - esdata:/usr/share/elasticsearch/data
-      - ./elk/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+      - ./monitoring/elk/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-u", "elastic:elastic", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s"]
       interval: 10s
@@ -182,7 +189,7 @@ services:
     ports:
       - "127.0.0.1:5601:5601"
     volumes:
-      - ./elk/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+      - ./monitoring/elk/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
 
   logstash:
     image: docker.elastic.co/logstash/logstash:${ELK_VERSION:-8.14.0}
@@ -194,11 +201,11 @@ services:
       - "127.0.0.1:5000:5000"
     environment:
       - LS_JAVA_OPTS=-Xms256m -Xmx256m
-      - ELASTICSEARCH_USERNAME=elastic
-      - ELASTICSEARCH_PASSWORD=elastic
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
+      - ELASTICSEARCH_USERNAME=${ELASTIC_USERNAME}
     volumes:
-      - ./elk/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
-      - ./elk/logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+      - ./monitoring/elk/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./monitoring/elk/logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
 
 
 volumes:
