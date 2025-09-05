@@ -2,7 +2,7 @@ name: CI - Build & Test
 
 on:
   push:
-    branches: [ main ]   # uniquement sur la branche main
+    branches: [ main, master ]   # uniquement sur la branche main
 
 jobs:
   build-and-test:
