@@ -21,6 +21,23 @@ export const httpDuration = new client.Histogram({
   buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
 });
 
+export const httpInFlight = new client.Gauge({
+  name: "http_requests_in_flight",
+  help: "HTTP requests currently being served",
+  labelNames: ["route"],
+});
+
+export const wsDisconnectsTotal = new client.Counter({
+  name: "ws_disconnects_total",
+  help: "Total WebSocket disconnects",
+  labelNames: ["code"],
+});
+
+export const wsRateLimitedTotal = new client.Counter({
+  name: "ws_rate_limited_total",
+  help: "Total WS messages dropped due to rate-limit",
+});
+
 // ─── WebSocket metrics ─────────────────────────────────────────────────────────
 export const wsConnections = new client.Gauge({
   name: "websocket_connections_active",
@@ -51,21 +68,35 @@ register.registerMetric(wsConnections);
 register.registerMetric(wsMessagesTotal);
 register.registerMetric(visitsDbTotal);
 register.registerMetric(visitsApiIncrementsTotal);
+register.registerMetric(httpInFlight);
+register.registerMetric(wsDisconnectsTotal);
+register.registerMetric(wsRateLimitedTotal);
 
-client.collectDefaultMetrics({ register }); // process, heap, event loop, etc.
+
+client.collectDefaultMetrics({
+  register,
+  eventLoopMonitoringPrecision: 10, // active nodejs_eventloop_lag_seconds
+});
 
 // ─── Fastify hooks (HTTP timing) ───────────────────────────────────────────────
 export function registerHttpTimingHooks(app: FastifyInstance) {
-  app.addHook("onRequest", (req, _reply, done) => {
-    (req as any)._t0 = process.hrtime.bigint();
+  app.addHook("onRequest", (req, reply, done) => {
+    const route = normalizeRoute(req, reply);
+    (req as any)._metrics = { t0: process.hrtime.bigint(), route };
+    try { httpInFlight.labels(route).inc(); } catch {}
     done();
   });
 
-  app.addHook("onResponse", (req, reply, done) => {
-    const t0 = (req as any)._t0 as bigint | undefined;
-    if (t0) {
-      const seconds = Number(process.hrtime.bigint() - t0) / 1e9;
-      const route = normalizeRoute(req, reply);
+app.addHook("onResponse", (req, reply, done) => {
+    const m = (req as any)._metrics as { t0?: bigint; route?: string } | undefined;
+    const route = m?.route || normalizeRoute(req, reply);
+
+    // in-flight-- (toujours, même si t0 manquant)
+    try { httpInFlight.labels(route).dec(); } catch {}
+
+    // durée
+    if (m?.t0) {
+      const seconds = Number(process.hrtime.bigint() - m.t0) / 1e9;
       httpDuration
         .labels({
           method: req.method,

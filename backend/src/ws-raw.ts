@@ -2,7 +2,12 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { FastifyInstance } from "fastify";
 import { IncomingMessage } from "http";
-import { wsConnections, wsMessagesTotal } from "./common/metrics.js";
+import { 
+  wsConnections, 
+  wsMessagesTotal, 
+  wsDisconnectsTotal, 
+  wsRateLimitedTotal 
+} from "./common/metrics.js";
 
 type Ctx = {
   isAlive: boolean;
@@ -79,18 +84,30 @@ export function registerRawWs(app: FastifyInstance) {
     });
 
     ws.on("close", (code: number, reason: Buffer) => {
+      // on décrémente le gauge + on comptabilise le code de fermeture
       try { wsConnections.dec(); } catch {}
+      try { wsDisconnectsTotal.inc({ code: String(code) }); } catch {}
       updateGauge(wss);
       app.log.info({ code, reason: reason.toString(), totalConnections: wss.clients.size }, "WS closed");
     });
 
     // RÃ©ception de message
     ws.on("message", (buf: Buffer) => {
-      // Taille max
-      if (buf.byteLength > MAX_MSG_BYTES) {
-        app.log.warn({ size: buf.byteLength }, "WS message too large");
-        try { ws.close(1009, "message too large"); } catch {}
-        return;
+      // ...
+      if (ws.ctx) {
+        const t = now();
+        const r = ws.ctx.rate;
+        if (t - r.windowStart > RATE_LIMIT_WINDOW_MS) {
+          r.windowStart = t; r.count = 0;
+        }
+        r.count++;
+        if (r.count > RATE_LIMIT_MAX) {
+          // 🔴 ICI : on compte le rate-limit
+          try { wsRateLimitedTotal.inc(); } catch {}
+          try { wsMessagesTotal.inc({ type: "rate_limited" }); } catch {}
+          safeSend({ type: "error", data: { message: "rate_limited" } });
+          return;
+        }
       }
 
       // Rate-limit

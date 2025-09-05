@@ -1,11 +1,10 @@
 apiVersion: 1
 providers:
-  - name: 'auto-dashboards'
+  - name: 'ft_transcendance'
     orgId: 1
+    folder: 'ft_transcendance'
     type: file
     disableDeletion: false
     updateIntervalSeconds: 10
-    allowUiUpdates: true
     options:
       path: /var/lib/grafana/dashboards
-      foldersFromFilesStructure: true

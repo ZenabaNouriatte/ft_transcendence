@@ -1,6 +1,10 @@
 groups:
+
+# ========= Recording rules (ajouts + tes existantes) =========
 - name: recording_rules
+  interval: 30s
   rules:
+    # --- Tes règles existantes (conservées) ---
     # Taux d'erreur global (5xx)
     - record: job:error_rate_5xx
       expr: |
@@ -11,10 +15,57 @@ groups:
     # p95 par route
     - record: route:latency_p95_seconds
       expr: |
-        histogram_quantile(0.95,
+        histogram_quantile(
+          0.95,
           sum by (le, route) (rate(http_request_duration_seconds_bucket[5m]))
         )
 
+    # --- Nouveaux enregistrements backend HTTP ---
+    # Agrégation "bucket rate" pour quantiles
+    - record: job:http_req_bucket:rate5m
+      expr: |
+        sum by (service, route, le) (
+          rate(http_request_duration_seconds_bucket[5m])
+        )
+
+    # Requêtes par seconde (RPS)
+    - record: job:http_req_rps:5m
+      expr: |
+        sum by (service, route) (
+          rate(http_request_duration_seconds_count[5m])
+        )
+
+    # Quantiles de latence
+    - record: job:http_req_p50:5m
+      expr: |
+        histogram_quantile(0.50, sum by (service, route, le) (job:http_req_bucket:rate5m))
+
+    - record: job:http_req_p95:5m
+      expr: |
+        histogram_quantile(0.95, sum by (service, route, le) (job:http_req_bucket:rate5m))
+
+    - record: job:http_req_p99:5m
+      expr: |
+        histogram_quantile(0.99, sum by (service, route, le) (job:http_req_bucket:rate5m))
+
+    # Ratio d'erreurs 4xx+5xx
+    # (nécessite un label status_code sur http_request_duration_seconds_count)
+    - record: job:http_error_ratio:5m
+      expr: |
+        sum by (service, route) (
+          rate(http_request_duration_seconds_count{status_code=~"4..|5.."}[5m])
+        )
+        /
+        sum by (service, route) (
+          rate(http_request_duration_seconds_count[5m])
+        )
+
+    # --- WebSocket (si tu exportes wsMessagesTotal + wsConnections) ---
+    - record: job:ws_messages_rps:5m
+      expr: |
+        sum by (service) (rate(wsMessagesTotal[5m]))
+
+# ========= Alerting rules (tes alertes, conservées) =========
 - name: alerting_rules
   rules:
     # Instance DOWN (backend)
@@ -53,7 +104,7 @@ groups:
         summary: "CPU backend > 80% (moy 10min)"
         description: "Charge CPU élevée persistante sur le conteneur backend."
 
-      # CPU process backend (sans cAdvisor)
+    # CPU process backend (sans cAdvisor)
     - alert: BackendProcessHighCPU
       expr: rate(process_cpu_seconds_total{job="backend"}[2m]) > 0.8
       for: 10m
@@ -63,7 +114,6 @@ groups:
         description: "Le process du backend consomme >80% d’un cœur (moy. 2m) depuis 10 min."
 
     # Mémoire process backend (sans cAdvisor)
-    # Choisis un seuil absolu cohérent avec ta machine (ex ici 300 MiB)
     - alert: BackendProcessHighMemory
       expr: process_resident_memory_bytes{job="backend"} > 300 * 1024 * 1024
       for: 5m
@@ -72,7 +122,7 @@ groups:
         summary: "Mémoire process élevée ({{ $value | humanize1024 }}B)"
         description: "RSS du process backend > 300MiB depuis 5 min."
 
-    # (Optionnel mais utile) Fuite mémoire: dérive de la mémoire process
+    # (Optionnel) Fuite mémoire: dérive
     - alert: BackendProcessMemoryLeakSuspected
       expr: rate(process_resident_memory_bytes{job="backend"}[15m]) > 5 * 1024 * 1024
       for: 30m
@@ -80,4 +130,3 @@ groups:
       annotations:
         summary: "Suspicion de fuite mémoire"
         description: "RSS du process backend augmente >5MiB/min (moy. 15m) depuis 30 min."
-
