@@ -25,7 +25,6 @@ RUN mkdir -p dist/data && cp -v src/data/schema.sql dist/data/
 FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-# ⚠️ libstdc++ nécessaire à l’exécution des modules natifs
 RUN apk add --no-cache libstdc++
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

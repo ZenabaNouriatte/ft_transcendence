@@ -12,18 +12,18 @@ import {
 type Ctx = {
   isAlive: boolean;
   ip?: string;
-  userId?: number; // placeholder si tu branches un JWT plus tard
+  userId?: number; //  si  JWT plus tard
   rate: { windowStart: number; count: number };
 };
 
-const MAX_MSG_BYTES = 64 * 1024;        // 64 KB max par message
-const RATE_LIMIT_WINDOW_MS = 5_000;     // fenÃªtre RL
-const RATE_LIMIT_MAX = 50;              // 50 msgs / 5 s / connexion
-const PING_INTERVAL_MS = 20_000;        // keepalive WS
+const MAX_MSG_BYTES = 64 * 1024;        
+const RATE_LIMIT_WINDOW_MS = 5_000;     
+const RATE_LIMIT_MAX = 50;             
+const PING_INTERVAL_MS = 20_000;        
 
 const now = () => Date.now();
 
-// Recalage du gauge (fiabilise lâ€™observation Prometheus)
+// Recalage du gauge (pour Prometheus)
 const updateGauge = (wss: WebSocketServer) => {
   try { 
     const activeConnections = wss.clients.size;
@@ -37,7 +37,7 @@ const updateGauge = (wss: WebSocketServer) => {
 export function registerRawWs(app: FastifyInstance) {
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
-  // Keepalive + recalage rÃ©gulier du gauge
+  // Keepalive + recalage du gauge
   const interval = setInterval(() => {
     wss.clients.forEach((ws: WebSocket & { ctx?: Ctx }) => {
       if (!ws.ctx) return;
@@ -60,7 +60,7 @@ export function registerRawWs(app: FastifyInstance) {
       rate: { windowStart: now(), count: 0 },
     };
 
-    // Incrémenter et mettre à jour immédiatement le gauge
+    // Incret maj le gauge
     wsConnections.inc();
     updateGauge(wss);
     app.log.info({ ip: ws.ctx.ip, totalConnections: wss.clients.size }, "WS connection established");
@@ -84,14 +84,14 @@ export function registerRawWs(app: FastifyInstance) {
     });
 
     ws.on("close", (code: number, reason: Buffer) => {
-      // on décrémente le gauge + on comptabilise le code de fermeture
+      // on decremente le gauge + on comptabilise le code de fermeture
       try { wsConnections.dec(); } catch {}
       try { wsDisconnectsTotal.inc({ code: String(code) }); } catch {}
       updateGauge(wss);
       app.log.info({ code, reason: reason.toString(), totalConnections: wss.clients.size }, "WS closed");
     });
 
-    // RÃ©ception de message
+    // Reception de message
     ws.on("message", (buf: Buffer) => {
       // ...
       if (ws.ctx) {
@@ -102,7 +102,7 @@ export function registerRawWs(app: FastifyInstance) {
         }
         r.count++;
         if (r.count > RATE_LIMIT_MAX) {
-          // 🔴 ICI : on compte le rate-limit
+          // on compte le rate-limit
           try { wsRateLimitedTotal.inc(); } catch {}
           try { wsMessagesTotal.inc({ type: "rate_limited" }); } catch {}
           safeSend({ type: "error", data: { message: "rate_limited" } });
@@ -132,19 +132,14 @@ export function registerRawWs(app: FastifyInstance) {
         const raw = buf.toString();
         const msg = JSON.parse(raw);
 
-        // requestId â†' cast robuste en string si prÃ©sent
+        // requestId cast robuste en string si present
         if (Object.prototype.hasOwnProperty.call(msg, "requestId") && msg.requestId != null) {
           requestId = String(msg.requestId);
         }
 
-        // (Option) Auth handshake ici plus tard :
-        // const auth = (request.headers["authorization"] as string) || "";
-        // ws.ctx!.userId = verifyToken(auth)?.userId;
-
         // Dispatch minimal par type
         type = typeof msg?.type === "string" ? msg.type : "unknown";
         
-        // CORRECTION : Incrémenter AVANT le switch pour comptabiliser tous les messages
         try { 
           wsMessagesTotal.inc({ type });
           app.log.info({ type, requestId }, `WS message received, type: ${type}`);
@@ -159,14 +154,12 @@ export function registerRawWs(app: FastifyInstance) {
           }
 
           case "chat.message": {
-            // TODO: persister si besoin via ChatRepo.addMessage(...)
-            // TODO: broadcast room si tu ajoutes la notion de room
             app.log.info({ requestId }, "Chat message processed");
             break;
           }
 
           case "game.input": {
-            // TODO: logique jeu (ex: GameRepo.create() â†' ws.send({ type:"game.created" ... }))
+            // TODO: logique jeu
             break;
           }
 
@@ -176,7 +169,7 @@ export function registerRawWs(app: FastifyInstance) {
           }
         }
         
-        // Envoyer l'ACK après traitement
+        // Envoyer l'ACK apres traitement
         if (requestId) {
           const ack = { type: "ack", requestId };
           app.log.info({ requestId }, "WS ack sent");
@@ -185,7 +178,7 @@ export function registerRawWs(app: FastifyInstance) {
         
       } catch (parseError) {
         type = "invalid";
-        // Incrémenter pour les messages invalides aussi
+        // Incr pour les messages invalides aussi
         try { 
           wsMessagesTotal.inc({ type: "invalid" });
         } catch {}
@@ -195,7 +188,7 @@ export function registerRawWs(app: FastifyInstance) {
     });
   });
 
-  // Upgrade HTTP â†' WS (endpoint unique /ws)
+  // Upgrade HTTP WS (
   app.server.on("upgrade", (request: IncomingMessage, socket: any, head: Buffer) => {
     if (request.url === "/ws") {
       wss.handleUpgrade(request, socket, head, (socketWs: WebSocket) => {

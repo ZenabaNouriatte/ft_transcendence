@@ -4,7 +4,6 @@ groups:
 - name: recording_rules
   interval: 30s
   rules:
-    # --- Tes règles existantes (conservées) ---
     # Taux d'erreur global (5xx)
     - record: job:error_rate_5xx
       expr: |
@@ -21,14 +20,14 @@ groups:
         )
 
     # --- Nouveaux enregistrements backend HTTP ---
-    # Agrégation "bucket rate" pour quantiles
+    # Agregation "bucket rate" pour quantiles
     - record: job:http_req_bucket:rate5m
       expr: |
         sum by (service, route, le) (
           rate(http_request_duration_seconds_bucket[5m])
         )
 
-    # Requêtes par seconde (RPS)
+    # Req par seconde (RPS)
     - record: job:http_req_rps:5m
       expr: |
         sum by (service, route) (
@@ -49,7 +48,6 @@ groups:
         histogram_quantile(0.99, sum by (service, route, le) (job:http_req_bucket:rate5m))
 
     # Ratio d'erreurs 4xx+5xx
-    # (nécessite un label status_code sur http_request_duration_seconds_count)
     - record: job:http_error_ratio:5m
       expr: |
         sum by (service, route) (
@@ -60,7 +58,7 @@ groups:
           rate(http_request_duration_seconds_count[5m])
         )
 
-    # --- WebSocket (si tu exportes wsMessagesTotal + wsConnections) ---
+    # --- WebSocket  ---
     - record: job:ws_messages_rps:5m
       expr: |
         sum by (service) (rate(wsMessagesTotal[5m]))

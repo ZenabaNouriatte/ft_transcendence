@@ -23,7 +23,6 @@ services:
     build: ./frontend
     restart: unless-stopped
     healthcheck:
-      #test: ["CMD-SHELL", "wget -q -O - http://localhost/ >/dev/null 2>&1 || exit 1"]
       test: ["CMD-SHELL", "curl -kfsS https://localhost/healthz >/dev/null || exit 1"]
       interval: 10s
       timeout: 3s

@@ -13,7 +13,7 @@ import { registerRawWs } from "./ws-raw.js";
 
 import { registerHttpTimingHooks, sendMetrics } from "./common/metrics.js";
 
-// ── Rôle & Port ───────────────────────────────────────────────────────────────
+// ----- Role & Port ------------------
 const ROLE = process.env.SERVICE_ROLE || "gateway";
 const PORT = Number(
   process.env.PORT ||
@@ -26,7 +26,7 @@ const PORT = Number(
 );
 const HOST = "0.0.0.0";
 
-// ── App ───────────────────────────────────────────────────────────────────────
+// -------- App ------------------
 const app = Fastify({ logger: true });
 
 // Unifie X-Request-ID (provenant de Nginx) → req.id
@@ -36,7 +36,7 @@ app.addHook("onRequest", (req, _reply, done) => {
   done();
 });
 
-// WS seulement côté gateway, et AVANT les autres plugins
+// WS seulement cote gateway, et AVANT les autres plugins
 if (ROLE === "gateway") {
   registerRawWs(app);
 }
@@ -53,14 +53,14 @@ await app.register(helmet, {
 await app.register(cors, { origin: true, credentials: true });
 await app.register(underPressure);
 
-// ── Routes selon rôle ────────────────────────────────────────────────────────
+// ----------- Routes selon role ----------------
 if (ROLE === "gateway") {
   // Le gateway NE monte PAS les modules : il PROXY vers les services internes
   registerHttpProxy(app, "/api/users",       "http://auth:8101");
   registerHttpProxy(app, "/api/games",       "http://game:8102");
   registerHttpProxy(app, "/api/chat",        "http://chat:8103");
   registerHttpProxy(app, "/api/tournaments", "http://tournament:8104");
-  // Visits : routes exactes (pour éviter d’aspirer tout /api/*)
+  // Visits : routes exactes (pour eviter d’aspirer tout /api/*)
   registerHttpProxy(app, "/api/visits",      "http://visits:8105");
   registerHttpProxy(app, "/api/visit",       "http://visits:8105");
 } else if (ROLE === "svc-auth") {
@@ -75,19 +75,19 @@ if (ROLE === "gateway") {
   await app.register(visitsHttp,     { prefix: "/api" }); // contient /api/visits et /api/visit
 } else {
   app.log.warn(`Unknown SERVICE_ROLE=${ROLE}; starting in gateway mode fallback`);
-  registerHttpProxy(app, "/api", "http://auth:8101"); // fallback très basique
+  registerHttpProxy(app, "/api", "http://auth:8101"); // fallback basique
 }
 
-// Hooks métriques
+// Hooks metriques
 registerHttpTimingHooks(app);
 
-// Renvoyer l'ID au client (debug/corrélation)
+// Renvoyer l'ID au client (debug)
 app.addHook("onSend", async (req, reply, payload) => {
   reply.header("X-Request-ID", req.id);
   return payload;
 });
 
-// Health & Metrics (présents dans tous les rôles)
+// Health & Metrics 
 app.get("/healthz", async () => "ok");
 app.get("/metrics", async (_req, reply) => sendMetrics(reply));
 
@@ -95,10 +95,10 @@ app.get("/metrics", async (_req, reply) => sendMetrics(reply));
 await app.listen({ host: HOST, port: PORT });
 app.log.info(`Service role=${ROLE} listening on ${PORT}`);
 
-// ─────────────────────────────────────────────────────────────────────────────
+
 // Proxy HTTP basique (JSON) pour le gateway
 function registerHttpProxy(app: FastifyInstance, prefix: string, target: string) {
-  // match exact (ex: /api/visits) ET avec sous-chemins (ex: /api/games/123)
+  // match exact (ex: /api/visits) ET avec sous chemins (ex: /api/games/123)
   app.all(prefix, async (req, reply) => forward(req, reply, prefix, target));
   app.all(`${prefix}/*`, async (req, reply) => forward(req, reply, prefix, target));
 }
@@ -120,7 +120,7 @@ async function forward(req: any, reply: any, _prefix: string, target: string) {
 
   const res = await fetch(url, { method, headers, body });
 
-  // propage (au minimum) le content-type
+  // propage le content-type
   const ct = res.headers.get("content-type");
   if (ct) reply.header("content-type", ct);
 
