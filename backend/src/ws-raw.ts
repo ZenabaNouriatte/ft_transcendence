@@ -1,66 +1,188 @@
-// src/ws-raw.ts
+// backend/src/ws-raw.ts
 import { WebSocketServer, WebSocket } from "ws";
 import type { FastifyInstance } from "fastify";
-import type { IncomingMessage } from "http";
-import type { Socket } from "node:net";
+import { IncomingMessage } from "http";
 import { wsConnections, wsMessagesTotal } from "./common/metrics.js";
 
+type Ctx = {
+  isAlive: boolean;
+  ip?: string;
+  userId?: number; // placeholder si tu branches un JWT plus tard
+  rate: { windowStart: number; count: number };
+};
+
+const MAX_MSG_BYTES = 64 * 1024;        // 64 KB max par message
+const RATE_LIMIT_WINDOW_MS = 5_000;     // fenÃªtre RL
+const RATE_LIMIT_MAX = 50;              // 50 msgs / 5 s / connexion
+const PING_INTERVAL_MS = 20_000;        // keepalive WS
+
+const now = () => Date.now();
+
+// Recalage du gauge (fiabilise lâ€™observation Prometheus)
+const updateGauge = (wss: WebSocketServer) => {
+  try { 
+    const activeConnections = wss.clients.size;
+    wsConnections.set(activeConnections);
+    console.log(`[WS] Active connections: ${activeConnections}`); // Debug log
+  } catch (e) {
+    console.error('[WS] Error updating gauge:', e);
+  }
+};
+
 export function registerRawWs(app: FastifyInstance) {
-  const wss = new WebSocketServer({
-    noServer: true,
-    perMessageDeflate: false,
-  });
+  const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
-  wss.on("connection", (ws: WebSocket, request: IncomingMessage) => {
+  // Keepalive + recalage rÃ©gulier du gauge
+  const interval = setInterval(() => {
+    wss.clients.forEach((ws: WebSocket & { ctx?: Ctx }) => {
+      if (!ws.ctx) return;
+      if (ws.ctx.isAlive === false) {
+        try { ws.terminate(); } catch {}
+        return;
+      }
+      ws.ctx.isAlive = false;
+      try { ws.ping(); } catch {}
+    });
+    updateGauge(wss);
+  }, PING_INTERVAL_MS);
+
+  wss.on("close", () => { clearInterval(interval); });
+
+  wss.on("connection", (ws: WebSocket & { ctx?: Ctx }, request: IncomingMessage) => {
+    ws.ctx = {
+      isAlive: true,
+      ip: request.socket?.remoteAddress,
+      rate: { windowStart: now(), count: 0 },
+    };
+
+    // Incrémenter et mettre à jour immédiatement le gauge
     wsConnections.inc();
-    app.log.info(
-      { ip: request.socket?.remoteAddress },
-      "WS connection established"
-    );
+    updateGauge(wss);
+    app.log.info({ ip: ws.ctx.ip, totalConnections: wss.clients.size }, "WS connection established");
 
-    const safeSend = (data: string) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data, (err?: Error) => {
+    ws.on("pong", () => { if (ws.ctx) ws.ctx.isAlive = true; });
+
+    const safeSend = (objOrString: any) => {
+      const payload = typeof objOrString === "string" ? objOrString : JSON.stringify(objOrString);
+      if (ws.readyState === ws.OPEN) {
+        ws.send(payload, (err?: Error) => {
           if (err) app.log.error({ err }, "WS send error");
         });
       }
     };
+
+    // Message de bienvenue (UX + test smoke)
+    setTimeout(() => safeSend("hello: connected"), 100);
 
     ws.on("error", (err: Error) => {
       app.log.error({ err }, "WS error");
     });
 
     ws.on("close", (code: number, reason: Buffer) => {
-      wsConnections.dec();
-      app.log.info(
-        { code, reason: reason?.toString?.() || "" },
-        "WS closed"
-      );
+      try { wsConnections.dec(); } catch {}
+      updateGauge(wss);
+      app.log.info({ code, reason: reason.toString(), totalConnections: wss.clients.size }, "WS closed");
     });
 
+    // RÃ©ception de message
     ws.on("message", (buf: Buffer) => {
-      let type = "unknown";
-      try {
-        const msg = JSON.parse(buf.toString());
-        type = msg?.type || "unknown";
-      } catch {
-        type = "invalid";
+      // Taille max
+      if (buf.byteLength > MAX_MSG_BYTES) {
+        app.log.warn({ size: buf.byteLength }, "WS message too large");
+        try { ws.close(1009, "message too large"); } catch {}
+        return;
       }
-      // métrique : compteur des messages reçus par type
-      wsMessagesTotal.inc({ type });
-    });
 
-    // petit message de bienvenue différé
-    setTimeout(() => {
-      safeSend("hello: connected");
-    }, 100);
+      // Rate-limit
+      if (ws.ctx) {
+        const t = now();
+        const r = ws.ctx.rate;
+        if (t - r.windowStart > RATE_LIMIT_WINDOW_MS) {
+          r.windowStart = t; r.count = 0;
+        }
+        r.count++;
+        if (r.count > RATE_LIMIT_MAX) {
+          wsMessagesTotal.inc({ type: "rate_limited" });
+          safeSend({ type: "error", data: { message: "rate_limited" } });
+          return;
+        }
+      }
+
+      let type = "unknown";
+      let requestId: string | undefined;
+
+      try {
+        const raw = buf.toString();
+        const msg = JSON.parse(raw);
+
+        // requestId â†' cast robuste en string si prÃ©sent
+        if (Object.prototype.hasOwnProperty.call(msg, "requestId") && msg.requestId != null) {
+          requestId = String(msg.requestId);
+        }
+
+        // (Option) Auth handshake ici plus tard :
+        // const auth = (request.headers["authorization"] as string) || "";
+        // ws.ctx!.userId = verifyToken(auth)?.userId;
+
+        // Dispatch minimal par type
+        type = typeof msg?.type === "string" ? msg.type : "unknown";
+        
+        // CORRECTION : Incrémenter AVANT le switch pour comptabiliser tous les messages
+        try { 
+          wsMessagesTotal.inc({ type });
+          app.log.info({ type, requestId }, `WS message received, type: ${type}`);
+        } catch (e) {
+          app.log.error({ err: e }, "Error incrementing ws metrics");
+        }
+        
+        switch (type) {
+          case "ws.ping": {
+            safeSend({ type: "ws.pong", ts: Date.now(), requestId });
+            break;
+          }
+
+          case "chat.message": {
+            // TODO: persister si besoin via ChatRepo.addMessage(...)
+            // TODO: broadcast room si tu ajoutes la notion de room
+            app.log.info({ requestId }, "Chat message processed");
+            break;
+          }
+
+          case "game.input": {
+            // TODO: logique jeu (ex: GameRepo.create() â†' ws.send({ type:"game.created" ... }))
+            break;
+          }
+
+          default: {
+            app.log.warn({ type }, "Unknown WS message type");
+            safeSend({ type: "error", data: { message: "unknown type" }, requestId });
+          }
+        }
+        
+        // Envoyer l'ACK après traitement
+        if (requestId) {
+          const ack = { type: "ack", requestId };
+          app.log.info({ requestId }, "WS ack sent");
+          safeSend(ack);
+        }
+        
+      } catch (parseError) {
+        type = "invalid";
+        // Incrémenter pour les messages invalides aussi
+        try { 
+          wsMessagesTotal.inc({ type: "invalid" });
+        } catch {}
+        safeSend({ type: "error", data: { message: "invalid json" }, requestId });
+        app.log.warn({ parseError }, "Invalid JSON received");
+      }
+    });
   });
 
-  // gestion manuelle des upgrades HTTP -> WS
-  app.server.on("upgrade", (request: IncomingMessage, socket: Socket, head: Buffer) => {
+  // Upgrade HTTP â†' WS (endpoint unique /ws)
+  app.server.on("upgrade", (request: IncomingMessage, socket: any, head: Buffer) => {
     if (request.url === "/ws") {
-      wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
-        wss.emit("connection", ws, request);
+      wss.handleUpgrade(request, socket, head, (socketWs: WebSocket) => {
+        wss.emit("connection", socketWs, request);
       });
     } else {
       socket.destroy();

@@ -2,7 +2,7 @@
 
 up:
 	docker compose up -d
-	./elk-init.sh
+	./scripts/elk-init.sh
 	docker compose restart kibana
 
 down:
