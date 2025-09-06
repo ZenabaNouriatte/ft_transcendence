@@ -27,7 +27,7 @@ sk(){ echo -e "  ${c_yellow}SKIP${c_reset} $*"; SKIP=$((SKIP+1)); }
 sec(){ echo -e "\n${c_blue}# $*${c_reset}"; }
 
 http_code(){ curl "${CURL_CMN[@]}" -o /dev/null -w "%{http_code}" "$1"; }
-json_num(){ jq -r '.total // empty'; }
+json_num(){ jq -r 'try .total catch empty'; }
 
 # Prometheus helpers
 prom_raw(){ curl -sG --data-urlencode "query=$1" "$PROM_URL/api/v1/query"; }
@@ -103,17 +103,22 @@ fi
 
 # ───────────────────────── Services (pings via Gateway) ─────────────────────
 sec "API – pings par service (via Gateway)"
-declare -A SVC_PINGS=(
-  [users]="/api/users/ping"
-  [games]="/api/games/ping"
-  [chat]="/api/chat/ping"
-  [tournaments]="/api/tournaments/ping"
-)
-for svc in users games chat tournaments; do
-  url="${SVC_PINGS[$svc]}"
+SVC_LIST="users|/api/users/ping
+games|/api/games/ping
+chat|/api/chat/ping
+tournaments|/api/tournaments/ping"
+
+while IFS="|" read -r name url; do
+  [ -z "$name" ] && continue
   body=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS$url" || true)
-  if echo "$body" | grep -q '"ok"[[:space:]]*:[[:space:]]*true' ; then ok "$svc: $url"; else sk "$svc: $url (pas de stub ?)"; fi
-done
+  if echo "$body" | grep -q '"ok"[[:space:]]*:[[:space:]]*true' ; then
+    ok "$name: $url"
+  else
+    sk "$name: $url (pas de stub ? body=${body:0:80}...)"
+  fi
+done <<EOF
+$SVC_LIST
+EOF
 
 # ─────────────────────────────────── WS ────────────────────────────────────
 sec "WebSocket (via Gateway interne)"
