@@ -1,130 +1,101 @@
 groups:
 
-# ========= Recording rules (ajouts + tes existantes) =========
 - name: recording_rules
   interval: 30s
   rules:
-    # Taux d'erreur global (5xx)
-    - record: job:error_rate_5xx
+    - record: service:error_rate_5xx
       expr: |
-        sum(rate(http_request_duration_seconds_count{status_code=~"5.."}[5m]))
+        sum by (service) (rate(http_request_duration_seconds_count{status_code=~"5.."}[5m]))
         /
-        sum(rate(http_request_duration_seconds_count[5m]))
+        clamp_min(sum by (service) (rate(http_request_duration_seconds_count[5m])), 1)
 
-    # p95 par route
-    - record: route:latency_p95_seconds
+    - record: service_route:latency_p95_seconds
       expr: |
         histogram_quantile(
           0.95,
-          sum by (le, route) (rate(http_request_duration_seconds_bucket[5m]))
+          sum by (service, route, le) (rate(http_request_duration_seconds_bucket[5m]))
         )
 
-    # --- Nouveaux enregistrements backend HTTP ---
-    # Agregation "bucket rate" pour quantiles
-    - record: job:http_req_bucket:rate5m
+    - record: service:http_req_bucket:rate5m
       expr: |
-        sum by (service, route, le) (
-          rate(http_request_duration_seconds_bucket[5m])
-        )
+        sum by (service, route, le) (rate(http_request_duration_seconds_bucket[5m]))
 
-    # Req par seconde (RPS)
-    - record: job:http_req_rps:5m
+    - record: service:http_req_rps:5m
       expr: |
-        sum by (service, route) (
-          rate(http_request_duration_seconds_count[5m])
-        )
+        sum by (service, route) (rate(http_request_duration_seconds_count[5m]))
 
-    # Quantiles de latence
-    - record: job:http_req_p50:5m
+    - record: service:http_req_p50:5m
       expr: |
-        histogram_quantile(0.50, sum by (service, route, le) (job:http_req_bucket:rate5m))
+        histogram_quantile(0.50, sum by (service, route, le) (service:http_req_bucket:rate5m))
 
-    - record: job:http_req_p95:5m
+    - record: service:http_req_p95:5m
       expr: |
-        histogram_quantile(0.95, sum by (service, route, le) (job:http_req_bucket:rate5m))
+        histogram_quantile(0.95, sum by (service, route, le) (service:http_req_bucket:rate5m))
 
-    - record: job:http_req_p99:5m
+    - record: service:http_req_p99:5m
       expr: |
-        histogram_quantile(0.99, sum by (service, route, le) (job:http_req_bucket:rate5m))
+        histogram_quantile(0.99, sum by (service, route, le) (service:http_req_bucket:rate5m))
 
-    # Ratio d'erreurs 4xx+5xx
-    - record: job:http_error_ratio:5m
+    - record: service:http_error_ratio:5m
       expr: |
-        sum by (service, route) (
-          rate(http_request_duration_seconds_count{status_code=~"4..|5.."}[5m])
-        )
+        sum by (service, route) (rate(http_request_duration_seconds_count{status_code=~"4..|5.."}[5m]))
         /
-        sum by (service, route) (
-          rate(http_request_duration_seconds_count[5m])
-        )
+        clamp_min(sum by (service, route) (rate(http_request_duration_seconds_count[5m])), 1)
 
-    # --- WebSocket  ---
-    - record: job:ws_messages_rps:5m
+    - record: service:ws_messages_rps:5m
       expr: |
-        sum by (service) (rate(wsMessagesTotal[5m]))
+        sum by (service) (rate(ws_messages_total[5m]))
 
-# ========= Alerting rules (tes alertes, conservées) =========
+    - record: service:process_cpu_core_usage:2m
+      expr: |
+        sum by (service) (rate(process_cpu_seconds_total[2m]))
+
 - name: alerting_rules
   rules:
-    # Instance DOWN (backend)
-    - alert: BackendDown
-      expr: up{job="backend"} == 0
+    - alert: ServiceDown
+      expr: sum by (service) (up) == 0
       for: 1m
       labels: { severity: critical }
       annotations:
-        summary: "Backend cible DOWN"
-        description: "Le job backend ne répond plus au scrape /metrics."
+        summary: "Service DOWN ({{ $labels.service | default $labels.job }})"
+        description: "La cible scrape du service est DOWN."
 
-    # Erreur HTTP elevee
     - alert: HighErrorRate
-      expr: job:error_rate_5xx > 0.05
+      expr: service:error_rate_5xx > 0.05
       for: 5m
       labels: { severity: warning }
       annotations:
-        summary: "Taux d'erreur 5xx > 5%"
-        description: "Sur les 5 dernières minutes, le ratio 5xx dépasse 5%."
+        summary: "Taux d'erreur 5xx > 5% ({{ $labels.service }})"
+        description: "Sur 5 minutes, {{ $labels.service }} dépasse 5% de 5xx."
 
-    # Latence p95 anormale
     - alert: HighLatencyP95
-      expr: route:latency_p95_seconds > 0.5
+      expr: service:http_req_p95:5m > 0.5
       for: 5m
       labels: { severity: warning }
       annotations:
-        summary: "p95 latence > 500ms"
-        description: "La latence p95 d'une ou plusieurs routes dépasse 500ms."
+        summary: "p95 latence > 500ms ({{ $labels.service }} {{ $labels.route }})"
+        description: "Latence p95 élevée sur {{ $labels.route }}."
 
-    # CPU conteneur backend trop eleve (via cAdvisor)
-    - alert: BackendHighCPU
-      expr: rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service="backend"}[2m]) > 0.8
+    - alert: ServiceProcessHighCPU
+      expr: service:process_cpu_core_usage:2m > 0.8
       for: 10m
       labels: { severity: warning }
       annotations:
-        summary: "CPU backend > 80% (moy 10min)"
-        description: "Charge CPU élevée persistante sur le conteneur backend."
+        summary: "CPU process >80% d'un cœur ({{ $labels.service }})"
+        description: "Charge CPU élevée persistante (moy. 2m)."
 
-    # CPU process backend (sans cAdvisor)
-    - alert: BackendProcessHighCPU
-      expr: rate(process_cpu_seconds_total{job="backend"}[2m]) > 0.8
-      for: 10m
-      labels: { severity: warning, service: backend }
-      annotations:
-        summary: "CPU process élevé (~{{ $value | humanizePercentage }})"
-        description: "Le process du backend consomme >80% d’un cœur (moy. 2m) depuis 10 min."
-
-    # Mémoire process backend (sans cAdvisor)
-    - alert: BackendProcessHighMemory
-      expr: process_resident_memory_bytes{job="backend"} > 300 * 1024 * 1024
+    - alert: ServiceProcessHighMemory
+      expr: process_resident_memory_bytes > 300 * 1024 * 1024
       for: 5m
-      labels: { severity: warning, service: backend }
+      labels: { severity: warning }
       annotations:
-        summary: "Mémoire process élevée ({{ $value | humanize1024 }}B)"
-        description: "RSS du process backend > 300MiB depuis 5 min."
+        summary: "Mémoire process élevée ({{ $labels.service | default $labels.job }})"
+        description: "RSS > 300MiB depuis 5 min."
 
-    # (Optionnel) Fuite mémoire: dérive
-    - alert: BackendProcessMemoryLeakSuspected
-      expr: rate(process_resident_memory_bytes{job="backend"}[15m]) > 5 * 1024 * 1024
+    - alert: ServiceProcessMemoryLeakSuspected
+      expr: rate(process_resident_memory_bytes[15m]) > 5 * 1024 * 1024
       for: 30m
-      labels: { severity: warning, service: backend }
+      labels: { severity: warning }
       annotations:
-        summary: "Suspicion de fuite mémoire"
-        description: "RSS du process backend augmente >5MiB/min (moy. 15m) depuis 30 min."
+        summary: "Suspicion de fuite mémoire ({{ $labels.service | default $labels.job }})"
+        description: "RSS augmente >5MiB/min (15m)."

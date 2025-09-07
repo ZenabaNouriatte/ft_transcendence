@@ -2,22 +2,21 @@ services:
   proxy:
     build: ./proxy
     ports:
-      - "8080:80"
-      - "8443:443"
+      - "0.0.0.0:8080:80"
+      - "0.0.0.0:8443:443"
+    environment:
+    - ALLOWLIST_IPS=${ALLOWLIST_IPS:-127.0.0.1 ::1 172.16.0.0/12 10.0.0.0/8 192.168.0.0/16}
+#    - FRONTEND_ORIGIN=192.168.1.154:8443
     depends_on:
-      frontend:
-        condition: service_started      
-      gateway:
-        condition: service_started
-    volumes:
-      - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./proxy/certs:/etc/nginx/certs:ro
+      frontend: { condition: service_started }
+      gateway:  { condition: service_started }
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost/healthz >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -kfsS https://localhost/healthz >/dev/null || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 5
     restart: unless-stopped
+
 
   frontend:
     build: ./frontend
@@ -140,17 +139,6 @@ services:
     depends_on:
       - prometheus
 
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
-    container_name: cadvisor
-    ports:
-      - "8081:8080"
-    volumes:
-      - /:/rootfs:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /sys:/sys:ro
-    restart: unless-stopped
 
 #-----------------------ELK ----------------------------
 

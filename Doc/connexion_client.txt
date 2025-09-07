@@ -1,0 +1,3 @@
+- Trouver l'ip de machine hote ( ip a)
+- curl -kI https://<IP_HOTE>:8443/healthz -- doit renvoyer 200
+- navigateur : https://<IP_HOTE>:8443
