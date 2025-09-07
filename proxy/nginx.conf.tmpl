@@ -19,10 +19,10 @@ http {
   }
 
   # --- Origin strict pour WebSocket (nouveau) ---
-  map $http_origin $ws_ok {
-    default 0;
-    "${FRONTEND_ORIGIN}" 1;
-  }
+#  map $http_origin $ws_ok {
+#    default 0;
+#    "${FRONTEND_ORIGIN}" 1;
+#  }
 
   # --- Log JSON (comme chez toi) ---
   log_format json escape=json
@@ -76,31 +76,26 @@ http {
 
     # --- WebSocket (Origin strict + timeouts) ---
     location /ws {
-      ${ALLOW_DIRECTIVES}
-      deny all;
+      if ($scheme != "https") { return 403; }
+      if ($http_origin = "") { return 403; }
+      if ($http_origin !~* ^https://$host(:\d+)?$) { return 403; }
 
-    location = /ws-test.html {
-      proxy_pass http://frontend:80/ws-test.html;
-      proxy_intercept_errors off;
-      add_header X-Debug-Location "frontend-ws-test" always;
-    }
-
-      if ($ws_ok = 0) { return 403; }
-      proxy_pass http://gateway:8000;
       proxy_http_version 1.1;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection $connection_upgrade;
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+      proxy_set_header Host              $host;
+      proxy_set_header X-Real-IP         $remote_addr;
+      proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $scheme;
 
-      proxy_read_timeout 86400s;
-      proxy_send_timeout 86400s;
+      proxy_read_timeout    86400s;
+      proxy_send_timeout    86400s;
       proxy_connect_timeout 30s;
-
       proxy_buffering off;
-      proxy_cache off;
+      proxy_cache     off;
+
+      proxy_pass http://gateway:8000;
     }
 
           # --- Page de test WS (bypass SPA) ---
