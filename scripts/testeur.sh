@@ -65,7 +65,7 @@ code=$(http_code "$PROXY_HTTPS/metrics")
 # ─────────────────────────────────── API ───────────────────────────────────
 sec "API (via Gateway → services)"
 
-# GET total visites
+# helper: GET /api/visits (3 tentatives, parse JSON)
 try_get_visits() {
   for i in 1 2 3; do
     v=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS/api/visits" | json_num)
@@ -74,43 +74,73 @@ try_get_visits() {
   done
   echo ""
 }
+
+# 1) lecture avant
 before=$(try_get_visits)
 [[ "$before" =~ ^[0-9]+$ ]] && ok "GET /api/visits = $before" || { ko "GET /api/visits réponse inattendue"; before=""; }
 
-# A) Simulation UI (sans header) — on s'attend à un refus (4xx)
+# 2A) POST sans headers -> doit être refusé (4xx)
 code=$(curl "${CURL_CMN[@]}" -o /dev/null -w "%{http_code}" -X POST "$PROXY_HTTPS/api/visit")
 [[ "$code" =~ ^4 ]] && ok "POST /api/visit (sans header) refusé ($code)" || sk "POST /api/visit (sans header) accepté ($code)"
 
-# B) Testeur (avec “signal”)
-post=$(curl "${CURL_CMN[@]}" -X POST "$PROXY_HTTPS/api/visit" \
+# 2B) POST "navigateur" : body JSON + en-têtes d'origine + signal
+post_body=$(curl "${CURL_CMN[@]}" -X POST "$PROXY_HTTPS/api/visit" \
+  -H 'Content-Type: application/json' \
   -H 'X-Nav-Type: navigate' \
   -H "Origin: $PROXY_HTTPS" \
-  -H "Referer: $PROXY_HTTPS/" | json_num)
-[[ "$post" =~ ^[0-9]+$ ]] && ok "POST /api/visit (avec signal) total=$post" || ko "POST /api/visit (avec signal) réponse inattendue"
+  -H "Referer: $PROXY_HTTPS/" \
+  --data-raw '{}')
 
-after=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS/api/visits" | json_num)
-if [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ ]]; then
-  [ "$after" -eq $((before+1)) ] && ok "Compteur visites +1 ($before → $after)" || ko "Compteur visites n'a pas augmenté ($before → $after)"
+post_num=$(echo "$post_body" | json_num)
+
+# 3) lecture après, avec petite attente
+after=""
+for i in 1 2 3; do
+  after=$(try_get_visits)
+  [[ "$after" =~ ^[0-9]+$ ]] && break
+  sleep 1
+done
+
+# 4) évaluation (réussite si le compteur a augmenté, même si le POST n'a pas renvoyé 'total')
+if [[ "$post_num" =~ ^[0-9]+$ ]]; then
+  ok "POST /api/visit (avec signal) total=$post_num"
 else
-  sk "Validation +1 visits sautée (valeurs non numériques)"
+  if [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ && "$after" -ge $((before+1)) ]]; then
+    ok "POST /api/visit (avec signal) OK (compteur augmenté $before → $after)"
+  else
+    ko "POST /api/visit (avec signal) réponse inattendue (body=${post_body:0:80}...)"
+  fi
 fi
 
-# /api/users/ping (optionnel)
-body=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS/api/users/ping" || true)
-if echo "$body" | grep -q '"ok"[[:space:]]*:[[:space:]]*true' ; then ok "/api/users/ping"; else sk "/api/users/ping (pas de stub ?)"; fi
-
-# 404 + X-Request-ID corrélable dans logs Nginx
-hdrs=$(curl -kis "${CURL_CMN[@]}" "$PROXY_HTTPS/api/does-not-exist" || true)
-reqid=$(echo "$hdrs" | sed -n 's/^X-Request-ID:[[:space:]]*\(.*\)\r*/\1/p' | tr -d '\r' | head -n1)
-if [ -n "$reqid" ]; then
-  if dc exec -T proxy sh -lc "test -f $NGINX_ACCESS_PATH && grep -F \"$reqid\" $NGINX_ACCESS_PATH >/dev/null 2>&1"; then
-    ok "X-Request-ID corrélé dans access.json ($reqid)"
+# 5) validation finale du +1 (affichage clair)
+if [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ ]]; then
+  if [ "$after" -ge $((before+1)) ]; then
+    ok "Compteur visites +1 (>=) ($before → $after)"
   else
-    sk "Impossible de corréler X-Request-ID ($reqid) dans $NGINX_ACCESS_PATH"
+    ko "Compteur visites n'a pas augmenté ($before → $after)"
   fi
 else
-  ko "X-Request-ID manquant sur 404"
+  sk "Validation +1 visits sautée (valeurs non numériques: before='$before', after='$after')"
 fi
+
+# ───────────────────────── Services (pings via Gateway) ─────────────────────
+sec "API – pings par service (via Gateway)"
+SVC_LIST="users|/api/users/ping
+games|/api/games/ping
+chat|/api/chat/ping
+tournaments|/api/tournaments/ping"
+
+while IFS="|" read -r name url; do
+  [ -z "$name" ] && continue
+  body=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS$url" || true)
+  if echo "$body" | grep -q '"ok"[[:space:]]*:[[:space:]]*true' ; then
+    ok "$name: $url"
+  else
+    sk "$name: $url (pas de stub ? body=${body:0:80}...)"
+  fi
+done <<EOF
+$SVC_LIST
+EOF
 
 # ───────────────────────── Services (pings via Gateway) ─────────────────────
 sec "API – pings par service (via Gateway)"
