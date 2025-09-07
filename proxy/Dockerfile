@@ -20,6 +20,7 @@ subjectAltName = @alt
 DNS.1 = localhost
 IP.1  = 127.0.0.1
 CFG
+
 RUN openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
       -keyout /etc/nginx/certs/server.key \
       -out /etc/nginx/certs/server.crt \
