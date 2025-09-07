@@ -13,7 +13,7 @@ set -o pipefail
 : "${TEST_INTERNAL:=0}"                   # 1 pour tester dans chaque service
 
 # curl options communs
-CURL_CMN=(-k --connect-timeout 5 --max-time 15 -sS)
+CURL_CMN=(-k --connect-timeout 5 --max-time 15 -sS -H 'Accept: application/json')
 
 # docker compose vs docker-compose
 dc() { if command -v docker-compose >/dev/null 2>&1; then docker-compose "$@"; else docker compose "$@"; fi; }
@@ -66,7 +66,15 @@ code=$(http_code "$PROXY_HTTPS/metrics")
 sec "API (via Gateway → services)"
 
 # GET total visites
-before=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS/api/visits" | json_num)
+try_get_visits() {
+  for i in 1 2 3; do
+    v=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS/api/visits" | json_num)
+    [[ "$v" =~ ^[0-9]+$ ]] && { echo "$v"; return 0; }
+    sleep 1
+  done
+  echo ""
+}
+before=$(try_get_visits)
 [[ "$before" =~ ^[0-9]+$ ]] && ok "GET /api/visits = $before" || { ko "GET /api/visits réponse inattendue"; before=""; }
 
 # A) Simulation UI (sans header) — on s'attend à un refus (4xx)
@@ -74,7 +82,10 @@ code=$(curl "${CURL_CMN[@]}" -o /dev/null -w "%{http_code}" -X POST "$PROXY_HTTP
 [[ "$code" =~ ^4 ]] && ok "POST /api/visit (sans header) refusé ($code)" || sk "POST /api/visit (sans header) accepté ($code)"
 
 # B) Testeur (avec “signal”)
-post=$(curl "${CURL_CMN[@]}" -X POST "$PROXY_HTTPS/api/visit" -H 'X-Nav-Type: navigate' | json_num)
+post=$(curl "${CURL_CMN[@]}" -X POST "$PROXY_HTTPS/api/visit" \
+  -H 'X-Nav-Type: navigate' \
+  -H "Origin: $PROXY_HTTPS" \
+  -H "Referer: $PROXY_HTTPS/" | json_num)
 [[ "$post" =~ ^[0-9]+$ ]] && ok "POST /api/visit (avec signal) total=$post" || ko "POST /api/visit (avec signal) réponse inattendue"
 
 after=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS/api/visits" | json_num)
