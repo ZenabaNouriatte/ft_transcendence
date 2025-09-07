@@ -79,6 +79,12 @@ http {
       ${ALLOW_DIRECTIVES}
       deny all;
 
+    location = /ws-test.html {
+      proxy_pass http://frontend:80/ws-test.html;
+      proxy_intercept_errors off;
+      add_header X-Debug-Location "frontend-ws-test" always;
+    }
+
       if ($ws_ok = 0) { return 403; }
       proxy_pass http://gateway:8000;
       proxy_http_version 1.1;
@@ -97,14 +103,19 @@ http {
       proxy_cache off;
     }
 
-    # --- Page de test WS (bypass SPA) ---
-    #location = /ws-test.html {
-    #  proxy_pass http://frontend:80/ws-test.html;
-    #  proxy_intercept_errors off;
-    #  add_header X-Debug-Location "frontend-ws-test" always;
-    #}
+          # --- Page de test WS (bypass SPA) ---
+    location = /ws-test.html {
+      proxy_pass http://frontend:80/ws-test.html;
+      proxy_http_version 1.1;
+      proxy_intercept_errors off;           # ne jamais remplacer par /index.html
+      add_header X-Debug-Location "frontend-ws-test" always;
+    }
 
-    location = /test-ws { return 302 /ws-test.html; }
+      # Alias pratique
+    location = /test-ws {
+      return 302 /ws-test.html;
+    }
+
 
 
     # --- FRONTEND (statique) ---
