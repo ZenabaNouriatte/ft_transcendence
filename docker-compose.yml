@@ -2,11 +2,11 @@ services:
   proxy:
     build: ./proxy
     ports:
-      - "${BIND_ADDR:-127.0.0.1}:8080:80"
-      - "${BIND_ADDR:-127.0.0.1}:8443:443"
+      - "0.0.0.0:8080:80"
+      - "0.0.0.0:8443:443"
     environment:
-      - ALLOWLIST_IPS=127.0.0.1 ::1 172.17.0.1 172.18.0.1
-      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-https://localhost:8443}
+    - ALLOWLIST_IPS=${ALLOWLIST_IPS:-127.0.0.1 ::1 172.16.0.0/12 10.0.0.0/8 192.168.0.0/16}
+    - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-https://localhost:8443}
     depends_on:
       frontend: { condition: service_started }
       gateway:  { condition: service_started }
