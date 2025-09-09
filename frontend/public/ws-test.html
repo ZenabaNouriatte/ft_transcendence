@@ -53,7 +53,7 @@
     <div>
         <h3>Connexion</h3>
         <div>
-            <input type="text" id="wsUrl" value="wss://localhost:8443/ws" placeholder="WebSocket URL" size="40">
+            <input type="text" id="wsUrl" placeholder="WebSocket URL" size="40">
             <button id="connectBtn" onclick="connect()">Se connecter</button>
             <button id="disconnectBtn" onclick="disconnect()" disabled>Se déconnecter</button>
         </div>
@@ -181,5 +181,13 @@
             }
         });
     </script>
+<script>
+// Auto-renseigner l'URL WS en same-origin
+(function initWsUrl() {
+  const def = `wss://${location.host}/ws`;
+  const input = document.getElementById('wsUrl');
+  if (input && !input.value) input.value = def;
+})();
+</script>
 </body>
 </html>
