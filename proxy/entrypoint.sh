@@ -26,4 +26,3 @@ sed -e "s|\${ALLOW_DIRECTIVES}|${ALLOW_DIRECTIVES}|g" \
 # 4) Lint + start
 nginx -t
 exec "$@"
-

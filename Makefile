@@ -23,3 +23,6 @@ build:
 	docker compose build --no-cache --pull
 
 restart: clean build up
+
+front-build:
+	cd frontend && npm install && npm run build

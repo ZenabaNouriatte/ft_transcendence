@@ -98,23 +98,11 @@ http {
       proxy_pass http://gateway:8000;
     }
 
-          # --- Page de test WS (bypass SPA) ---
-    # Page de test (depuis le service frontend)
+    # --- Page de test WS (bypass SPA) ---
     location = /ws-test.html {
-      proxy_pass http://frontend:80/ws-test.html;
-      proxy_http_version 1.1;
-      proxy_intercept_errors off;
-      add_header X-Debug-Location "frontend-ws-test" always;
+      root /usr/share/nginx/html;
+      index ws-test.html;
     }
-
-    # Alias court (sert direct la page de test, pas de 302)
-    location = /test-ws {
-      proxy_pass http://frontend:80/ws-test.html;
-      proxy_http_version 1.1;
-      proxy_intercept_errors off;
-      add_header X-Debug-Location "frontend-ws-alias" always;
-    }
-
 
     # --- FRONTEND (statique) ---
     location = /index.html {
