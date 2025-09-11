@@ -19,10 +19,10 @@ http {
   }
 
   # --- Origin strict pour WebSocket (nouveau) ---
-#  map $http_origin $ws_ok {
-#    default 0;
-#    "${FRONTEND_ORIGIN}" 1;
-#  }
+  map $http_origin $ws_ok {
+      default 0;
+      "${FRONTEND_ORIGIN}" 1;
+  }
 
   # --- Log JSON (comme chez toi) ---
   log_format json escape=json
