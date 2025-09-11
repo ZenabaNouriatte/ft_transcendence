@@ -3,8 +3,9 @@
   "private": true,
   "version": "0.0.1",
   "scripts": {
-    "build": "tsc && npx postcss src/styles.css -o dist/output.css && cp index.html dist/index.html && cp public/ws-test.html dist/ws-test.html",
-    "dev": "tsc -w"
+    "build": "tsc && postcss src/styles.css -o dist/output.css && cp index.html dist/index.html && cp public/ws-test.html dist/ws-test.html",
+    "dev": "tsc -w",
+    "prebuild": "mkdir -p dist"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.21",
