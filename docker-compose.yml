@@ -16,8 +16,6 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
-    volumes:
-      - ./frontend/dist:/usr/share/nginx/html:ro
 
 
   frontend:
@@ -104,49 +102,41 @@ services:
 #--------------------------PROMETHEUS GRAFANA -------------------------
 
   prometheus:
-    image: prom/prometheus:v2.55.1
-    container_name: prometheus
+    build: ./monitoring/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.path=/prometheus
       - --web.enable-lifecycle
+    ports: ["9090:9090"]
     volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/prometheus/rules.yml:/etc/prometheus/rules.yml:ro
       - prometheus-data:/prometheus
-    ports:
-    - "9090:9090"
     restart: unless-stopped
 
   alertmanager:
-    image: prom/alertmanager:latest
-    volumes:
-      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    build: ./monitoring/alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
     ports: ["9093:9093"]
+    volumes:
+      - alertmanager-data:/alertmanager
     restart: unless-stopped
 
   grafana: 
-    image: grafana/grafana:11.1.4
-    container_name: grafana
+    build: ./monitoring/grafana
     env_file: 
       - .env
+    ports: ["3000:3000"]
     volumes:
-      - grafana-data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    ports:
-      - "3000:3000"
+      - grafana-data:/var/lib/grafana           # ✅ data persistante
+    depends_on: [prometheus]
     restart: unless-stopped
-    depends_on:
-      - prometheus
 
 
 #-----------------------ELK ----------------------------
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:${ELK_VERSION}
-    container_name: elasticsearch
+    build: ./monitoring/elk/elasticsearch
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=true
@@ -158,7 +148,6 @@ services:
       - "127.0.0.1:9200:9200"
     volumes:
       - esdata:/usr/share/elasticsearch/data
-      - ./monitoring/elk/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-u", "elastic:elastic", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s"]
       interval: 10s
@@ -166,23 +155,17 @@ services:
       retries: 30
 
   kibana:
-    image: docker.elastic.co/kibana/kibana:${ELK_VERSION:-8.14.0}
-    container_name: kibana
+    build: ./monitoring/elk/kibana
     depends_on:
       elasticsearch:
         condition: service_healthy
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-#      - ELASTICSEARCH_USERNAME=kibana_system
-#      - ELASTICSEARCH_PASSWORD=kibana
     ports:
       - "127.0.0.1:5601:5601"
-    volumes:
-      - ./monitoring/elk/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
 
   logstash:
-    image: docker.elastic.co/logstash/logstash:${ELK_VERSION:-8.14.0}
-    container_name: logstash
+    build: ./monitoring/elk/logstash
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -192,10 +175,7 @@ services:
       - LS_JAVA_OPTS=-Xms256m -Xmx256m
       - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
       - ELASTICSEARCH_USERNAME=${ELASTIC_USERNAME}
-    volumes:
-      - ./monitoring/elk/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
-      - ./monitoring/elk/logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
-
+    restart: unless-stopped
 
 volumes:
   certs: {}
@@ -203,3 +183,4 @@ volumes:
   prometheus-data: {}
   esdata: {}
   sqlite_data: {}
+  alertmanager-data: {}

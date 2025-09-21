@@ -1,0 +1,5 @@
+FROM docker.elastic.co/logstash/logstash:8.14.3
+# Config
+COPY logstash.yml /usr/share/logstash/config/logstash.yml
+# Pipelines
+COPY pipeline/ /usr/share/logstash/pipeline/
