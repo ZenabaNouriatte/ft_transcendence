@@ -1,34 +1,25 @@
-# Dockerfile pour le backend
-FROM node:20-alpine AS base
-
-# Stage de dépendances (prod)
-FROM base AS deps
+# --- build ---
+FROM node:20-alpine AS build
 WORKDIR /app
-COPY package.json package-lock.json ./
+
+COPY package*.json ./
 RUN apk add --no-cache python3 make g++ \
- && npm ci --only=production && npm cache clean --force \
- && apk del python3 make g++ || true
+ && (npm ci || (echo "Lock out of sync → fallback to npm install" && npm install))
 
-# Stage de build (dev + transpile)
-FROM base AS build
-WORKDIR /app
-COPY package.json package-lock.json ./
-# ⚠️ OUTILS DE BUILD AUSSI ICI
-RUN apk add --no-cache python3 make g++ libstdc++ \
- && npm ci --include=dev && npm cache clean --force
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
-RUN mkdir -p dist/data && cp -v src/data/schema.sql dist/data/
 
-# Stage runtime
-FROM node:20-alpine AS runtime
+# --- runtime ---
+FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 RUN apk add --no-cache libstdc++
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/package.json ./
 
-EXPOSE 8000
-CMD ["node", "dist/index.js"]
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY src/database/schema.sql ./dist/database/schema.sql
+
+COPY package.json ./
+
+CMD ["node","dist/index.js"]

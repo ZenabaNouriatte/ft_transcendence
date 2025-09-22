@@ -10,6 +10,8 @@ import chatHttp from "./modules/chat/http.js";
 import tournamentHttp from "./modules/tournament/http.js";
 import visitsHttp from "./modules/visits/http.js";
 import { registerRawWs } from "./ws-raw.js";
+import { initDb } from "./database/index.js";
+
 
 import { registerHttpTimingHooks, sendMetrics } from "./common/metrics.js";
 
@@ -40,6 +42,8 @@ app.addHook("onRequest", (req, _reply, done) => {
 if (ROLE === "gateway") {
   registerRawWs(app);
 }
+if (ROLE !== "gateway") initDb();
+
 
 // Plugins de base
 await app.register(helmet, {

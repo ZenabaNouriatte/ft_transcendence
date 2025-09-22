@@ -52,7 +52,6 @@ services:
       - SERVICE_ROLE=svc-auth
       - PORT=8101
       - DB_PATH=${DB_PATH}
-    volumes: [ sqlite_data:/data ]
     expose: [ "8101" ]
 
   game:
@@ -62,7 +61,6 @@ services:
       - SERVICE_ROLE=svc-game
       - PORT=8102
       - DB_PATH=${DB_PATH}
-    volumes: [ sqlite_data:/data ]
     expose: [ "8102" ]
 
   chat:
@@ -72,7 +70,6 @@ services:
       - SERVICE_ROLE=svc-chat
       - PORT=8103
       - DB_PATH=${DB_PATH}
-    volumes: [ sqlite_data:/data ]
     expose: [ "8103" ]
 
   tournament:
@@ -82,7 +79,6 @@ services:
       - SERVICE_ROLE=svc-tournament
       - PORT=8104
       - DB_PATH=${DB_PATH}
-    volumes: [ sqlite_data:/data ]
     expose: [ "8104" ]
 
   # CONTAINER TEST WS ET API
