@@ -11,9 +11,11 @@ set -o pipefail
 : "${ES_AUTH:=elastic:elastic}"           # ajuste si besoin
 : "${NGINX_ACCESS_PATH:=/var/log/nginx/access.json}"
 : "${TEST_INTERNAL:=1}"                   # 1 = tester l’intérieur des conteneurs
-: "${PING_VIA_GATEWAY:=0}"                # 1 = exiger des /api/*/ping servis via gateway→svc (proxy). 0 = désactivé (API servie au gateway).
+: "${PING_VIA_GATEWAY:=0}"                # 1 = exiger des /api/*/ping via gateway→svc. 0 = désactivé (API servie au gateway).
 : "${GRAFANA_URL:=http://localhost:3000}"
 : "${ALERT_URL:=http://localhost:9093}"
+: "${TEST_USERS:=1}"                      # 1 = activer tests register/login
+: "${DB_PERSIST_TEST:=1}"                 # 1 = tester la persistance DB avec restart gateway
 
 # curl options communs
 CURL_CMN=(-k --connect-timeout 5 --max-time 15 -sS -H 'Accept: application/json')
@@ -165,6 +167,7 @@ tournaments|/api/tournaments/ping"
 $SVC_LIST
 EOF
 fi
+
 
 # ─────────────────────────────────── WS ────────────────────────────────────
 sec "WebSocket (via Gateway interne)"
@@ -372,7 +375,6 @@ if [ "${DB_PERSIST_TEST:-1}" = "1" ]; then
     ko "Persistance DB KO (before='$before', after='$after')"
   fi
 fi
-
 
 # ───────────────────────────── Résumé ─────────────────────────────
 echo
