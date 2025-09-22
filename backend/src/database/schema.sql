@@ -1,5 +1,5 @@
 -- Schéma de base de données SQLite pour ft_transcendence
-
+PRAGMA foreign_keys = ON;
 -- Table des utilisateurs
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
