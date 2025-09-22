@@ -73,7 +73,7 @@ http {
     }
 
     # ── WebSocket -> gateway ──
-    location /ws {
+    location = /ws {
       access_log /var/log/nginx/websocket.log;
       proxy_pass http://gateway:8000/ws;
       proxy_http_version 1.1;
