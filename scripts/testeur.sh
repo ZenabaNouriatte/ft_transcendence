@@ -164,9 +164,6 @@ tournaments|/api/tournaments/ping"
   done <<EOF
 $SVC_LIST
 EOF
-else
-  sec "API – pings par service (via Gateway)"
-  sk "Désactivé (architecture: API servie par le gateway, microservices stateless)"
 fi
 
 # ─────────────────────────────────── WS ────────────────────────────────────
@@ -326,6 +323,56 @@ for _ in {1..8}; do
   case "$code" in 200|302|401) ok_kib=true; break;; *) sleep 5;; esac
 done
 $ok_kib && ok "Kibana en ligne (code $code)" || sk "Kibana non prêt (code $code)"
+
+# ───────── DB — création & persistance (gateway) ─────────
+if [ "${DB_PERSIST_TEST:-1}" = "1" ]; then
+  sec "DB — création & persistance (gateway uniquement)"
+
+  # 1) Le fichier SQLite existe et est non vide
+  if dc exec -T gateway sh -lc 'test -s /data/app.sqlite'; then
+    ok "gateway: /data/app.sqlite présent (non vide)"
+  else
+    ko "gateway: /data/app.sqlite absent ou vide"
+  fi
+
+  # helper: lecture JSON /api/visits avec retries
+  get_visits_json(){
+    for i in {1..15}; do
+      body=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS/api/visits" || true)
+      n=$(echo "$body" | jq -r 'try .total catch empty' 2>/dev/null)
+      if [[ "$n" =~ ^[0-9]+$ ]]; then echo "$n"; return 0; fi
+      sleep 1
+    done
+    echo ""
+  }
+
+  # 2) lecture avant
+  before=$(get_visits_json)
+  if [[ ! "$before" =~ ^[0-9]+$ ]]; then
+    sk "Impossible de lire /api/visits avant restart"; before=""
+  fi
+
+  # 3) +1 puis restart gateway
+  curl "${CURL_CMN[@]}" -X POST "$PROXY_HTTPS/api/visit" \
+    -H 'Content-Type: application/json' -H 'X-Nav-Type: navigate' --data-raw '{}' >/dev/null
+  dc restart gateway >/dev/null
+
+  # 4) attendre readiness
+  for _ in {1..15}; do
+    code=$(http_code "$PROXY_HTTPS/healthz")
+    [ "$code" = "200" ] && break
+    sleep 1
+  done
+
+  # 5) lecture après et évaluation
+  after=$(get_visits_json)
+  if [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ && "$after" -ge $((before+1)) ]]; then
+    ok "Persistance DB OK après restart ($before → $after)"
+  else
+    ko "Persistance DB KO (before='$before', after='$after')"
+  fi
+fi
+
 
 # ───────────────────────────── Résumé ─────────────────────────────
 echo
