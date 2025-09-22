@@ -1,4 +1,4 @@
-// src/modules/visits/http.ts
+// backend/src/modules/visits/http.ts
 import type { FastifyInstance } from "fastify";
 import { getVisitTotal, incrementVisit } from "../../database/index.js";
 import { visitsDbTotal, visitsApiIncrementsTotal } from "../../common/metrics.js";
@@ -6,9 +6,9 @@ import { visitsDbTotal, visitsApiIncrementsTotal } from "../../common/metrics.js
 export default async function visitsHttp(app: FastifyInstance) {
   // GET /api/visits
   app.get("/visits", async () => {
-    const total = await getVisitTotal();     // ← await
-    visitsDbTotal.set(total);                // snapshot pour Grafana
-    return { total };                        // le testeur lit .total
+    const total = await getVisitTotal();
+    visitsDbTotal.set(total);
+    return { total };
   });
 
   // POST /api/visit
@@ -17,9 +17,8 @@ export default async function visitsHttp(app: FastifyInstance) {
     const type = raw.toLowerCase() === "navigate" ? "navigate" : "reload";
     visitsApiIncrementsTotal.inc({ type });
 
-    const total = await incrementVisit();    // ← await
+    const total = await incrementVisit();
     visitsDbTotal.set(total);
-    return { total };                        
+    return { ok: true, total };
   });
 }
-

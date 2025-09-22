@@ -18,7 +18,7 @@ RUN apk add --no-cache libstdc++
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
-COPY src/database/schema.sql ./dist/database/schema.sql
+COPY --from=build /app/src/database/schema.sql ./dist/database/schema.sql
 
 COPY package.json ./
 

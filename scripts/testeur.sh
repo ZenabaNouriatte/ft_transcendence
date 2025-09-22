@@ -10,7 +10,10 @@ set -o pipefail
 : "${ES_URL:=http://localhost:9200}"
 : "${ES_AUTH:=elastic:elastic}"           # ajuste si besoin
 : "${NGINX_ACCESS_PATH:=/var/log/nginx/access.json}"
-: "${TEST_INTERNAL:=0}"                   # 1 pour tester dans chaque service
+: "${TEST_INTERNAL:=1}"                   # 1 = tester l’intérieur des conteneurs
+: "${PING_VIA_GATEWAY:=0}"                # 1 = exiger des /api/*/ping servis via gateway→svc (proxy). 0 = désactivé (API servie au gateway).
+: "${GRAFANA_URL:=http://localhost:3000}"
+: "${ALERT_URL:=http://localhost:9093}"
 
 # curl options communs
 CURL_CMN=(-k --connect-timeout 5 --max-time 15 -sS -H 'Accept: application/json')
@@ -62,6 +65,26 @@ code=$(http_code "$PROXY_HTTPS/healthz")
 code=$(http_code "$PROXY_HTTPS/metrics")
 [ "$code" = "200" ] && ok "gateway /metrics via proxy" || ko "gateway /metrics KO via proxy"
 
+# ───────────────────── Pages publiques & redirections ─────────────────────
+sec "Pages publiques & redirections"
+
+# 8080 doit rediriger vers 8443
+code=$(curl -k -s -o /dev/null -w "%{http_code}" http://localhost:8080/)
+loc=$(curl -k -s -I http://localhost:8080/ | awk -F': ' '/^Location:/ {print $2}' | tr -d '\r')
+if [[ "$code" =~ ^30[12]$ ]] && echo "$loc" | grep -q "https://localhost:8443"; then
+  ok "HTTP 8080 → redirection $code vers 8443"
+else
+  ko "HTTP 8080 redirection KO (code=$code, Location='$loc')"
+fi
+
+# Page d'accueil via proxy HTTPS
+code=$(http_code "$PROXY_HTTPS/")
+[ "$code" = "200" ] && ok "App (/) via proxy → 200" || ko "App (/) via proxy → $code"
+
+# Page de test WebSocket
+code=$(http_code "$PROXY_HTTPS/ws-test.html")
+[ "$code" = "200" ] && ok "WS test page (/ws-test.html) → 200" || ko "WS test page (/ws-test.html) → $code"
+
 # ─────────────────────────────────── API ───────────────────────────────────
 sec "API (via Gateway → services)"
 
@@ -101,7 +124,7 @@ for i in 1 2 3; do
   sleep 1
 done
 
-# 4) évaluation (réussite si le compteur a augmenté, même si le POST n'a pas renvoyé 'total')
+# 4) évaluation
 if [[ "$post_num" =~ ^[0-9]+$ ]]; then
   ok "POST /api/visit (avec signal) total=$post_num"
 else
@@ -112,7 +135,7 @@ else
   fi
 fi
 
-# 5) validation finale du +1 (affichage clair)
+# 5) validation finale du +1
 if [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ ]]; then
   if [ "$after" -ge $((before+1)) ]; then
     ok "Compteur visites +1 (>=) ($before → $after)"
@@ -124,42 +147,27 @@ else
 fi
 
 # ───────────────────────── Services (pings via Gateway) ─────────────────────
-sec "API – pings par service (via Gateway)"
-SVC_LIST="users|/api/users/ping
+if [ "${PING_VIA_GATEWAY:-0}" = "1" ]; then
+  sec "API – pings par service (via Gateway)"
+  SVC_LIST="users|/api/users/ping
 games|/api/games/ping
 chat|/api/chat/ping
 tournaments|/api/tournaments/ping"
-
-while IFS="|" read -r name url; do
-  [ -z "$name" ] && continue
-  body=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS$url" || true)
-  if echo "$body" | grep -q '"ok"[[:space:]]*:[[:space:]]*true' ; then
-    ok "$name: $url"
-  else
-    sk "$name: $url (pas de stub ? body=${body:0:80}...)"
-  fi
-done <<EOF
+  while IFS="|" read -r name url; do
+    [ -z "$name" ] && continue
+    body=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS$url" || true)
+    if echo "$body" | grep -q '"ok"[[:space:]]*:[[:space:]]*true' ; then
+      ok "$name: $url"
+    else
+      ko "$name: $url (réponse inattendue via gateway)"
+    fi
+  done <<EOF
 $SVC_LIST
 EOF
-
-# ───────────────────────── Services (pings via Gateway) ─────────────────────
-sec "API – pings par service (via Gateway)"
-SVC_LIST="users|/api/users/ping
-games|/api/games/ping
-chat|/api/chat/ping
-tournaments|/api/tournaments/ping"
-
-while IFS="|" read -r name url; do
-  [ -z "$name" ] && continue
-  body=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS$url" || true)
-  if echo "$body" | grep -q '"ok"[[:space:]]*:[[:space:]]*true' ; then
-    ok "$name: $url"
-  else
-    sk "$name: $url (pas de stub ? body=${body:0:80}...)"
-  fi
-done <<EOF
-$SVC_LIST
-EOF
+else
+  sec "API – pings par service (via Gateway)"
+  sk "Désactivé (architecture: API servie par le gateway, microservices stateless)"
+fi
 
 # ─────────────────────────────────── WS ────────────────────────────────────
 sec "WebSocket (via Gateway interne)"
@@ -211,6 +219,20 @@ sleep 5
 
 # ─────────────────────── Prometheus / Grafana ──────────────────────
 sec "Prometheus (Grafana metrics)"
+# Grafana
+code=$(http_code "$GRAFANA_URL/login")
+case "$code" in
+  200|302) ok "Grafana en ligne (code $code)";;
+  *)       ko "Grafana KO (code $code)";;
+esac
+
+# Alertmanager
+code=$(http_code "$ALERT_URL/#/alerts")
+case "$code" in
+  200|302) ok "Alertmanager en ligne (code $code)";;
+  *)       ko "Alertmanager KO (code $code)";;
+esac
+
 v=$(prom_wait_value_ge 'up{job="gateway"}' 1 10 5)
 [ -n "$v" ] && ok "up{job=\"gateway\"} = $v" || ko "Prometheus: up{job=\"gateway\"} pas OK"
 
@@ -232,12 +254,52 @@ c=$(prom_wait_series_ge 'websocket_connections_active{job="gateway"}' 1 8 5)
 v=$(prom_wait_value_ge 'max by() (visits_db_total)' 0 8 5)
 [ -n "$v" ] && ok "visits_db_total présent (val=$v)" || sk "visits_db_total non remonté"
 
-# ────────────── (Option) Services internes (réseau docker) ────────────────
+# ───────────────────── Architecture — Gateway-only DB & API ──────────────────
+sec "Architecture — Gateway-only DB & API"
+
+# DB visible sur gateway uniquement
+if dc exec -T gateway sh -lc '[ -n "$DB_PATH" ] && [ -d /data ]'; then
+  ok "Gateway: DB_PATH défini et /data présent"
+else
+  ko "Gateway: DB_PATH ou /data manquant"
+fi
+
+for svc in auth game chat tournament visits; do
+  # Aucun DB_PATH dans les svc-*
+  if dc exec -T "$svc" sh -lc '[ -z "$DB_PATH" ]'; then
+    ok "$svc: pas de DB_PATH (stateless)"
+  else
+    ko "$svc: DB_PATH détecté (devrait être stateless)"
+  fi
+  # Aucun /data monté dans les svc-*
+  if dc exec -T "$svc" sh -lc '[ -d /data ]'; then
+    ko "$svc: /data présent (ne doit pas monter la DB)"
+  else
+    ok "$svc: pas de /data (OK)"
+  fi
+  # Les svc-* ne doivent pas servir /api/visits → 404
+  code=$(dc exec -T "$svc" node -e "fetch('http://localhost:'+process.env.PORT+'/api/visits').then(r=>{process.stdout.write(String(r.status));}).catch(()=>process.stdout.write('000'))")
+  if [ "$code" = "404" ]; then
+    ok "$svc: /api/visits → 404 (API servie par le gateway)"
+  else
+    sk "$svc: /api/visits → $code (attendu: 404)"
+  fi
+done
+
+# ────────────── Services internes (réseau docker) ────────────────
 if [ "$TEST_INTERNAL" = "1" ]; then
   sec "Services internes (healthz/metrics dans chaque conteneur)"
   for svc in auth game chat tournament visits; do
-    if dc exec -T "$svc" sh -lc 'curl -sf "http://localhost:${PORT}/healthz" >/dev/null'; then ok "$svc: /healthz"; else ko "$svc: /healthz"; fi
-    if dc exec -T "$svc" sh -lc 'curl -s "http://localhost:${PORT}/metrics" | grep -q "^# HELP http_request_duration_seconds "'; then ok "$svc: /metrics (http_request_duration_seconds)"; else sk "$svc: /metrics (absent)"; fi
+    if dc exec -T "$svc" node -e "fetch('http://localhost:'+process.env.PORT+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+      ok "$svc: /healthz"
+    else
+      ko "$svc: /healthz"
+    fi
+    if dc exec -T "$svc" node -e "fetch('http://localhost:'+process.env.PORT+'/metrics').then(r=>r.text()).then(t=>{process.exit(/^# HELP http_request_duration_seconds /m.test(t)?0:2)}).catch(()=>process.exit(1))"; then
+      ok "$svc: /metrics (http_request_duration_seconds)"
+    else
+      sk "$svc: /metrics (absent)"
+    fi
   done
 fi
 

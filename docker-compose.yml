@@ -47,49 +47,46 @@ services:
 
   auth:
     build: ./backend
-    env_file: [.env]
     environment:
       - SERVICE_ROLE=svc-auth
       - PORT=8101
-      - DB_PATH=${DB_PATH}
     expose: [ "8101" ]
 
   game:
     build: ./backend
-    env_file: [.env]
     environment:
       - SERVICE_ROLE=svc-game
       - PORT=8102
-      - DB_PATH=${DB_PATH}
+    depends_on:
+      - gateway
     expose: [ "8102" ]
 
   chat:
     build: ./backend
-    env_file: [.env]
     environment:
       - SERVICE_ROLE=svc-chat
       - PORT=8103
-      - DB_PATH=${DB_PATH}
+    depends_on:
+      - gateway
     expose: [ "8103" ]
 
   tournament:
     build: ./backend
-    env_file: [.env]
     environment:
       - SERVICE_ROLE=svc-tournament
       - PORT=8104
-      - DB_PATH=${DB_PATH}
+    depends_on:
+      - gateway
     expose: [ "8104" ]
 
   # CONTAINER TEST WS ET API
   visits:
     build: ./backend
-    env_file: [.env]
     environment:
       - SERVICE_ROLE=svc-visits
       - PORT=8105
-      - DB_PATH=${DB_PATH}
-    volumes: [ sqlite_data:/data ]
+    depends_on:
+      - gateway
     expose: [ "8105" ]
 
 

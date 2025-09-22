@@ -98,6 +98,16 @@ CREATE TABLE IF NOT EXISTS user_stats (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Compteur de visites (utilisé par /api/visits et /api/visit)
+CREATE TABLE IF NOT EXISTS visits (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  total INTEGER NOT NULL DEFAULT 0
+);
+
+-- Seed (ligne unique)
+INSERT OR IGNORE INTO visits (id, total) VALUES (1, 0);
+
+
 -- Index pour optimiser les requêtes
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
