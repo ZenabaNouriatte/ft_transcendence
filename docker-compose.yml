@@ -90,6 +90,15 @@ services:
       - gateway
     expose: [ "8105" ]
 
+  user:
+    build: ./backend
+    environment:
+      - SERVICE_ROLE=svc-user
+      - PORT=8106
+    depends_on:
+      - gateway
+    expose: [ "8106" ]
+
 
 
 
