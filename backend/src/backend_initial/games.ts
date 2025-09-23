@@ -119,10 +119,9 @@ export async function gameRoutes(fastify: any) {
             if (status === 'active') {
                 games = await GameService.getActiveGames();
             } else {
-                // Pour toutes les parties, on fait une requête SQL directe
-                games = await fastify.db.all(
-                    'SELECT * FROM games ORDER BY created_at DESC'
-                );
+                // getAllGames peut ne pas exister selon l'implémentation → accès optionnel via any
+                const maybeAll = (GameService as any).getAllGames?.bind(GameService);
+                games = maybeAll ? await maybeAll() : [];
             }
 
             return reply.send({

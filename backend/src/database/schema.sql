@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS friendships (
 CREATE TABLE IF NOT EXISTS games (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     player1_id INTEGER NOT NULL,
-    player2_id INTEGER NOT NULL,
+    player2_id INTEGER,
     player1_score INTEGER DEFAULT 0,
     player2_score INTEGER DEFAULT 0,
     status TEXT DEFAULT 'waiting' CHECK (status IN ('waiting', 'playing', 'finished', 'cancelled')),

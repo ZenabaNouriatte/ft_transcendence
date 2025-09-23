@@ -50,6 +50,7 @@ services:
     environment:
       - SERVICE_ROLE=svc-auth
       - PORT=8101
+    command: ["node", "dist/index.js"]
     expose: [ "8101" ]
 
   game:

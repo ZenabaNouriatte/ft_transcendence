@@ -1,6 +1,7 @@
 // backend/src/services/index.ts - Version modernisée
 import { run, get, all } from "../database/index.js";
 
+
 export interface User {
     id?: number;
     username: string;
@@ -15,12 +16,12 @@ export interface User {
 export interface Game {
     id?: number;
     player1_id: number;
-    player2_id: number;
+    player2_id: number | null ;
     player1_score?: number;
     player2_score?: number;
     status?: 'waiting' | 'playing' | 'finished' | 'cancelled';
     winner_id?: number;
-    tournament_id?: number;
+    tournament_id?: number | null ;
     created_at?: string;
     finished_at?: string;
 }
@@ -99,11 +100,11 @@ export class GameService {
              VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
             [
                 game.player1_id,
-                game.player2_id,
+                game.player2_id ?? null,
                 game.player1_score || 0,
                 game.player2_score || 0,
                 game.status || 'waiting',
-                game.tournament_id || null
+                game.tournament_id ?? null,
             ]
         );
         
@@ -137,6 +138,10 @@ export class GameService {
     static async getActiveGames(): Promise<Game[]> {
         return all<Game>("SELECT * FROM games WHERE status IN ('waiting', 'playing') ORDER BY created_at");
     }
+
+    static async getAllGames(): Promise<Game[]> {
+        return all<Game>("SELECT * FROM games ORDER BY created_at DESC");
+      }
 }
 
 // ============== TOURNAMENTS SERVICE ==============
@@ -303,3 +308,14 @@ export class StatsService {
         );
     }
 }
+
+//--------GAME SERVICE -----------
+// export const GameService = {
+//     getActiveGames: async () => { /* ... */ },
+//     getAllGames: async () => {
+//       return await GameService.getActiveGames();
+//     },
+//     createGame: async (data: { /* ... */ }) => { /* ... */ },
+//   };
+  
+  
