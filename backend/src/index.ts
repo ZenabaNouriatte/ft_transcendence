@@ -7,6 +7,7 @@ import underPressure from "@fastify/under-pressure";
 import visitsHttp from "./modules/visits/http.js";
 import { registerRawWs } from "./ws-raw.js";
 import { initDb } from "./database/index.js";
+import { TournamentService } from "./services/index.js";
 import { registerHttpTimingHooks, sendMetrics } from "./common/metrics.js";
 
 const ROLE = process.env.SERVICE_ROLE || "gateway";
@@ -214,29 +215,125 @@ app.get("/api/games", async (request, reply) => {
 
 
   // ===================== ROUTES TOURNAMENTS ==================
-  app.post("/api/tournaments", async (request, reply) => {
-    try {
-      const userId = await getUserFromToken(request);
-      if (!userId) return reply.code(401).send({ error: "Authentification requise" });
+app.post("/api/tournaments", async (request, reply) => {
+  try {
+    const userId = await getUserFromToken(request);
+    if (!userId) return reply.code(401).send({ error: "Authentification requise" });
 
-      const response = await fetch("http://tournament:8104/validate-tournament", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...(request.body ?? {}), created_by: userId }),
-      });
+    const v = await fetch("http://tournament:8104/validate-tournament", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...(request.body ?? {}), created_by: userId }),
+    });
+    if (!v.ok) return reply.code(v.status).send(await v.json().catch(() => ({})));
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        return reply.code(response.status).send(error);
-      }
+    const raw = await v.json();
 
-      const validatedData = await response.json();
-      return reply.send({ ok: true, data: validatedData });
-    } catch (error) {
-      request.log.error(error, "Tournament creation error");
-      return reply.code(500).send({ error: "Tournament creation failed" });
+    // on donne à TS un shape compatible avec le DAO (pas de null pour 'description')
+    const input: {
+      name: string;
+      description?: string;      // <- string | undefined
+      max_players?: number;
+      created_by: number;
+    } = {
+      name: String(raw.name),
+      description: raw.description ?? undefined,   // <- transforme null en undefined
+      max_players: typeof raw.max_players === "number" ? raw.max_players : undefined,
+      created_by: Number(raw.created_by),
+    };
+
+    const tid = await TournamentService.createTournament(input);
+    await TournamentService.joinTournament(tid, userId);
+    return reply.code(201).send({ ok: true, tournamentId: tid });
+
+  } catch (e) {
+    request.log.error(e, "Tournament creation error");
+    return reply.code(500).send({ error: "Tournament creation failed" });
+  }
+});
+
+
+// Rejoindre un tournoi
+app.post("/api/tournaments/:id/join", async (request, reply) => {
+  try {
+    const userId = await getUserFromToken(request);
+    if (!userId) return reply.code(401).send({ error: "Authentification requise" });
+    const id = Number((request.params as any).id);
+
+    request.log.info({ userId, tournamentId: id }, "Tournament join attempt");
+
+    const state = await TournamentService.findTournamentById(id);
+    if (!state) {
+      request.log.error(`Tournament not found: id=${id}`);
+      return reply.code(404).send({ error: "not_found" });
     }
-  });
+
+    request.log.info({ state }, "Tournament state");
+
+
+    // validation métier
+    const v = await fetch("http://tournament:8104/validate-tournament-join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tournamentState: state, currentUserId: userId }),
+    });
+    
+    if (!v.ok) {
+      const errorBody = await v.json().catch(() => ({}));
+      request.log.error({ status: v.status, errorBody }, "Tournament join validation failed");
+      return reply.code(v.status).send(errorBody);
+    }
+
+    const validationResult = await v.json();
+    request.log.info({ validationResult }, "Tournament join validation success");
+
+    // DB: vérifier non déjà inscrit puis inscrire
+    const joinResult = await TournamentService.joinTournament(id, userId);
+    request.log.info({ joinResult }, "Tournament join DB result");
+
+    return reply.send({ ok: true });
+  } catch (e) {
+    request.log.error(e, "Tournament join error");
+    return reply.code(500).send({ error: "Tournament join failed" });
+  }
+});
+
+// Démarrer un tournoi
+app.post("/api/tournaments/:id/start", async (request, reply) => {
+  try {
+    const userId = await getUserFromToken(request);
+    if (!userId) return reply.code(401).send({ error: "Authentification requise" });
+    const id = Number((request.params as any).id);
+
+    const state = await TournamentService.findTournamentById(id);
+    if (!state) return reply.code(404).send({ error: "not_found" });
+
+    const v = await fetch("http://tournament:8104/validate-tournament-start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tournamentState: state, currentUserId: userId }),
+    });
+    if (!v.ok) return reply.code(v.status).send(await v.json().catch(() => ({})));
+
+    await TournamentService.startTournament(id);
+    return reply.send({ ok: true });
+  } catch (e) {
+    request.log.error(e, "Tournament start error");
+    return reply.code(500).send({ error: "Tournament start failed" });
+  }
+});
+
+// Listing & participants
+app.get("/api/tournaments", async (_req, reply) => {
+  const list = await TournamentService.getAllTournaments();
+  return reply.send({ tournaments: list });
+});
+app.get("/api/tournaments/:id/participants", async (req, reply) => {
+  const id = Number((req.params as any).id);
+  const users = await TournamentService.getTournamentParticipants(id);
+  const safe = users.map(({ password, ...u }: any) => u);
+  return reply.send({ users: safe });
+});
 
   // Routes de ping pour le testeur
   app.get("/api/users/ping", async () => ({ ok: true, service: "users" }));

@@ -1,4 +1,4 @@
-// backend/src/services/index.ts - Version modernisée
+// backend/src/services/index.ts 
 import { run, get, all } from "../database/index.js";
 
 
@@ -29,7 +29,7 @@ export interface Game {
 export interface Tournament {
     id?: number;
     name: string;
-    description?: string;
+    description?: string | null;
     max_players?: number;
     current_players?: number;
     status?: 'waiting' | 'started' | 'finished';
@@ -144,65 +144,85 @@ export class GameService {
       }
 }
 
+type TournamentInput = Pick<Tournament, "name" | "description" | "max_players" | "created_by">;
+
 // ============== TOURNAMENTS SERVICE ==============
 export class TournamentService {
-    static async createTournament(tournament: Tournament): Promise<number> {
-        await run(
-            `INSERT INTO tournaments (name, description, max_players, created_by, current_players, created_at)
-             VALUES (?, ?, ?, ?, 1, datetime('now'))`,
-            [tournament.name, tournament.description || null, tournament.max_players || 8, tournament.created_by]
-        );
-        
-        const row = await get<{ id: number }>(`SELECT last_insert_rowid() AS id`);
-        return row?.id ?? 0;
+    static async createTournament(tournament: TournamentInput): Promise<number> {
+    await run(
+        `INSERT INTO tournaments (name, description, max_players, created_by, current_players, status, created_at)
+        VALUES (?, ?, ?, ?, 0, 'waiting', datetime('now'))`,
+        [tournament.name, tournament.description ?? null, tournament.max_players ?? 8, tournament.created_by]
+    );
+    const row = await get<{ id: number }>(`SELECT last_insert_rowid() AS id`);
+    return row?.id ?? 0;
     }
 
     static async findTournamentById(id: number): Promise<Tournament | null> {
-        const tournament = await get<Tournament>('SELECT * FROM tournaments WHERE id = ?', [id]);
-        return tournament ?? null;
-    }
+    const tournament = await get<Tournament>('SELECT * FROM tournaments WHERE id = ?', [id]);
+    return tournament ?? null;
+  }
 
-    static async joinTournament(tournamentId: number, userId: number): Promise<void> {
-        const existing = await get(
-            'SELECT id FROM tournament_participants WHERE tournament_id = ? AND user_id = ?',
-            [tournamentId, userId]
+    static async joinTournament(tournamentId: number, userId: number): Promise<boolean> {
+    console.log(`DEBUG: Attempting to join tournament ${tournamentId} for user ${userId}`);
+    
+    try {
+        // 1) tente l'insert (ignoré si déjà présent)
+        await run(
+        `INSERT OR IGNORE INTO tournament_participants (tournament_id, user_id, joined_at)
+        VALUES (?, ?, datetime('now'))`,
+        [tournamentId, userId]
         );
 
-        if (existing) {
-            throw new Error('L\'utilisateur est déjà inscrit à ce tournoi');
+        // 2) combien de lignes insérées ?
+        const row = await get<{ inserted: number }>(`SELECT changes() AS inserted`);
+        const inserted = Number(row?.inserted || 0);
+        console.log(`DEBUG: Insert result: ${inserted} row(s) inserted`);
+
+        // 3) n'incrémente que si inséré
+        if (inserted === 1) {
+        console.log(`DEBUG: Incrementing tournament ${tournamentId} player count`);
+        await run(
+        `UPDATE tournaments
+            SET current_players = current_players + 1
+        WHERE id = ?`,
+        [tournamentId]
+        );
+        } else {
+        console.log(`DEBUG: User ${userId} already joined tournament ${tournamentId}`);
         }
 
-        await run(
-            'INSERT INTO tournament_participants (tournament_id, user_id, joined_at) VALUES (?, ?, datetime(\'now\'))',
-            [tournamentId, userId]
-        );
-
-        await run(
-            'UPDATE tournaments SET current_players = current_players + 1 WHERE id = ?',
-            [tournamentId]
-        );
+        return inserted === 1; // true = inscrit, false = déjà inscrit
+    } catch (error) {
+        console.error(`ERROR: Failed to join tournament ${tournamentId} for user ${userId}:`, error);
+        throw error; // Re-throw pour que l'erreur remonte
+    }
     }
 
-    static async getTournamentParticipants(tournamentId: number): Promise<User[]> {
-        return all<User>(
-            `SELECT u.* FROM users u
-             JOIN tournament_participants tp ON u.id = tp.user_id
-             WHERE tp.tournament_id = ?
-             ORDER BY tp.joined_at`,
-            [tournamentId]
-        );
-    }
+  static async getTournamentParticipants(tournamentId: number): Promise<User[]> {
+    return all<User>(
+      `SELECT u.*
+         FROM users u
+         JOIN tournament_participants tp ON u.id = tp.user_id
+        WHERE tp.tournament_id = ?
+        ORDER BY tp.joined_at`,
+      [tournamentId]
+    );
+  }
 
-    static async getAllTournaments(): Promise<Tournament[]> {
-        return all<Tournament>('SELECT * FROM tournaments ORDER BY created_at DESC');
-    }
+  static async getAllTournaments(): Promise<Tournament[]> {
+    return all<Tournament>('SELECT * FROM tournaments ORDER BY created_at DESC');
+  }
 
-    static async startTournament(id: number): Promise<void> {
-        await run(
-            `UPDATE tournaments SET status = 'started', started_at = datetime('now') WHERE id = ?`,
-            [id]
-        );
-    }
+  static async startTournament(id: number): Promise<void> {
+    await run(
+      `UPDATE tournaments
+          SET status = 'started',
+              started_at = datetime('now')
+        WHERE id = ?`,
+      [id]
+    );
+  }
 }
 
 // ============== CHAT SERVICE ==============

@@ -20,14 +20,12 @@ curl_json() {
   # $1: method, $2: path (absolute or relative), $3: json body (optional), $4: bearer token (optional)
   local method="$1"; shift
   local url="$1"; shift
-  local body="${1-}"      # <- utilise ${var-} au lieu de ${var:-} pour éviter nounset
+  local body="${1-}"
   local token="${2-}"
 
   [[ "$url" =~ ^https?:// ]] || url="${BASE_URL}${url}"
 
-  # on construit les args de manière sûre
   local args=(-k -sS -X "$method" "$url")
-
   if [[ -n "$token" ]]; then
     args+=(-H "Authorization: Bearer ${token}")
   fi
@@ -38,9 +36,7 @@ curl_json() {
   "${CURL}" "${args[@]}"
 }
 
-
 try_docker_node() {
-  # run a small Node fetch inside the gateway container (if present)
   if docker ps --format '{{.Names}}' | grep -q "^${GATEWAY_CONTAINER}\$"; then
     docker exec -it "${GATEWAY_CONTAINER}" node -e "$1"
   else
@@ -55,9 +51,10 @@ need_cmd "${JQ}"
 info "Base URL: ${BASE_URL}"
 
 # --- 0) Pings internes (facultatif, via réseau Docker) ---
-info "Ping svc-auth et svc-game (interne Docker)…"
+info "Ping svc-auth, svc-game, svc-tournament (interne Docker)…"
 try_docker_node "fetch('http://auth:8101/ping').then(r=>r.text()).then(console.log).catch(console.error)"
 try_docker_node "fetch('http://game:8102/ping').then(r=>r.text()).then(console.log).catch(console.error)"
+try_docker_node "fetch('http://tournament:8104/ping').then(r=>r.text()).then(console.log).catch(console.error)"
 
 # --- 1) Register ALICE ---
 ALICE="alice$(date +%s)"
@@ -66,7 +63,6 @@ info "Register ALICE: ${ALICE}"
 R1=$(curl_json POST /api/users/register "{\"username\":\"${ALICE}\",\"email\":\"${ALICE_EMAIL}\",\"password\":\"secret\"}") || true
 echo "${R1}" | ${JQ} .
 if [[ "$(echo "${R1}" | ${JQ} -r '.ok // false')" != "true" ]]; then
-  # si user_exists, ce n’est pas bloquant
   if [[ "$(echo "${R1}" | ${JQ} -r '.error // empty')" == "user_exists" ]]; then
     warn "ALICE existe déjà"
   else
@@ -179,3 +175,54 @@ import('/app/dist/database/index.js').then(async m=>{
 "
 
 ok "E2E auth+game terminé ✔"
+
+# =========================
+# === 10) TOURNAMENTS  ===
+# =========================
+
+# 10.1 Créer un tournoi (ALICE)
+info "Création d'un tournoi par ALICE…"
+T_CREATE=$(curl_json POST /api/tournaments '{"name":"Open Pong","description":"GL HF","max_players":8}' "${TOKEN_ALICE}")
+echo "${T_CREATE}" | ${JQ} .
+TID=$(echo "${T_CREATE}" | ${JQ} -r '.tournamentId // empty')
+[[ -n "${TID}" ]] || fail "création tournoi a échoué (tournamentId manquant)"
+ok "Tournoi créé (id=${TID})"
+
+# 10.2 Lister les tournois
+info "Listing des tournois…"
+T_LIST=$(curl_json GET /api/tournaments)
+echo "${T_LIST}" | ${JQ} .
+# Récup info sur notre tournoi dans le listing
+T_STATUS=$(echo "${T_LIST}" | ${JQ} -r ".tournaments[] | select(.id == ${TID}) | .status // empty")
+T_CURR=$(echo "${T_LIST}" | ${JQ} -r ".tournaments[] | select(.id == ${TID}) | .current_players // empty")
+info "Tournoi ${TID} status='${T_STATUS}' players=${T_CURR}"
+
+# 10.3 Bob rejoint le tournoi
+info "BOB rejoint le tournoi ${TID}…"
+T_JOIN=$(curl_json POST "/api/tournaments/${TID}/join" "" "${TOKEN_BOB}")
+echo "${T_JOIN}" | ${JQ} .
+[[ "$(echo "${T_JOIN}" | ${JQ} -r '.ok // false')" == "true" ]] || fail "join tournoi a échoué"
+ok "Bob inscrit au tournoi"
+
+# 10.4 Le créateur démarre le tournoi
+info "ALICE démarre le tournoi ${TID}…"
+T_START=$(curl_json POST "/api/tournaments/${TID}/start" "" "${TOKEN_ALICE}")
+echo "${T_START}" | ${JQ} .
+[[ "$(echo "${T_START}" | ${JQ} -r '.ok // false')" == "true" ]] || fail "start tournoi a échoué"
+ok "Tournoi démarré"
+
+# 10.5 Vérifications: statut et participants
+info "Vérification statut & participants…"
+T_LIST2=$(curl_json GET /api/tournaments)
+NEW_STATUS=$(echo "${T_LIST2}" | ${JQ} -r ".tournaments[] | select(.id == ${TID}) | .status // empty")
+[[ "${NEW_STATUS}" == "started" ]] || warn "statut attendu 'started', obtenu '${NEW_STATUS}'"
+
+PARTS=$(curl_json GET "/api/tournaments/${TID}/participants")
+echo "${PARTS}" | ${JQ} .
+HAS_ALICE=$(echo "${PARTS}" | ${JQ} -r ".users[] | select(.id == ${ALICE_ID}) | .id" || true)
+HAS_BOB=$(echo "${PARTS}" | ${JQ} -r ".users[] | select(.id == ${BOB_ID}) | .id" || true)
+[[ -n "${HAS_ALICE}" ]] || warn "ALICE n'apparaît pas dans les participants"
+[[ -n "${HAS_BOB}"   ]] || warn "BOB n'apparaît pas dans les participants"
+ok "Vérifications tournoi ok"
+
+ok "E2E tournament terminé ✔"
