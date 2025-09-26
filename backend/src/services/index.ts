@@ -59,7 +59,6 @@ export class UserService {
             [user.username, user.email, user.password, user.avatar || null, user.status || 'offline']
         );
         
-        // Récupérer le dernier ID inséré
         const row = await get<{ id: number }>(`SELECT last_insert_rowid() AS id`);
         return row?.id ?? 0;
     }
@@ -90,6 +89,66 @@ export class UserService {
     static async deleteUser(id: number): Promise<void> {
         await run('DELETE FROM users WHERE id = ?', [id]);
     }
+
+    static async getFriends(userId: number) {
+        return all(
+            `SELECT f.friend_id as id, u.username, u.avatar, u.status, f.status as relation, f.created_at
+            FROM friendships f JOIN users u ON u.id = f.friend_id
+            WHERE f.user_id = ?
+            ORDER BY f.created_at DESC`, [userId]
+        );
+    }
+
+    static async getUserHistory(userId: number, limit = 20) {
+        return all(
+            `SELECT g.*
+            FROM games g
+            WHERE g.player1_id = ? OR g.player2_id = ?
+            ORDER BY g.created_at DESC
+            LIMIT ?`,
+            [userId, userId, limit]
+        );
+    }
+
+    static defaultAvatar(username: string) {
+        return `https://api.dicebear.com/8.x/identicon/svg?seed=${encodeURIComponent(username)}`;
+    }
+    
+    static async updateProfile(userId: number, data: { username?: string|null; email?: string|null; avatar?: string|null }) {
+        await run(
+            `UPDATE users SET
+            username = COALESCE(?, username),
+            email    = COALESCE(?, email),
+            avatar   = COALESCE(?, avatar),
+            updated_at = datetime('now')
+            WHERE id = ?`,
+            [data.username ?? null, data.email ?? null, data.avatar ?? null, userId]
+        );
+    }
+
+    static async searchUsers(q: string, limit = 20, offset = 0) {
+        return all(
+            `SELECT id, username, avatar, status
+            FROM users
+            WHERE username LIKE ?
+            ORDER BY username
+            LIMIT ? OFFSET ?`,
+            [`%${q}%`, limit, offset]
+        );
+    }
+
+
+    static async getUserTournaments(userId: number) {
+        return all(
+            `SELECT t.*
+            FROM tournaments t
+            JOIN tournament_participants tp ON tp.tournament_id = t.id
+            WHERE tp.user_id = ?
+            ORDER BY t.created_at DESC`,
+            [userId]
+        );
+    }
+
 }
 
 // ============== GAMES SERVICE ==============
@@ -141,7 +200,25 @@ export class GameService {
 
     static async getAllGames(): Promise<Game[]> {
         return all<Game>("SELECT * FROM games ORDER BY created_at DESC");
-      }
+    }
+
+    static async listGames({ status, limit = 50, offset = 0 }:
+        { status?: string|null; limit?: number; offset?: number }) {
+        if (status === "active") {
+            return all(
+            `SELECT * FROM games
+                WHERE status IN ('waiting','playing')
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?`, [limit, offset]
+            );
+        }
+        return all(
+            `SELECT * FROM games
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?`, [limit, offset]
+        );
+    }
+
 }
 
 type TournamentInput = Pick<Tournament, "name" | "description" | "max_players" | "created_by">;
@@ -329,13 +406,31 @@ export class StatsService {
     }
 }
 
-//--------GAME SERVICE -----------
-// export const GameService = {
-//     getActiveGames: async () => { /* ... */ },
-//     getAllGames: async () => {
-//       return await GameService.getActiveGames();
-//     },
-//     createGame: async (data: { /* ... */ }) => { /* ... */ },
-//   };
-  
-  
+//================ FRIENDSHIP SERVICE ==============
+
+export class FriendshipService {
+  static async request(selfId: number, targetId: number) {
+    await run(
+      `INSERT OR IGNORE INTO friendships (user_id, friend_id, status)
+       VALUES (?, ?, 'pending')`,
+      [selfId, targetId]
+    );
+  }
+
+  static async accept(selfId: number, targetId: number) {
+    // on accepte la demande inverse (target -> self)
+    await run(
+      `UPDATE friendships SET status='accepted'
+        WHERE user_id = ? AND friend_id = ?`,
+      [targetId, selfId]
+    );
+  }
+
+  static async block(selfId: number, targetId: number) {
+    await run(
+      `INSERT OR REPLACE INTO friendships (user_id, friend_id, status)
+       VALUES (?, ?, 'blocked')`,
+      [selfId, targetId]
+    );
+  }
+}

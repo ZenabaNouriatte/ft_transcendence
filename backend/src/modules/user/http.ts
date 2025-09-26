@@ -1,7 +1,7 @@
 // backend/src/modules/user/http.ts
 import type { FastifyPluginAsync } from "fastify";
 
-// helpers de validation "pures" (pas d'accès DB ici)
+// ---- helpers de validation "pures" (pas d'accès DB ici)
 function isValidUsername(v: unknown): v is string {
   return typeof v === "string" && v.trim().length >= 3 && v.trim().length <= 32;
 }
@@ -19,21 +19,24 @@ function isValidAvatar(v: unknown): v is string {
   }
 }
 
+// ---- types de payload (validation uniquement)
 type ProfilePayload = {
   username?: string | null;
   email?: string | null;
   avatar?: string | null;
 };
+type FriendshipPayload = {
+  selfId: number;
+  targetId: number;
+  action: "request" | "accept" | "block";
+};
 
+// ---- plugin Fastify
 const userPlugin: FastifyPluginAsync = async (app) => {
-  // Sanity check
+  // santé
   app.get("/ping", async () => ({ ok: true, service: "user" }));
 
-  /**
-   * POST /validate-profile
-   * Valide et normalise un payload de mise à jour de profil.
-   * - Ne touche pas à la DB (la DB est gérée par le gateway).
-   */
+  // POST /validate-profile
   app.post("/validate-profile", async (req, reply) => {
     const body = (req.body ?? {}) as ProfilePayload;
     const out: ProfilePayload = {};
@@ -64,6 +67,32 @@ const userPlugin: FastifyPluginAsync = async (app) => {
     }
 
     return reply.send(out);
+  });
+
+  // POST /validate-username
+  app.post("/validate-username", async (req, reply) => {
+    const { username } = (req.body ?? {}) as { username?: string };
+    if (!username || !isValidUsername(username)) {
+      return reply.code(400).send({ valid: false, error: "invalid_username" });
+    }
+    return reply.send({ valid: true, username: username.trim() });
+  });
+
+  // POST /validate-friendship
+  app.post("/validate-friendship", async (req, reply) => {
+    const { selfId, targetId, action } = (req.body ?? {}) as Partial<FriendshipPayload>;
+
+    if (typeof selfId !== "number" || typeof targetId !== "number") {
+      return reply.code(400).send({ error: "bad_ids" });
+    }
+    if (!action || !["request", "accept", "block"].includes(action)) {
+      return reply.code(400).send({ error: "bad_action" });
+    }
+    if (selfId === targetId) {
+      return reply.code(400).send({ error: "same_user" });
+    }
+    // règles fines côté gateway / DB
+    return reply.send({ action });
   });
 };
 

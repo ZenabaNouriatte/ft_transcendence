@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_URL="${BASE_URL:-https://localhost:8443}"
+JQ="${JQ:-jq}"
+
+color(){ printf "\033[%sm%s\033[0m\n" "$1" "$2"; }
+ok(){ color 32 "✓ $*"; }
+info(){ color 36 "ℹ $*"; }
+fail(){ color 31 "✗ $*"; exit 1; }
+
+curl_json () {
+  local method="$1"; shift
+  local url="$1"; shift
+  local body="${1-}"
+  local token="${2-}"
+  [[ "$url" =~ ^https?:// ]] || url="${BASE_URL}${url}"
+  local args=(-k -sS -X "$method" "$url")
+  [[ -n "${token}" ]] && args+=(-H "Authorization: Bearer ${token}")
+  [[ -n "${body}"  ]] && args+=(-H "Content-Type: application/json" --data-raw "$body")
+  curl "${args[@]}"
+}
+
+info "Base: $BASE_URL"
+
+# --- Register ALICE & BOB ---
+TS=$(date +%s)
+ALICE="alice$TS"
+BOB="bob$TS"
+
+info "Register ALICE"
+R1=$(curl_json POST /api/users/register "{\"username\":\"$ALICE\",\"email\":\"$ALICE@example.test\",\"password\":\"secret\"}")
+echo "$R1" | $JQ .
+ALICE_ID=$(echo "$R1" | $JQ -r '.user.id'); test "$ALICE_ID" != null || fail "register ALICE"
+
+info "Login ALICE"
+L1=$(curl_json POST /api/users/login "{\"username\":\"$ALICE\",\"password\":\"secret\"}")
+echo "$L1" | $JQ .
+TOKEN_ALICE=$(echo "$L1" | $JQ -r '.token'); test -n "$TOKEN_ALICE" || fail "token ALICE"
+
+info "Register BOB"
+R2=$(curl_json POST /api/users/register "{\"username\":\"$BOB\",\"email\":\"$BOB@example.test\",\"password\":\"secret\"}")
+echo "$R2" | $JQ .
+BOB_ID=$(echo "$R2" | $JQ -r '.user.id'); test "$BOB_ID" != null || fail "register BOB"
+
+info "Login BOB"
+L2=$(curl_json POST /api/users/login "{\"username\":\"$BOB\",\"password\":\"secret\"}")
+echo "$L2" | $JQ .
+TOKEN_BOB=$(echo "$L2" | $JQ -r '.token'); test -n "$TOKEN_BOB" || fail "token BOB"
+
+# --- Profile update + collisions ---
+info "Profile update ALICE: username + avatar"
+NEW_ALICE="new$ALICE"
+curl_json PUT /api/users/profile "{\"username\":\"$NEW_ALICE\",\"avatar\":\"https://picsum.photos/200\"}" "$TOKEN_ALICE" | $JQ .
+
+info "Collision username (BOB -> $NEW_ALICE) doit renvoyer 409"
+curl_json PUT /api/users/profile "{\"username\":\"$NEW_ALICE\"}" "$TOKEN_BOB" | $JQ .
+
+# --- Users/me & profile public ---
+info "ME (ALICE)"
+curl_json GET /api/users/me "" "$TOKEN_ALICE" | $JQ .
+
+info "Public profile ALICE"
+curl_json GET "/api/users/$ALICE_ID/profile" | $JQ .
+
+# --- Friends (request / accept / block) ---
+info "ALICE -> request BOB"
+curl_json POST "/api/users/$BOB_ID/friendship" '{"action":"request"}' "$TOKEN_ALICE" | $JQ .
+
+info "BOB -> accept ALICE"
+curl_json POST "/api/users/$ALICE_ID/friendship" '{"action":"accept"}' "$TOKEN_BOB" | $JQ .
+
+info "Liste amis de ALICE"
+curl_json GET "/api/users/$ALICE_ID/friends" | $JQ .
+
+info "ALICE -> block BOB"
+curl_json POST "/api/users/$BOB_ID/friendship" '{"action":"block"}' "$TOKEN_ALICE" | $JQ .
+
+# --- Search users ---
+info "Search users: 'ali'"
+curl_json GET "/api/users/search?q=ali" | $JQ .
+
+# --- Games ---
+info "Create waiting game (ALICE)"
+G1=$(curl_json POST /api/games '{"status":"waiting"}' "$TOKEN_ALICE"); echo "$G1" | $JQ .
+GW_ID=$(echo "$G1" | $JQ -r '.gameId')
+
+info "Create playing game (ALICE vs BOB)"
+curl_json POST /api/games "{\"player2_id\":$BOB_ID,\"status\":\"playing\"}" "$TOKEN_ALICE" | $JQ .
+
+info "List games (all + active)"
+curl_json GET /api/games | $JQ .
+curl_json GET "/api/games?status=active" | $JQ .
+
+# --- Tournaments ---
+info "Create tournament (ALICE)"
+T_CREATE=$(curl_json POST /api/tournaments '{"name":"Open Pong","description":"GL HF","max_players":8}' "$TOKEN_ALICE"); echo "$T_CREATE" | $JQ .
+TID=$(echo "$T_CREATE" | $JQ -r '.tournamentId')
+
+info "BOB join tournament"
+curl_json POST "/api/tournaments/$TID/join" "" "$TOKEN_BOB" | $JQ .
+
+info "Start tournament (ALICE)"
+curl_json POST "/api/tournaments/$TID/start" "" "$TOKEN_ALICE" | $JQ .
+
+info "Participants (should include ALICE & BOB)"
+curl_json GET "/api/tournaments/$TID/participants" | $JQ .
+
+ok "E2E OK ✔"
