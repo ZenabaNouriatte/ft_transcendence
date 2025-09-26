@@ -1,5 +1,6 @@
-// backend/src/index.ts
-import Fastify, { type FastifyRequest } from "fastify";
+// backend/src/index.ts (merged)
+
+import Fastify, { type FastifyRequest, type FastifyReply } from "fastify";
 import helmet from "@fastify/helmet";
 import cors from "@fastify/cors";
 import underPressure from "@fastify/under-pressure";
@@ -7,7 +8,13 @@ import underPressure from "@fastify/under-pressure";
 import visitsHttp from "./modules/visits/http.js";
 import { registerRawWs } from "./ws-raw.js";
 import { initDb } from "./database/index.js";
-import { UserService, GameService, StatsService, TournamentService, FriendshipService } from "./services/index.js";
+import {
+  UserService,
+  GameService,
+  StatsService,
+  TournamentService,
+  FriendshipService,
+} from "./services/index.js";
 import { registerHttpTimingHooks, sendMetrics } from "./common/metrics.js";
 
 const ROLE = process.env.SERVICE_ROLE || "gateway";
@@ -24,61 +31,75 @@ const HOST = "0.0.0.0";
 
 const app = Fastify({ logger: true });
 
-// Propager X-Request-ID reçu vers request.id (sinon on garde celui généré par Fastify)
+// -------- X-Request-ID propagation
 app.addHook("onRequest", (request, _reply, done) => {
   const hdr = request.headers["x-request-id"];
   if (typeof hdr === "string" && hdr.length > 0) {
-    // @ts-ignore – on force l'id
+    // @ts-ignore
     request.id = hdr;
   }
   done();
 });
 
-// Plugins communs
-
-/*sécuriser API gateway en limitant qui peut y accéder :
-Helmet durcit les en-têtes HTTP (CSP, pas d’embed, contrôle des sources).
-CORS n’autorise que ton frontend (whitelist) à appeler l’API avec cookies/tokens, au lieu d’ouvrir l’accès à tout le web (origin:true). */
-
+// -------- Security (helmet + strict CORS whitelist)
 const FRONT_ORIGINS = (process.env.FRONT_ORIGINS || "http://localhost:5173").split(",");
 
 await app.register(helmet, {
-  crossOriginResourcePolicy: false, // pas utile pour API JSON
+  crossOriginResourcePolicy: false,
   contentSecurityPolicy: {
     useDefaults: true,
     directives: {
-      defaultSrc: ["'none'"],                    // API only
+      defaultSrc: ["'none'"],
       connectSrc: ["'self'", ...FRONT_ORIGINS, "https:", "wss:"],
       imgSrc: ["'self'", "data:", "https:"],
-      styleSrc: ["'self'", "'unsafe-inline'"],   // OK si tu renvoies un peu d’HTML; sinon tu peux retirer
-      scriptSrc: ["'self'"],                     // l’API ne sert pas de scripts tiers
-      frameAncestors: ["'none'"],                // empêche l’embed
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      frameAncestors: ["'none'"],
     },
   },
 });
 
 await app.register(cors, {
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true);               // requêtes server-to-server
-    cb(null, FRONT_ORIGINS.includes(origin));         // whitelist stricte
+    if (!origin) return cb(null, true); // server-to-server
+    cb(null, FRONT_ORIGINS.includes(origin));
   },
-  credentials: true,                                   // autorise cookies/Authorization
+  credentials: true,
   allowedHeaders: ["Content-Type", "Authorization"],
   exposedHeaders: ["X-Request-ID"],
 });
 
 await app.register(underPressure);
 
+// ===================== ROUTAGE PAR RÔLE =====================
+let roomManager: any | null = null;
 
-
-
-// ===================== ROUTAGE PAR RÔLE (UNE SEULE CHAÎNE) ==================
 if (ROLE === "gateway") {
-  // init DB avant les routes
+  // Init DB + WS + Game system
   await initDb();
   registerRawWs(app);
 
-//  const { UserService, GameService, StatsService } = await import("./services/index.js");
+  const { GameRoomManager } = await import("./modules/game/engine/gameRoomManager.js");
+  const roomManager = new GameRoomManager();
+
+  process.on("SIGINT", () => {
+    app.log.info("🛑 Shutting down game system...");
+    roomManager.shutdown();
+    process.exit(0);
+  });
+
+  // TEST temp users
+  async function ensureTempUser(UserService: any, username: string): Promise<number> {
+  const existing = await UserService.findUserByUsername(username);
+  if (existing) return existing.id!;
+  return await UserService.createUser({
+    username,
+    email: `${username}@temp.local`,
+    password: "temp123",
+  });
+}
+
+  // Modules communs
   await app.register(visitsHttp, { prefix: "/api" });
 
   async function getUserFromToken(request: FastifyRequest): Promise<number | null> {
@@ -96,20 +117,17 @@ if (ROLE === "gateway") {
         const { userId } = await response.json();
         return userId;
       }
-    } catch {
-      /* noop */
-    }
+    } catch {/* noop */}
     return null;
   }
 
-  function safeUser(u: any) {
+  const safeUser = (u: any) => {
     if (!u) return null;
     const { password, ...rest } = u;
     return { ...rest, avatar: u.avatar ?? UserService.defaultAvatar(u.username) };
-  }
+  };
 
-
-  // ===================== ROUTES AUTH ==================
+  // ===================== AUTH =====================
   app.post("/api/users/register", async (request, reply) => {
     try {
       const resp = await fetch("http://auth:8101/validate-register", {
@@ -178,7 +196,9 @@ if (ROLE === "gateway") {
     }
   });
 
-  // ===================== ROUTES GAMES ==================
+  // ===================== GAMES =====================
+
+  // Flux "officiel" (auth + validation par svc-game)
   app.post("/api/games", async (request, reply) => {
     try {
       const userId = await getUserFromToken(request);
@@ -227,10 +247,75 @@ if (ROLE === "gateway") {
     }
   });
 
+  // Flux "local/démo" temps réel (pas d’auth) — ex version anais
+  app.post("/api/games/local", async (request, reply) => {
+    try {
+      const { player1, player2, type } = (request.body ?? {}) as any;
+
+      if (!player1 || !player2) {
+        return reply.code(400).send({ error: "Les noms des joueurs sont requis" });
+      }
+      if (!type || type !== "pong") {
+        return reply.code(400).send({ error: "Type de jeu invalide" });
+      }
+
+      // créer/obtenir utilisateurs "temp"
+      let player1Id: number;
+      let player2Id: number | null = null;
+
+      let existingPlayer1 = await UserService.findUserByUsername(player1);
+      if (!existingPlayer1) {
+        player1Id = await UserService.createUser({
+          username: player1,
+          email: `${player1}@temp.local`,
+          password: "temp123",
+        });
+      } else player1Id = existingPlayer1.id!;
+
+      if (player2) {
+        let existingPlayer2 = await UserService.findUserByUsername(player2);
+        if (!existingPlayer2) {
+          player2Id = await UserService.createUser({
+            username: player2,
+            email: `${player2}@temp.local`,
+            password: "temp123",
+          });
+        } else player2Id = existingPlayer2.id!;
+      }
+
+      // DB: trace de la partie
+      const gameId = await GameService.createGame({
+        player1_id: player1Id,
+        player2_id: player2Id,
+        status: "waiting",
+        tournament_id: null,
+      });
+
+      // Room temps réel
+      const roomId = Date.now().toString();
+      const gameRoom = roomManager.createRoom(roomId);
+      gameRoom.addPlayer("player1", player1);
+      gameRoom.addPlayer("player2", player2);
+
+      request.log.info({ gameId, roomId, player1, player2 }, "Local game created");
+
+      return reply.code(201).send({
+        gameId: roomId, // l’ID retourné au client est celui de la room RT
+        player1,
+        player2,
+        status: "waiting",
+      });
+    } catch (error) {
+      request.log.error(error, "Local game creation error");
+      return reply.code(500).send({ error: "Échec de la création de partie" });
+    }
+  });
+
+  // Liste des games (avec pagination)
   app.get("/api/games", async (request, reply) => {
     try {
       const { status, limit, offset } = request.query as { status?: string; limit?: string; offset?: string };
-      const lim = Math.min(Math.max(Number(limit ?? 50), 1), 200);   // 1..200
+      const lim = Math.min(Math.max(Number(limit ?? 50), 1), 200);
       const off = Math.max(Number(offset ?? 0), 0);
 
       const games = status === "active"
@@ -244,7 +329,125 @@ if (ROLE === "gateway") {
     }
   });
 
-  // ===================== ROUTES TOURNAMENTS ==================
+  // --- Temps réel: état / start / paddle / stats (anais)
+  app.get("/api/games/:id/state", async (request, reply) => {
+    try {
+      const gameId = (request.params as any).id;
+      if (!gameId) return reply.code(400).send({ error: "ID de partie invalide" });
+
+      const room = roomManager.getRoom(gameId);
+      if (room) {
+        const gameState = room.getGameState();
+        const players = room.getPlayers();
+        const status = room.getStatus();
+
+        return reply.send({
+          gameState,
+          players: Array.from(players.values()),
+          status,
+          gameId,
+        });
+      }
+
+      // fallback DB si room absente
+      const gameIdNum = Number(gameId);
+      if (!isNaN(gameIdNum)) {
+        const game = await GameService.findGameById(gameIdNum);
+        if (game) {
+          return reply.send({
+            gameId,
+            status: game.status,
+            player1: game.player1_id,
+            player2: game.player2_id,
+            created_at: game.created_at,
+          });
+        }
+      }
+
+      return reply.code(404).send({ error: "Partie non trouvée" });
+    } catch (error) {
+      request.log.error(error, "Game state error");
+      return reply.code(500).send({ error: "Erreur lors de la récupération de l'état" });
+    }
+  });
+
+  app.post("/api/games/:id/start", async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const success = roomManager.startGame(id);
+      if (success) return reply.send({ success: true, message: "Game started" });
+      return reply.code(404).send({ error: "Game not found" });
+    } catch (error) {
+      request.log.error(error, "Start game error");
+      return reply.code(500).send({ error: "Failed to start game" });
+    }
+  });
+
+  app.post("/api/games/:id/paddle", async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { player, direction } = request.body as { player: 1 | 2; direction: "up" | "down" | "stop" };
+      if (!player || !direction) return reply.code(400).send({ error: "Player and direction are required" });
+
+      const success = roomManager.movePaddle(id, player, direction);
+      if (success) return reply.send({ success: true });
+      return reply.code(404).send({ error: "Game not found" });
+    } catch (error) {
+      request.log.error(error, "Paddle control error");
+      return reply.code(500).send({ error: "Failed to control paddle" });
+    }
+  });
+
+  app.get("/api/games/stats", async (request, reply) => {
+    try {
+      const userId = await getUserFromToken(request);
+      if (!userId) return reply.code(401).send({ error: "Authentification requise" });
+
+      const roomStats = roomManager.getStats();
+      return reply.send({ rooms: roomStats, timestamp: Date.now() });
+    } catch (error) {
+      request.log.error(error, "Game stats error");
+      return reply.code(500).send({ error: "Erreur lors de la récupération des statistiques" });
+    }
+  });
+
+  // Fin de partie + MAJ stats / status users
+  app.post("/api/games/:id/finish", async (request, reply) => {
+    try {
+      const userId = await getUserFromToken(request);
+      if (!userId) return reply.code(401).send({ error: "Authentification requise" });
+
+      const id = Number((request.params as any).id);
+      const body = (request.body ?? {}) as { winner_id?: number; player1_score?: number; player2_score?: number };
+
+      const winner_id = Number(body.winner_id);
+      const p1s = Number(body.player1_score ?? 0);
+      const p2s = Number(body.player2_score ?? 0);
+      if (!Number.isInteger(id) || !Number.isInteger(winner_id)) {
+        return reply.code(400).send({ error: "bad_id_or_payload" });
+      }
+
+      const game = await GameService.findGameById(id);
+      if (!game) return reply.code(404).send({ error: "not_found" });
+      if (game.status === "finished") return reply.send({ ok: true, already: true });
+
+      if (winner_id !== game.player1_id && winner_id !== game.player2_id) {
+        return reply.code(400).send({ error: "winner_not_in_game" });
+      }
+
+      await GameService.finishGame(id, winner_id, p1s, p2s);
+      if (game.player1_id) await UserService.updateUserStatus(game.player1_id, "online");
+      if (game.player2_id) await UserService.updateUserStatus(game.player2_id, "online");
+      await StatsService.updateStatsAfterGame(id);
+
+      return reply.send({ ok: true, winner_id });
+    } catch (e) {
+      request.log.error(e, "Game finish error");
+      return reply.code(500).send({ error: "Game finish failed" });
+    }
+  });
+
+  // ===================== TOURNOIS (REMOTE) =====================
   app.post("/api/tournaments", async (request, reply) => {
     try {
       const userId = await getUserFromToken(request);
@@ -258,12 +461,7 @@ if (ROLE === "gateway") {
       if (!v.ok) return reply.code(v.status).send(await v.json().catch(() => ({})));
 
       const raw = await v.json();
-      const input: {
-        name: string;
-        description?: string;
-        max_players?: number;
-        created_by: number;
-      } = {
+      const input: { name: string; description?: string; max_players?: number; created_by: number } = {
         name: String(raw.name),
         description: raw.description ?? undefined,
         max_players: typeof raw.max_players === "number" ? raw.max_players : undefined,
@@ -340,13 +538,124 @@ if (ROLE === "gateway") {
     return reply.send({ users: safe });
   });
 
-  // ===================== ROUTES USER (profile / friendships) ==================
+  // ===================== TOURNOIS LOCAUX (in-memory) =====================
+  const localTournaments = new Map<string, any>();
+
+  app.post("/api/tournaments/local", async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { players } = request.body as { players: string[] };
+
+      if (!players || !Array.isArray(players) || players.length !== 4) {
+        return reply.code(400).send({ error: "Exactly 4 players required" });
+      }
+
+      const uniqueNames = new Set(players.map((n) => n.toLowerCase()));
+      if (uniqueNames.size !== players.length) {
+        return reply.code(400).send({ error: "All players must have different names" });
+      }
+
+      const tournamentId = `local_${Date.now()}`;
+      const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
+
+      const semifinal1 = { player1: shuffledPlayers[0], player2: shuffledPlayers[1] };
+      const semifinal2 = { player1: shuffledPlayers[2], player2: shuffledPlayers[3] };
+
+      const tournament = {
+        id: tournamentId,
+        players: shuffledPlayers,
+        bracket: { semifinals: [semifinal1, semifinal2], final: null, winner: null },
+        currentMatch: "semifinal1",
+        createdAt: new Date().toISOString(),
+      };
+
+      localTournaments.set(tournamentId, tournament);
+
+      request.log.info({ tournamentId, players: shuffledPlayers }, "Local tournament created");
+
+      return reply.code(201).send({
+        tournamentId,
+        tournament,
+        nextMatch: { type: "semifinal", number: 1, players: [semifinal1.player1, semifinal1.player2] },
+      });
+    } catch (error) {
+      request.log.error(error, "Local tournament creation error");
+      return reply.code(500).send({ error: "Failed to create local tournament" });
+    }
+  });
+
+  app.get("/api/tournaments/local/:id", async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tournamentId = (request.params as any).id;
+      const tournament = localTournaments.get(tournamentId);
+      if (!tournament) return reply.code(404).send({ error: "Tournament not found" });
+      return reply.send({ tournament });
+    } catch (error) {
+      request.log.error(error, "Tournament retrieval error");
+      return reply.code(500).send({ error: "Failed to retrieve tournament" });
+    }
+  });
+
+  app.post("/api/tournaments/local/:id/match-result", async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tournamentId = (request.params as any).id;
+      const { winner, loser, scores } = request.body as {
+        winner: string;
+        loser: string;
+        scores: { winner: number; loser: number };
+      };
+
+      const tournament = localTournaments.get(tournamentId);
+      if (!tournament) return reply.code(404).send({ error: "Tournament not found" });
+
+      let nextMatch = null;
+
+      if (tournament.currentMatch === "semifinal1") {
+        tournament.bracket.semifinals[0].winner = winner;
+        tournament.bracket.semifinals[0].loser = loser;
+        tournament.bracket.semifinals[0].scores = scores;
+        tournament.currentMatch = "semifinal2";
+        nextMatch = {
+          type: "semifinal",
+          number: 2,
+          players: [tournament.bracket.semifinals[1].player1, tournament.bracket.semifinals[1].player2],
+        };
+      } else if (tournament.currentMatch === "semifinal2") {
+        tournament.bracket.semifinals[1].winner = winner;
+        tournament.bracket.semifinals[1].loser = loser;
+        tournament.bracket.semifinals[1].scores = scores;
+
+        const finalist1 = tournament.bracket.semifinals[0].winner;
+        const finalist2 = tournament.bracket.semifinals[1].winner;
+
+        tournament.bracket.final = { player1: finalist1, player2: finalist2 };
+        tournament.currentMatch = "final";
+        nextMatch = { type: "final", number: 1, players: [finalist1, finalist2] };
+      } else if (tournament.currentMatch === "final") {
+        tournament.bracket.final.winner = winner;
+        tournament.bracket.final.loser = loser;
+        tournament.bracket.final.scores = scores;
+        tournament.bracket.winner = winner;
+        tournament.currentMatch = "finished";
+        tournament.finishedAt = new Date().toISOString();
+        nextMatch = { type: "finished", winner };
+      }
+
+      localTournaments.set(tournamentId, tournament);
+      request.log.info({ tournamentId, winner, currentMatch: tournament.currentMatch }, "Match result processed");
+
+      return reply.send({ tournament, nextMatch });
+    } catch (error) {
+      request.log.error(error, "Match result processing error");
+      return reply.code(500).send({ error: "Failed to process match result" });
+    }
+  });
+
+  // ===================== USER (profiles / friendships / search …) =====================
   app.put("/api/users/profile", async (request, reply) => {
     try {
       const userId = await getUserFromToken(request);
       if (!userId) return reply.code(401).send({ error: "Authentification requise" });
 
-      // validation amont par svc-user (on garde la séparation)
       const v = await fetch("http://user:8106/validate-profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -355,7 +664,6 @@ if (ROLE === "gateway") {
       if (!v.ok) return reply.code(v.status).send(await v.json().catch(() => ({})));
       const data = await v.json();
 
-      // Unicité via services
       if (data.username) {
         const u = await UserService.findUserByUsername(data.username);
         if (u && u.id !== userId) return reply.code(409).send({ error: "username_taken" });
@@ -365,11 +673,10 @@ if (ROLE === "gateway") {
         if (u && u.id !== userId) return reply.code(409).send({ error: "email_taken" });
       }
 
-      // MAJ via service (plus de SQL inline ici)
       await UserService.updateProfile(userId, {
         username: data.username ?? null,
-        email:    data.email ?? null,
-        avatar:   data.avatar ?? null,
+        email: data.email ?? null,
+        avatar: data.avatar ?? null,
       });
 
       const updated = await UserService.findUserById(userId);
@@ -380,14 +687,12 @@ if (ROLE === "gateway") {
     }
   });
 
-
   app.post("/api/users/:id/friendship", async (request, reply) => {
     try {
       const selfId = await getUserFromToken(request);
       if (!selfId) return reply.code(401).send({ error: "Authentification requise" });
       const targetId = Number((request.params as any).id);
 
-      // validation amont par svc-user
       const v = await fetch("http://user:8106/validate-friendship", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -406,7 +711,6 @@ if (ROLE === "gateway") {
       return reply.code(500).send({ error: "Friendship failed" });
     }
   });
-
 
   app.get("/api/users/me", async (req, reply) => {
     const userId = await getUserFromToken(req);
@@ -448,10 +752,9 @@ if (ROLE === "gateway") {
     return reply.send({ friends });
   });
 
-
   app.get("/api/users/search", async (req, reply) => {
     const q = String((req.query as any).q ?? "").trim();
-    const limit = Math.min(Math.max(Number((req.query as any).limit ?? 20), 1), 100); // 1..100
+    const limit = Math.min(Math.max(Number((req.query as any).limit ?? 20), 1), 100);
     const offset = Math.max(Number((req.query as any).offset ?? 0), 0);
 
     if (q.length < 2) return reply.code(400).send({ error: "query_too_short" });
@@ -473,50 +776,7 @@ if (ROLE === "gateway") {
     return reply.send({ tournaments });
   });
 
-  // Terminer une partie (score + vainqueur) + remettre les joueurs online + MAJ stats
-  app.post("/api/games/:id/finish", async (request, reply) => {
-    try {
-      const userId = await getUserFromToken(request);
-      if (!userId) return reply.code(401).send({ error: "Authentification requise" });
-
-      const id = Number((request.params as any).id);
-      const body = (request.body ?? {}) as { winner_id?: number; player1_score?: number; player2_score?: number };
-
-      const winner_id = Number(body.winner_id);
-      const p1s = Number(body.player1_score ?? 0);
-      const p2s = Number(body.player2_score ?? 0);
-      if (!Number.isInteger(id) || !Number.isInteger(winner_id)) {
-        return reply.code(400).send({ error: "bad_id_or_payload" });
-      }
-
-      // Récupérer la game pour connaître les joueurs
-      const game = await GameService.findGameById(id);
-      if (!game) return reply.code(404).send({ error: "not_found" });
-      if (game.status === "finished") return reply.send({ ok: true, already: true });
-
-      if (winner_id !== game.player1_id && winner_id !== game.player2_id) {
-        return reply.code(400).send({ error: "winner_not_in_game" });
-      }
-
-      // Persister fin de partie
-      await GameService.finishGame(id, winner_id, p1s, p2s);
-
-      // Mettre les joueurs ONLINE (simple et clair pour le module)
-      if (game.player1_id) await UserService.updateUserStatus(game.player1_id, "online");
-      if (game.player2_id) await UserService.updateUserStatus(game.player2_id, "online");
-
-      // MAJ des stats
-      await StatsService.updateStatsAfterGame(id);
-
-      return reply.send({ ok: true, winner_id });
-    } catch (e) {
-      request.log.error(e, "Game finish error");
-      return reply.code(500).send({ error: "Game finish failed" });
-    }
-  });
-
-
-  // Routes de ping pour le testeur
+  // -------- pings
   app.get("/api/users/ping", async () => ({ ok: true, service: "users" }));
   app.get("/api/games/ping", async () => ({ ok: true, service: "games" }));
   app.get("/api/chat/ping", async () => ({ ok: true, service: "chat" }));
@@ -547,7 +807,7 @@ if (ROLE === "gateway") {
   // stateless (healthz/metrics only)
 }
 
-// ===================== HOOKS COMMUNS + LISTEN ==============================
+// ===================== HOOKS COMMUNS + LISTEN =====================
 registerHttpTimingHooks(app);
 
 app.addHook("onSend", async (request, reply, payload) => {

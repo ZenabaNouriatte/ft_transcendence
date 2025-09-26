@@ -1,0 +1,483 @@
+import { GameState, Vector2 } from './types.js';
+
+// Client de jeu qui communique avec le backend via HTTP
+export class GameClient {
+  private canvas: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D;
+  private gameState: GameState | null = null;
+  private previousGameState: GameState | null = null;
+  private lastStateUpdateTime: number = 0;
+  private stateUpdateInterval: number = 33; // Attendu à 30 FPS
+  private gameId: string | null = null;
+  private isPlaying: boolean = false;
+  private animationId: number | null = null;
+  private pollingInterval: number | null = null;
+  
+  // États des touches pour les contrôles
+  private keys: { [key: string]: boolean } = {};
+  private lastPaddleActions: { p1: string | null, p2: string | null } = { p1: null, p2: null };
+  private lastControlUpdate: number = 0;
+  private controlUpdateInterval: number = 8; // Envoyer les contrôles toutes les 8ms (~120 FPS pour fluidité max)
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d')!;
+    
+    this.setupCanvas();
+    this.setupControls();
+    this.drawInitialState(); // Afficher l'état initial
+  }
+
+  // Configuration du canvas
+  private setupCanvas() {
+    this.canvas.width = 800;
+    this.canvas.height = 400;
+    this.canvas.style.border = '2px solid white';
+    this.canvas.style.backgroundColor = '#000';
+  }
+
+  // Configuration des contrôles clavier
+  private setupControls() {
+    document.addEventListener('keydown', (e) => {
+      this.keys[e.key] = true;
+    });
+
+    document.addEventListener('keyup', (e) => {
+      this.keys[e.key] = false;
+    });
+  }
+
+  // Vérifier les contrôles à chaque frame (appelé dans la boucle de rendu)
+  private updateControls() {
+    const now = Date.now();
+    
+    // Throttle les updates de contrôles (20 FPS au lieu de 60 FPS pour éviter le spam)
+    if (now - this.lastControlUpdate < this.controlUpdateInterval) {
+      return;
+    }
+    
+    this.lastControlUpdate = now;
+    this.handleInput();
+  }
+
+  // Gestion des inputs et envoi au serveur via HTTP
+  private async handleInput() {
+    if (!this.gameId || !this.isPlaying) return;
+
+    // Déterminer l'action pour le joueur 1 (touches WASD et flèches)
+    let p1Action: string | null = null;
+    if (this.keys['w'] || this.keys['W'] || this.keys['ArrowUp']) {
+      p1Action = 'up';
+    } else if (this.keys['s'] || this.keys['S'] || this.keys['ArrowDown']) {
+      p1Action = 'down';
+    }
+
+    // Déterminer l'action pour le joueur 2 (touches I/K)
+    let p2Action: string | null = null;
+    if (this.keys['i'] || this.keys['I']) {
+      p2Action = 'up';
+    } else if (this.keys['k'] || this.keys['K']) {
+      p2Action = 'down';
+    }
+
+    // Envoyer seulement les actions actives (pas de "stop")
+    if (p1Action) {
+      await this.sendPaddleAction(1, p1Action);
+    }
+    
+    if (p2Action) {
+      await this.sendPaddleAction(2, p2Action);
+    }
+  }
+
+  // Envoyer un mouvement de paddle via HTTP
+  private async sendPaddleAction(player: 1 | 2, direction: string) {
+    try {
+      await fetch(`/api/games/${this.gameId}/paddle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ player, direction })
+      });
+    } catch (error) {
+      console.error('Error sending paddle action:', error);
+    }
+  }
+
+  // Créer une partie via l'API REST
+  private async createGame(): Promise<string> {
+    try {
+      const player1Name = localStorage.getItem('player1Name') || 'Player 1';
+      const player2Name = localStorage.getItem('player2Name') || 'Player 2';
+      
+      const response = await fetch('/api/games', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          player1: player1Name,
+          player2: player2Name,
+          type: 'pong'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.gameId;
+    } catch (error) {
+      console.error('Failed to create game:', error);
+      throw error;
+    }
+  }
+
+  // Démarrer le jeu via l'API
+  private async startGameOnServer(): Promise<void> {
+    try {
+      const response = await fetch(`/api/games/${this.gameId}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      console.log('Game started on server');
+    } catch (error) {
+      console.error('Failed to start game on server:', error);
+      throw error;
+    }
+  }
+
+  // Récupérer l'état du jeu via HTTP
+  private async fetchGameState(): Promise<void> {
+    try {
+      console.log('Fetching game state for ID:', this.gameId);
+      const response = await fetch(`/api/games/${this.gameId}/state`);
+      
+      if (!response.ok) {
+        console.error('Failed to fetch game state, status:', response.status);
+        return;
+      }
+
+      const data = await response.json();
+      console.log('Received game state:', data);
+      
+      // Stocker l'état précédent pour l'interpolation
+      this.previousGameState = this.gameState;
+      this.gameState = data.gameState || data;
+      this.lastStateUpdateTime = Date.now();
+      
+      // Vérifier si le jeu est terminé
+      if (data.status === 'ended' && data.gameState) {
+        console.log('Game ended, redirecting to victory page');
+        this.handleGameEnd(data.gameState);
+      }
+    } catch (error) {
+      console.error('Error fetching game state:', error);
+    }
+  }
+
+  // Gérer la fin du jeu
+  private async handleGameEnd(finalGameState?: any) {
+    // Arrêter le jeu
+    this.stop();
+    
+    // Utiliser le gameState final passé en paramètre ou celui en cours
+    const gameState = finalGameState || this.gameState;
+    console.log('Final game state for victory:', gameState);
+    
+    // Déterminer le gagnant
+    const score1 = gameState?.score1 || 0;
+    const score2 = gameState?.score2 || 0;
+    const player1Name = localStorage.getItem('player1Name') || 'Player 1';
+    const player2Name = localStorage.getItem('player2Name') || 'Player 2';
+    
+    console.log(`Final scores: ${player1Name}: ${score1}, ${player2Name}: ${score2}`);
+    
+    const winner = score1 > score2 ? player1Name : player2Name;
+    const loser = score1 > score2 ? player2Name : player1Name;
+    const finalScore = `${score1} - ${score2}`;
+    
+    // Vérifier si on est en mode tournoi
+    const currentGameMode = localStorage.getItem('currentGameMode');
+    if (currentGameMode === 'tournament') {
+      await this.handleTournamentMatchEnd(winner, loser, { winner: Math.max(score1, score2), loser: Math.min(score1, score2) });
+    } else {
+      // Mode classique - aller directement à la page de victoire
+      localStorage.setItem('winnerName', winner);
+      localStorage.setItem('finalScore', finalScore);
+      localStorage.setItem('gameMode', 'classic');
+      
+      console.log(`Victory data stored: winner=${winner}, score=${finalScore}`);
+      location.hash = "#/victory";
+    }
+  }
+  
+  // Gérer la fin d'un match de tournoi
+  private async handleTournamentMatchEnd(winner: string, loser: string, scores: { winner: number; loser: number }) {
+    console.log('🏆 TOURNAMENT: Handling match end...', { winner, loser, scores });
+    
+    try {
+      const tournamentId = localStorage.getItem('tournamentId');
+      if (!tournamentId) {
+        console.error('❌ TOURNAMENT: No tournament ID found');
+        return;
+      }
+      
+      console.log(`🏆 TOURNAMENT: Submitting result to /api/tournaments/local/${tournamentId}/match-result`);
+      
+      // Envoyer le résultat au backend
+      const response = await fetch(`/api/tournaments/local/${tournamentId}/match-result`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          winner,
+          loser,
+          scores
+        }),
+      });
+      
+      console.log(`🏆 TOURNAMENT: Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ TOURNAMENT: Failed to submit match result:', errorText);
+        throw new Error(`Failed to submit match result: ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log('🏆 TOURNAMENT: Match result submitted successfully:', data);
+      
+      // Mettre à jour les données du tournoi
+      localStorage.setItem('tournamentData', JSON.stringify(data.tournament));
+      
+      if (data.nextMatch) {
+        if (data.nextMatch.type === 'finished') {
+          // Tournoi terminé !
+          console.log('🏆 TOURNAMENT: Tournament finished!', data.nextMatch);
+          localStorage.setItem('winnerName', data.nextMatch.winner);
+          localStorage.setItem('finalScore', 'Tournament Winner');
+          localStorage.setItem('gameMode', 'tournament');
+          localStorage.removeItem('tournamentId');
+          localStorage.removeItem('tournamentData');
+          localStorage.removeItem('currentMatch');
+          localStorage.removeItem('currentGameMode');
+          
+          console.log(`🏆 TOURNAMENT: Redirecting to victory page with winner: ${data.nextMatch.winner}`);
+          location.hash = "#/victory";
+        } else {
+          // Match suivant - aller à la page de transition
+          console.log('🏆 TOURNAMENT: Next match found:', data.nextMatch);
+          localStorage.setItem('currentMatch', JSON.stringify(data.nextMatch));
+          localStorage.setItem('lastMatchResult', JSON.stringify({
+            winner,
+            loser,
+            scores
+          }));
+          
+          console.log(`🏆 TOURNAMENT: Redirecting to tournament-transition page`);
+          location.hash = "#/tournament-transition";
+        }
+      } else {
+        console.error('❌ TOURNAMENT: No nextMatch data received');
+        throw new Error('No nextMatch data received from server');
+      }
+    } catch (error) {
+      console.error('❌ TOURNAMENT: Error handling tournament match end:', error);
+      // Fallback vers la page de victoire normale
+      localStorage.setItem('winnerName', winner);
+      localStorage.setItem('finalScore', `${scores.winner} - ${scores.loser}`);
+      localStorage.setItem('gameMode', 'tournament');
+      location.hash = "#/victory";
+    }
+  }
+
+  // Boucle de rendu
+  private startRenderLoop() {
+    const render = () => {
+      if (this.isPlaying) {
+        this.updateControls(); // Vérifier les contrôles à chaque frame
+        this.draw();
+        this.animationId = requestAnimationFrame(render);
+      }
+    };
+    render();
+  }
+
+  // Arrêter la boucle de rendu
+  private stopRenderLoop() {
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId);
+      this.animationId = null;
+    }
+  }
+
+  // Démarrer le polling de l'état du jeu
+  private startPolling() {
+    this.pollingInterval = setInterval(() => {
+      if (this.isPlaying) {
+        this.fetchGameState();
+      }
+    }, 33); // ~30 FPS pour le polling (moins agressif que le rendu)
+  }
+
+  // Arrêter le polling
+  private stopPolling() {
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+      this.pollingInterval = null;
+    }
+  }
+
+  // Dessiner le jeu
+  // Méthode d'interpolation linéaire pour un rendu fluide
+  private lerp(start: number, end: number, factor: number): number {
+    return start + (end - start) * factor;
+  }
+
+  private draw() {
+    console.log('Drawing game state:', this.gameState);
+    if (!this.gameState) {
+      console.log('No game state available, drawing initial state');
+      this.drawInitialState();
+      return;
+    }
+
+    // Calculer le facteur d'interpolation pour un rendu plus fluide
+    const now = Date.now();
+    const timeSinceUpdate = now - this.lastStateUpdateTime;
+    const interpolationFactor = Math.min(timeSinceUpdate / (1000 / 30), 1); // 30 FPS polling
+
+    const state = this.gameState;
+    const ctx = this.ctx;
+
+    // Interpoler les positions si on a un état précédent
+    let p1Pos = state.p1;
+    let p2Pos = state.p2;
+    let ballX = state.ball.x;
+    let ballY = state.ball.y;
+
+    if (this.previousGameState && interpolationFactor < 1) {
+      // Interpolation linéaire entre l'état précédent et actuel
+      p1Pos = this.lerp(this.previousGameState.p1, state.p1, interpolationFactor);
+      p2Pos = this.lerp(this.previousGameState.p2, state.p2, interpolationFactor);
+      ballX = this.lerp(this.previousGameState.ball.x, state.ball.x, interpolationFactor);
+      ballY = this.lerp(this.previousGameState.ball.y, state.ball.y, interpolationFactor);
+    }
+
+    // Effacer le canvas
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, state.width, state.height);
+
+    // Dessiner les éléments
+    ctx.fillStyle = '#fff';
+
+    // Ligne centrale
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 10]);
+    ctx.beginPath();
+    ctx.moveTo(state.width / 2, 0);
+    ctx.lineTo(state.width / 2, state.height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Paddles avec positions interpolées
+    ctx.fillRect(10, p1Pos, 15, 100); // Paddle gauche
+    ctx.fillRect(state.width - 25, p2Pos, 15, 100); // Paddle droite
+
+    // Balle avec position interpolée
+    ctx.beginPath();
+    ctx.arc(ballX, ballY, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Scores
+    ctx.font = '48px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(state.score1.toString(), state.width / 4, 60);
+    ctx.fillText(state.score2.toString(), (state.width * 3) / 4, 60);
+  }
+
+  // Dessiner l'état initial du jeu (avant de cliquer sur START)
+  private drawInitialState() {
+    const ctx = this.ctx;
+    
+    // Effacer le canvas
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, 800, 400);
+
+    // Dessiner les éléments initiaux
+    ctx.fillStyle = '#fff';
+
+    // Ligne centrale
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 10]);
+    ctx.beginPath();
+    ctx.moveTo(400, 0);
+    ctx.lineTo(400, 400);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Paddles à leur position initiale (centrés)
+    ctx.fillRect(10, 150, 15, 100); // Paddle gauche centré
+    ctx.fillRect(775, 150, 15, 100); // Paddle droite centré
+
+    // Balle au centre
+    ctx.beginPath();
+    ctx.arc(400, 200, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Scores initiaux
+    ctx.font = '48px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('0', 200, 60);
+    ctx.fillText('0', 600, 60);
+  }
+
+  // Démarrer le jeu (méthode publique)
+  async start(): Promise<void> {
+    try {
+      console.log('Starting game client...');
+      
+      // 1. Créer une partie
+      this.gameId = await this.createGame();
+      console.log('Game created with ID:', this.gameId);
+
+      // 2. Démarrer le jeu sur le serveur
+      console.log('Starting game on server...');
+      await this.startGameOnServer();
+
+      // 3. Récupérer l'état initial
+      console.log('Fetching initial game state...');
+      await this.fetchGameState();
+
+      // 4. Petit délai pour laisser le serveur s'initialiser
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // 5. Commencer le jeu côté client
+      this.isPlaying = true;
+      this.startRenderLoop();
+      this.startPolling();
+
+      console.log('Game client started successfully');
+    } catch (error) {
+      console.error('Failed to start game client:', error);
+      alert('Failed to start game. Please try again.');
+    }
+  }
+
+  // Arrêter le jeu
+  stop() {
+    this.isPlaying = false;
+    this.stopRenderLoop();
+    this.stopPolling();
+    this.gameId = null;
+    this.gameState = null;
+  }
+}
