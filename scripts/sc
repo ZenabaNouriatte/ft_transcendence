@@ -1,109 +1,168 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# E2E API checker - continue on errors, show full report
+set -u -o pipefail  # (pas de -e : on veut continuer même si un test échoue)
 
 BASE_URL="${BASE_URL:-https://localhost:8443}"
 JQ="${JQ:-jq}"
 
+# --------- UI helpers ----------
 color(){ printf "\033[%sm%s\033[0m\n" "$1" "$2"; }
 ok(){ color 32 "✓ $*"; }
 info(){ color 36 "ℹ $*"; }
-fail(){ color 31 "✗ $*"; exit 1; }
+bad(){ color 31 "✗ $*"; }
+HAD_FAIL=0
 
-curl_json () {
+# --------- HTTP helpers ----------
+# Retourne: 1ère ligne = HTTP status, le reste = body
+curl_json_status () {
   local method="$1"; shift
   local url="$1"; shift
   local body="${1-}"
   local token="${2-}"
   [[ "$url" =~ ^https?:// ]] || url="${BASE_URL}${url}"
-  local args=(-k -sS -X "$method" "$url")
+  local args=(-k -sS -w "\n%{http_code}" -X "$method" "$url" -H "Accept: application/json")
   [[ -n "${token}" ]] && args+=(-H "Authorization: Bearer ${token}")
   [[ -n "${body}"  ]] && args+=(-H "Content-Type: application/json" --data-raw "$body")
-  curl "${args[@]}"
+  local out http
+  out="$(curl "${args[@]}")" || out=$'\n000'
+  http="${out##*$'\n'}"
+  body="${out%$'\n'*}"
+  printf '%s\n%s' "$http" "$body"
 }
 
-info "Base: $BASE_URL"
+# call "label" METHOD PATH EXPECTED_STATUS [TOKEN] [JSON_BODY]
+call () {
+  local label="$1"; shift
+  local method="$1"; shift
+  local path="$1"; shift
+  local expect="$1"; shift
+  local token="${1-}"; shift || true
+  local payload="${1-}"
 
-# --- Register ALICE & BOB ---
+  local OUT STATUS BODY
+  OUT="$(curl_json_status "$method" "$path" "${payload-}" "${token-}")"
+  STATUS="${OUT%%$'\n'*}"
+  BODY="${OUT#*$'\n'}"
+
+  if [[ "$STATUS" == "$expect" ]]; then
+    ok "$label"
+  else
+    bad "$label (expected $expect got $STATUS)"
+    HAD_FAIL=1
+  fi
+
+  # Affiche le body joliment (sans faire échouer en cas d’erreur jq)
+  echo "$BODY" | $JQ . 2>/dev/null || echo "$BODY"
+
+  # Expose pour usage après l'appel
+  REPLY_STATUS="$STATUS"
+  REPLY_BODY="$BODY"
+}
+
+echo
+echo "--------------------------------------------------------------------------------"
+info "Base = $BASE_URL"
+
+# --- Pings ---
+echo
+echo "--------------------------------------------------------------------------------"
+info "Pings"
+call "users ping"        GET /api/users/ping        200
+call "games ping"        GET /api/games/ping        200
+call "tournaments ping"  GET /api/tournaments/ping  200
+call "healthz"           GET /healthz               200
+
+# --- Register & Login ---
+echo
+echo "--------------------------------------------------------------------------------"
+info "Register & Login"
 TS=$(date +%s)
 ALICE="alice$TS"
 BOB="bob$TS"
 
-info "Register ALICE"
-R1=$(curl_json POST /api/users/register "{\"username\":\"$ALICE\",\"email\":\"$ALICE@example.test\",\"password\":\"secret\"}")
-echo "$R1" | $JQ .
-ALICE_ID=$(echo "$R1" | $JQ -r '.user.id'); test "$ALICE_ID" != null || fail "register ALICE"
+call "register ALICE" POST /api/users/register 201 "" "{\"username\":\"$ALICE\",\"email\":\"$ALICE@example.test\",\"password\":\"secret\"}"
+ALICE_ID=$(echo "$REPLY_BODY" | $JQ -r '.user.id')
 
-info "Login ALICE"
-L1=$(curl_json POST /api/users/login "{\"username\":\"$ALICE\",\"password\":\"secret\"}")
-echo "$L1" | $JQ .
-TOKEN_ALICE=$(echo "$L1" | $JQ -r '.token'); test -n "$TOKEN_ALICE" || fail "token ALICE"
+call "login ALICE"    POST /api/users/login    200 "" "{\"username\":\"$ALICE\",\"password\":\"secret\"}"
+TOKEN_ALICE=$(echo "$REPLY_BODY" | $JQ -r '.token')
 
-info "Register BOB"
-R2=$(curl_json POST /api/users/register "{\"username\":\"$BOB\",\"email\":\"$BOB@example.test\",\"password\":\"secret\"}")
-echo "$R2" | $JQ .
-BOB_ID=$(echo "$R2" | $JQ -r '.user.id'); test "$BOB_ID" != null || fail "register BOB"
+call "register BOB"   POST /api/users/register 201 "" "{\"username\":\"$BOB\",\"email\":\"$BOB@example.test\",\"password\":\"secret\"}"
+BOB_ID=$(echo "$REPLY_BODY" | $JQ -r '.user.id')
 
-info "Login BOB"
-L2=$(curl_json POST /api/users/login "{\"username\":\"$BOB\",\"password\":\"secret\"}")
-echo "$L2" | $JQ .
-TOKEN_BOB=$(echo "$L2" | $JQ -r '.token'); test -n "$TOKEN_BOB" || fail "token BOB"
+call "login BOB"      POST /api/users/login    200 "" "{\"username\":\"$BOB\",\"password\":\"secret\"}"
+TOKEN_BOB=$(echo "$REPLY_BODY" | $JQ -r '.token')
 
-# --- Profile update + collisions ---
-info "Profile update ALICE: username + avatar"
+# --- Profile + collision ---
+echo
+echo "--------------------------------------------------------------------------------"
+info "Profile + Collisions"
 NEW_ALICE="new$ALICE"
-curl_json PUT /api/users/profile "{\"username\":\"$NEW_ALICE\",\"avatar\":\"https://picsum.photos/200\"}" "$TOKEN_ALICE" | $JQ .
+call "profile update ALICE" PUT /api/users/profile 200 "$TOKEN_ALICE" "{\"username\":\"$NEW_ALICE\",\"avatar\":\"https://picsum.photos/200\"}"
+call "collision username -> 409" PUT /api/users/profile 409 "$TOKEN_BOB" "{\"username\":\"$NEW_ALICE\"}"
 
-info "Collision username (BOB -> $NEW_ALICE) doit renvoyer 409"
-curl_json PUT /api/users/profile "{\"username\":\"$NEW_ALICE\"}" "$TOKEN_BOB" | $JQ .
+# --- /me + public profile ---
+echo
+echo "--------------------------------------------------------------------------------"
+info "/me & public profile"
+call "/api/users/me"        GET /api/users/me            200 "$TOKEN_ALICE"
+call "public profile ALICE" GET "/api/users/$ALICE_ID/profile" 200
 
-# --- Users/me & profile public ---
-info "ME (ALICE)"
-curl_json GET /api/users/me "" "$TOKEN_ALICE" | $JQ .
-
-info "Public profile ALICE"
-curl_json GET "/api/users/$ALICE_ID/profile" | $JQ .
-
-# --- Friends (request / accept / block) ---
-info "ALICE -> request BOB"
-curl_json POST "/api/users/$BOB_ID/friendship" '{"action":"request"}' "$TOKEN_ALICE" | $JQ .
-
-info "BOB -> accept ALICE"
-curl_json POST "/api/users/$ALICE_ID/friendship" '{"action":"accept"}' "$TOKEN_BOB" | $JQ .
-
-info "Liste amis de ALICE"
-curl_json GET "/api/users/$ALICE_ID/friends" | $JQ .
-
-info "ALICE -> block BOB"
-curl_json POST "/api/users/$BOB_ID/friendship" '{"action":"block"}' "$TOKEN_ALICE" | $JQ .
+# --- Friendships ---
+echo
+echo "--------------------------------------------------------------------------------"
+info "Friendships"
+call "ALICE -> request BOB" POST "/api/users/$BOB_ID/friendship" 200 "$TOKEN_ALICE" "{\"action\":\"request\"}"
+call "BOB -> accept ALICE"  POST "/api/users/$ALICE_ID/friendship" 200 "$TOKEN_BOB" "{\"action\":\"accept\"}"
+call "friends (accepted)"   GET  "/api/users/$ALICE_ID/friends"    200
+call "ALICE -> block BOB"   POST "/api/users/$BOB_ID/friendship"   200 "$TOKEN_ALICE" "{\"action\":\"block\"}"
+call "friends (blocked)"    GET  "/api/users/$ALICE_ID/friends"    200
 
 # --- Search users ---
-info "Search users: 'ali'"
-curl_json GET "/api/users/search?q=ali" | $JQ .
+echo
+echo "--------------------------------------------------------------------------------"
+info "Search users"
+call "search 'ali'" GET "/api/users/search?q=ali" 200
 
 # --- Games ---
-info "Create waiting game (ALICE)"
-G1=$(curl_json POST /api/games '{"status":"waiting"}' "$TOKEN_ALICE"); echo "$G1" | $JQ .
-GW_ID=$(echo "$G1" | $JQ -r '.gameId')
+echo
+echo "--------------------------------------------------------------------------------"
+info "Games"
+call "unauthorized guard" POST /api/games 401 "" "{\"status\":\"waiting\"}"
 
-info "Create playing game (ALICE vs BOB)"
-curl_json POST /api/games "{\"player2_id\":$BOB_ID,\"status\":\"playing\"}" "$TOKEN_ALICE" | $JQ .
+call "create waiting game" POST /api/games 201 "$TOKEN_ALICE" "{\"status\":\"waiting\"}"
+GW_ID=$(echo "$REPLY_BODY" | $JQ -r '.gameId')
 
-info "List games (all + active)"
-curl_json GET /api/games | $JQ .
-curl_json GET "/api/games?status=active" | $JQ .
+call "create playing game" POST /api/games 201 "$TOKEN_ALICE" "{\"player2_id\":$BOB_ID,\"status\":\"playing\"}"
+GPLAY_ID=$(echo "$REPLY_BODY" | $JQ -r '.gameId')
+
+call "list games (all)"    GET  /api/games              200
+call "list games (active)" GET  "/api/games?status=active" 200
+
+# --- Finish game (tests 400 + OK) ---
+echo
+echo "--------------------------------------------------------------------------------"
+info "Finish game"
+call "finish wrong winner -> 400" POST "/api/games/$GPLAY_ID/finish" 400 "$TOKEN_ALICE" "{\"winner_id\":999999}"
+call "finish ok (ALICE wins)"     POST "/api/games/$GPLAY_ID/finish" 200 "$TOKEN_ALICE" "{\"winner_id\":$ALICE_ID}"
 
 # --- Tournaments ---
-info "Create tournament (ALICE)"
-T_CREATE=$(curl_json POST /api/tournaments '{"name":"Open Pong","description":"GL HF","max_players":8}' "$TOKEN_ALICE"); echo "$T_CREATE" | $JQ .
-TID=$(echo "$T_CREATE" | $JQ -r '.tournamentId')
+echo
+echo "--------------------------------------------------------------------------------"
+info "Tournaments"
+call "create tournament" POST /api/tournaments 201 "$TOKEN_ALICE" "{\"name\":\"Open Pong\",\"description\":\"GL HF\",\"max_players\":8}"
+TID=$(echo "$REPLY_BODY" | $JQ -r '.tournamentId')
 
-info "BOB join tournament"
-curl_json POST "/api/tournaments/$TID/join" "" "$TOKEN_BOB" | $JQ .
+call "BOB join"          POST "/api/tournaments/$TID/join"  200 "$TOKEN_BOB"
+call "start tournament"  POST "/api/tournaments/$TID/start" 200 "$TOKEN_ALICE"
+call "participants"      GET  "/api/tournaments/$TID/participants" 200
+call "user tournaments"  GET  "/api/users/$ALICE_ID/tournaments"   200
+call "tournaments list"  GET  /api/tournaments 200
 
-info "Start tournament (ALICE)"
-curl_json POST "/api/tournaments/$TID/start" "" "$TOKEN_ALICE" | $JQ .
-
-info "Participants (should include ALICE & BOB)"
-curl_json GET "/api/tournaments/$TID/participants" | $JQ .
-
-ok "E2E OK ✔"
+echo
+if [[ "$HAD_FAIL" -eq 0 ]]; then
+  ok "E2E OK ✔"
+  exit 0
+else
+  bad "E2E completed with failures — check the red lines above"
+  exit 1
+fi

@@ -180,12 +180,24 @@ export class GameService {
         await run('UPDATE games SET player1_score = ?, player2_score = ? WHERE id = ?', [player1_score, player2_score, id]);
     }
 
-    static async finishGame(id: number, winner_id: number): Promise<void> {
+    static async finishGame(
+        id: number,
+        winner_id: number,
+        player1_score: number,
+        player2_score: number
+        ): Promise<void> {
         await run(
-            `UPDATE games SET status = 'finished', winner_id = ?, finished_at = datetime('now') WHERE id = ?`,
-            [winner_id, id]
+            `UPDATE games 
+            SET status = 'finished',
+                winner_id = ?,
+                player1_score = ?,
+                player2_score = ?,
+                finished_at = datetime('now')
+            WHERE id = ?`,
+            [winner_id, player1_score, player2_score, id]
         );
     }
+
 
     static async getUserGames(userId: number): Promise<Game[]> {
         return all<Game>(
@@ -194,13 +206,25 @@ export class GameService {
         );
     }
 
-    static async getActiveGames(): Promise<Game[]> {
-        return all<Game>("SELECT * FROM games WHERE status IN ('waiting', 'playing') ORDER BY created_at");
+    static async getActiveGames(limit = 50, offset = 0): Promise<Game[]> {
+        return all<Game>(
+            `SELECT * FROM games 
+            WHERE status IN ('waiting','playing') 
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?`,
+            [limit, offset]
+        );
     }
 
-    static async getAllGames(): Promise<Game[]> {
-        return all<Game>("SELECT * FROM games ORDER BY created_at DESC");
+    static async getAllGames(limit = 50, offset = 0): Promise<Game[]> {
+        return all<Game>(
+            `SELECT * FROM games 
+            ORDER BY created_at DESC 
+            LIMIT ? OFFSET ?`,
+            [limit, offset]
+        );
     }
+
 
     static async listGames({ status, limit = 50, offset = 0 }:
         { status?: string|null; limit?: number; offset?: number }) {

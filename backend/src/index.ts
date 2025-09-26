@@ -227,16 +227,19 @@ if (ROLE === "gateway") {
     }
   });
 
-  app.get("/api/games", async (req, reply) => {
+  app.get("/api/games", async (request, reply) => {
     try {
-      const { status } = req.query as { status?: string };
-      const limit = Math.min(Math.max(parseInt((req.query as any).limit) || 50, 1), 200);
-      const offset = Math.max(parseInt((req.query as any).offset) || 0, 0);
+      const { status, limit, offset } = request.query as { status?: string; limit?: string; offset?: string };
+      const lim = Math.min(Math.max(Number(limit ?? 50), 1), 200);   // 1..200
+      const off = Math.max(Number(offset ?? 0), 0);
 
-      const games = await GameService.listGames({ status, limit, offset });
-      return reply.send({ games, limit, offset });
-    } catch (e) {
-      req.log.error(e, "Games retrieval error");
+      const games = status === "active"
+        ? await GameService.getActiveGames(lim, off)
+        : await GameService.getAllGames(lim, off);
+
+      return reply.send({ games, limit: lim, offset: off });
+    } catch (error) {
+      request.log.error(error, "Games retrieval error");
       return reply.code(500).send({ error: "Games retrieval failed" });
     }
   });
@@ -448,16 +451,19 @@ if (ROLE === "gateway") {
 
   app.get("/api/users/search", async (req, reply) => {
     const q = String((req.query as any).q ?? "").trim();
-    const limit = Math.min(Math.max(parseInt((req.query as any).limit) || 20, 1), 100);
-    const offset = Math.max(parseInt((req.query as any).offset) || 0, 0);
+    const limit = Math.min(Math.max(Number((req.query as any).limit ?? 20), 1), 100); // 1..100
+    const offset = Math.max(Number((req.query as any).offset ?? 0), 0);
+
     if (q.length < 2) return reply.code(400).send({ error: "query_too_short" });
 
     const users = await UserService.searchUsers(q, limit, offset);
-    const out = users.map((u: any) => ({ ...u, avatar: u.avatar ?? UserService.defaultAvatar(u.username) }));
+    const out = users.map((u: any) => ({
+      ...u,
+      avatar: u.avatar ?? UserService.defaultAvatar(u.username),
+    }));
+
     return reply.send({ users: out, limit, offset });
   });
-
-
 
   app.get("/api/users/:id/tournaments", async (req, reply) => {
     const id = Number((req.params as any).id);
@@ -467,26 +473,46 @@ if (ROLE === "gateway") {
     return reply.send({ tournaments });
   });
 
-  app.post("/api/games/:id/finish", async (req, reply) => {
-    const userId = await getUserFromToken(req);
-    if (!userId) return reply.code(401).send({ error: "unauthorized" });
+  // Terminer une partie (score + vainqueur) + remettre les joueurs online + MAJ stats
+  app.post("/api/games/:id/finish", async (request, reply) => {
+    try {
+      const userId = await getUserFromToken(request);
+      if (!userId) return reply.code(401).send({ error: "Authentification requise" });
 
-    const id = Number((req.params as any).id);
-    const { winner_id } = (req.body ?? {}) as { winner_id: number };
-    if (!Number.isInteger(id) || !Number.isInteger(winner_id)) {
-      return reply.code(400).send({ error: "bad_payload" });
+      const id = Number((request.params as any).id);
+      const body = (request.body ?? {}) as { winner_id?: number; player1_score?: number; player2_score?: number };
+
+      const winner_id = Number(body.winner_id);
+      const p1s = Number(body.player1_score ?? 0);
+      const p2s = Number(body.player2_score ?? 0);
+      if (!Number.isInteger(id) || !Number.isInteger(winner_id)) {
+        return reply.code(400).send({ error: "bad_id_or_payload" });
+      }
+
+      // Récupérer la game pour connaître les joueurs
+      const game = await GameService.findGameById(id);
+      if (!game) return reply.code(404).send({ error: "not_found" });
+      if (game.status === "finished") return reply.send({ ok: true, already: true });
+
+      if (winner_id !== game.player1_id && winner_id !== game.player2_id) {
+        return reply.code(400).send({ error: "winner_not_in_game" });
+      }
+
+      // Persister fin de partie
+      await GameService.finishGame(id, winner_id, p1s, p2s);
+
+      // Mettre les joueurs ONLINE (simple et clair pour le module)
+      if (game.player1_id) await UserService.updateUserStatus(game.player1_id, "online");
+      if (game.player2_id) await UserService.updateUserStatus(game.player2_id, "online");
+
+      // MAJ des stats
+      await StatsService.updateStatsAfterGame(id);
+
+      return reply.send({ ok: true, winner_id });
+    } catch (e) {
+      request.log.error(e, "Game finish error");
+      return reply.code(500).send({ error: "Game finish failed" });
     }
-
-    const game = await GameService.findGameById(id);
-    if (!game) return reply.code(404).send({ error: "not_found" });
-
-    await GameService.finishGame(id, winner_id);
-    await StatsService.updateStatsAfterGame(id);
-
-    if (game.player1_id) await UserService.updateUserStatus(game.player1_id, "online");
-    if (game.player2_id) await UserService.updateUserStatus(game.player2_id, "online");
-
-    return reply.send({ ok: true });
   });
 
 
