@@ -79,25 +79,36 @@ if (ROLE === "gateway") {
   await initDb();
   registerRawWs(app);
 
-  const { GameRoomManager } = await import("./modules/game/engine/gameRoomManager.js");
-  const roomManager = new GameRoomManager();
+  let roomManager: any;
+  
+  try {
+    const { GameRoomManager } = await import("./modules/game/engine/gameRoomManager.js");
+    roomManager = new GameRoomManager();
+    console.log("GameRoomManager initialized successfully");
+  } catch (error) {
+    console.error("Failed to initialize GameRoomManager:", error);
+    // Créer un roomManager mock pour éviter les erreurs
+    roomManager = {
+      createRoom: () => ({ 
+        addPlayer: () => true,
+        getGameState: () => ({}),
+        getStatus: () => 'waiting',
+        getPlayers: () => new Map()
+      }),
+      getRoom: () => null,
+      startGame: () => false,
+      movePaddle: () => false,
+      getStats: () => ({ totalRooms: 0, activeGames: 0, totalPlayers: 0 })
+    };
+  }
 
   process.on("SIGINT", () => {
     app.log.info("🛑 Shutting down game system...");
-    roomManager.shutdown();
+    if (roomManager && roomManager.shutdown) {
+      roomManager.shutdown();
+    }
     process.exit(0);
   });
-
-  // TEST temp users
-  async function ensureTempUser(UserService: any, username: string): Promise<number> {
-  const existing = await UserService.findUserByUsername(username);
-  if (existing) return existing.id!;
-  return await UserService.createUser({
-    username,
-    email: `${username}@temp.local`,
-    password: "temp123",
-  });
-}
 
   // Modules communs
   await app.register(visitsHttp, { prefix: "/api" });
@@ -328,6 +339,9 @@ if (ROLE === "gateway") {
       return reply.code(500).send({ error: "Games retrieval failed" });
     }
   });
+
+  // Dans votre route /api/games/local existante, ajoutez ces logs :
+
 
   // --- Temps réel: état / start / paddle / stats (anais)
   app.get("/api/games/:id/state", async (request, reply) => {

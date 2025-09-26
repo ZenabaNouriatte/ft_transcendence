@@ -10,6 +10,8 @@ export class GameClient {
   private stateUpdateInterval: number = 33; // Attendu à 30 FPS
   private gameId: string | null = null;
   private isPlaying: boolean = false;
+  private isPaused: boolean = false; // Pour gérer la pause
+  private isTogglingPause: boolean = false; // anti double-clic pendant l'appel fetch
   private animationId: number | null = null;
   private pollingInterval: number | null = null;
   
@@ -19,13 +21,59 @@ export class GameClient {
   private lastControlUpdate: number = 0;
   private controlUpdateInterval: number = 8; // Envoyer les contrôles toutes les 8ms (~120 FPS pour fluidité max)
 
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
     
     this.setupCanvas();
     this.setupControls();
+    this.setupPauseButton();  
     this.drawInitialState(); // Afficher l'état initial
+  }
+
+  private setupPauseButton() {
+    const pauseBtn = document.getElementById("pauseBtn") as HTMLButtonElement | null;
+    if (!pauseBtn) return;
+
+    pauseBtn.disabled = false;        // au cas où le routeur l'avait désactivé
+    pauseBtn.textContent = "Pause";
+    pauseBtn.title = "";
+
+    pauseBtn.addEventListener("click", async () => {
+      if (this.isTogglingPause) return; // évite les spams
+      this.isTogglingPause = true;
+
+      try {
+        if (!this.isPaused) {
+          // (option serveur) on tente de pauser côté backend
+          if (this.gameId) {
+            try { await fetch(`/api/games/${this.gameId}/pause`, { method: "POST" }); } 
+            catch (e) { console.warn("Pause server failed; local pause only.", e); }
+          }
+          // pause locale
+          this.stopRenderLoop();
+          this.stopPolling();
+          this.isPaused = true;
+          pauseBtn.textContent = "Resume";
+          console.log("Game paused");
+        } else {
+          // (option serveur) on tente de reprendre côté backend
+          if (this.gameId) {
+            try { await fetch(`/api/games/${this.gameId}/resume`, { method: "POST" }); } 
+            catch (e) { console.warn("Resume server failed; local resume only.", e); }
+          }
+          // reprise locale
+          this.startRenderLoop();
+          this.startPolling();
+          this.isPaused = false;
+          pauseBtn.textContent = "Pause";
+          console.log("Game resumed");
+        }
+      } finally {
+        this.isTogglingPause = false;
+      }
+    });
   }
 
   // Configuration du canvas
@@ -104,12 +152,15 @@ export class GameClient {
   }
 
   // Créer une partie via l'API REST
+// Dans gameClient.ts, méthode createGame() - remplacez l'URL :
+
   private async createGame(): Promise<string> {
     try {
       const player1Name = localStorage.getItem('player1Name') || 'Player 1';
       const player2Name = localStorage.getItem('player2Name') || 'Player 2';
       
-      const response = await fetch('/api/games', {
+      // CHANGEMENT: utiliser /api/games/local au lieu de /api/games
+      const response = await fetch('/api/games/local', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -120,10 +171,12 @@ export class GameClient {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorData.error || 'Unknown error'}`);
       }
 
       const data = await response.json();
+      console.log('Game created successfully:', data);
       return data.gameId;
     } catch (error) {
       console.error('Failed to create game:', error);
@@ -299,6 +352,7 @@ export class GameClient {
 
   // Boucle de rendu
   private startRenderLoop() {
+    if (this.animationId !== null) return; 
     const render = () => {
       if (this.isPlaying) {
         this.updateControls(); // Vérifier les contrôles à chaque frame
@@ -319,6 +373,7 @@ export class GameClient {
 
   // Démarrer le polling de l'état du jeu
   private startPolling() {
+    if (this.pollingInterval !== null) return;
     this.pollingInterval = setInterval(() => {
       if (this.isPlaying) {
         this.fetchGameState();
@@ -462,6 +517,9 @@ export class GameClient {
 
       // 5. Commencer le jeu côté client
       this.isPlaying = true;
+      this.isPaused = false;                                      // ✅ reset
+      const pauseBtn = document.getElementById("pauseBtn") as HTMLButtonElement | null;
+      if (pauseBtn) pauseBtn.textContent = "Pause";
       this.startRenderLoop();
       this.startPolling();
 

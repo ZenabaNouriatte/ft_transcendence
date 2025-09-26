@@ -495,12 +495,12 @@ function render() {
       });
       
       // GESTION DU BOUTON PAUSE/RESUME (désactivé pour le moment car non supporté par le backend)
-      const pauseBtn = document.getElementById("pauseBtn") as HTMLButtonElement;
-      if (pauseBtn) {
-        pauseBtn.disabled = true;
-        pauseBtn.textContent = "Pause";
-        pauseBtn.title = "Pause not available in online mode";
-      }
+      // const pauseBtn = document.getElementById("pauseBtn") as HTMLButtonElement;
+      // if (pauseBtn) {
+      //   pauseBtn.disabled = true;
+      //   pauseBtn.textContent = "Pause";
+      //   pauseBtn.title = "Pause not available in online mode";
+      // }
       
       // BOUTON RETOUR AU MENU PRINCIPAL
       document.getElementById("backToMenuBtn")?.addEventListener("click", () => {
