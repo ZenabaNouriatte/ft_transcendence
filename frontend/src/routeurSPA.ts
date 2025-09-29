@@ -19,6 +19,9 @@ type Route = () => string;
 // Instance globale du client de jeu (null quand pas en jeu)
 let currentGameClient: GameClient | null = null;
 
+// Référence à l'écouteur de clavier pour pouvoir le nettoyer
+let gameKeyListener: ((event: KeyboardEvent) => void) | null = null;
+
 
 // DÉFINITION DES ROUTES ET TEMPLATES HTML
 // Chaque route correspond à une "page" de l'application.
@@ -218,6 +221,12 @@ function render() {
   if (currentGameClient && route !== "#/game") {
     currentGameClient.stop();
     currentGameClient = null;
+  }
+
+  // Nettoyer l'écouteur de clavier si on quitte la page de jeu
+  if (gameKeyListener && route !== "#/game") {
+    document.removeEventListener("keydown", gameKeyListener);
+    gameKeyListener = null;
   }
 
   // AFFICHAGE DE LA PAGE
@@ -471,8 +480,8 @@ function render() {
       let gameStarted = false;
       let isPaused = false;
       
-      // GESTION DU BOUTON START
-      document.getElementById("startBtn")?.addEventListener("click", async () => {
+      // Fonction pour démarrer le jeu
+      const startGame = async () => {
         if (currentGameClient && !gameStarted) {
           try {
             await currentGameClient.start();
@@ -492,16 +501,22 @@ function render() {
             alert('Failed to connect to game server. Please try again.');
           }
         }
-      });
+      };
+
+      // GESTION DU BOUTON START
+      document.getElementById("startBtn")?.addEventListener("click", startGame);
       
-      // GESTION DU BOUTON PAUSE/RESUME (désactivé pour le moment car non supporté par le backend)
-      // const pauseBtn = document.getElementById("pauseBtn") as HTMLButtonElement;
-      // if (pauseBtn) {
-      //   pauseBtn.disabled = true;
-      //   pauseBtn.textContent = "Pause";
-      //   pauseBtn.title = "Pause not available in online mode";
-      // }
+      // GESTION DE LA TOUCHE ENTRÉE POUR DÉMARRER LE JEU
+      gameKeyListener = (event: KeyboardEvent) => {
+        if (event.key === "Enter" && !gameStarted) {
+          event.preventDefault();
+          startGame();
+        }
+      };
       
+      // Ajouter l'écouteur de clavier
+      document.addEventListener("keydown", gameKeyListener);
+
       // BOUTON RETOUR AU MENU PRINCIPAL
       document.getElementById("backToMenuBtn")?.addEventListener("click", () => {
         // Nettoyer les données de jeu
