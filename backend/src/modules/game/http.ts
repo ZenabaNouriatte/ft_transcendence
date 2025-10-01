@@ -1,5 +1,9 @@
 // backend/src/modules/game/http.ts
 import type { FastifyPluginAsync } from "fastify";
+import { GameRoomManager } from "./engine/gameRoomManager.js";
+
+// Instance globale du gestionnaire de salles
+const gameRoomManager = new GameRoomManager();
 
 const gamePlugin: FastifyPluginAsync = async (app) => {
   app.get("/ping", async () => ({ ok: true, service: "game" }));
@@ -81,6 +85,69 @@ const gamePlugin: FastifyPluginAsync = async (app) => {
 
     return { valid: true, winner_id, message: "Partie terminée avec succès" };
   });
+
+  // 5) Pause d'une partie
+  app.post("/games/:gameId/pause", async (req, reply) => {
+    const { gameId } = req.params as { gameId: string };
+    
+    console.log(`[Backend API] Pause request for game ${gameId}`);
+    
+    const room = gameRoomManager.getRoom(gameId);
+    if (!room) {
+      console.log(`[Backend API] Game ${gameId} not found`);
+      return reply.code(404).send({ error: "Game not found" });
+    }
+
+    const success = room.pauseGame();
+    if (success) {
+      console.log(`[Backend API] Game ${gameId} paused successfully`);
+      return { success: true, message: "Game paused" };
+    } else {
+      console.log(`[Backend API] Failed to pause game ${gameId}`);
+      return reply.code(400).send({ error: "Cannot pause game" });
+    }
+  });
+
+  // 6) Reprise d'une partie
+  app.post("/games/:gameId/resume", async (req, reply) => {
+    const { gameId } = req.params as { gameId: string };
+    
+    console.log(`[Backend API] Resume request for game ${gameId}`);
+    
+    const room = gameRoomManager.getRoom(gameId);
+    if (!room) {
+      console.log(`[Backend API] Game ${gameId} not found`);
+      return reply.code(404).send({ error: "Game not found" });
+    }
+
+    const success = room.resumeGame();
+    if (success) {
+      console.log(`[Backend API] Game ${gameId} resumed successfully`);
+      return { success: true, message: "Game resumed" };
+    } else {
+      console.log(`[Backend API] Failed to resume game ${gameId}`);
+      return reply.code(400).send({ error: "Cannot resume game" });
+    }
+  });
+
+  // 7) État d'une partie (pour debug)
+  app.get("/games/:gameId/state", async (req, reply) => {
+    const { gameId } = req.params as { gameId: string };
+    
+    const room = gameRoomManager.getRoom(gameId);
+    if (!room) {
+      return reply.code(404).send({ error: "Game not found" });
+    }
+
+    return {
+      gameId,
+      status: room.getStatus(),
+      playerCount: room.getPlayerCount(),
+      gameState: room.getGameState()
+    };
+  });
 };
 
+// Exporter l'instance du manager pour utilisation ailleurs
+export { gameRoomManager };
 export default gamePlugin;

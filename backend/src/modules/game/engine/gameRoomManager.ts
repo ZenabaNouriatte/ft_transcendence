@@ -289,4 +289,28 @@ export class GameRoomInstance {
     
     this.engine.movePaddle(player, direction);
   }
+
+  // Mettre en pause
+  public pauseGame(): boolean {
+    if (this.status !== 'playing') {
+      console.log(`[Backend] Cannot pause game ${this.gameId}, not in playing state (${this.status})`);
+      return false;
+    }
+    
+    this.engine.pause();
+    console.log(`[Backend] Game ${this.gameId} paused`);
+    return true;
+  }
+
+  // Reprendre le jeu
+  public resumeGame(): boolean {
+    if (this.status !== 'playing') {
+      console.log(`[Backend] Cannot resume game ${this.gameId}, not in playing state (${this.status})`);
+      return false;
+    }
+    
+    this.engine.resume();
+    console.log(`[Backend] Game ${this.gameId} resumed`);
+    return true;
+  }
 }

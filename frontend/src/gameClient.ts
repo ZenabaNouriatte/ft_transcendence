@@ -12,6 +12,7 @@ export class GameClient {
   private isPlaying: boolean = false;
   private isPaused: boolean = false; // Pour gérer la pause
   private isTogglingPause: boolean = false; // anti double-clic pendant l'appel fetch
+  private pausedGameState: GameState | null = null; // État sauvegardé pendant la pause
   private animationId: number | null = null;
   private pollingInterval: number | null = null;
   
@@ -48,25 +49,62 @@ export class GameClient {
         if (!this.isPaused) {
           // (option serveur) on tente de pauser côté backend
           if (this.gameId) {
-            try { await fetch(`/api/games/${this.gameId}/pause`, { method: "POST" }); } 
+            try { 
+              console.log("🔴 Sending PAUSE request to server...");
+              const response = await fetch(`/api/games/${this.gameId}/pause`, { method: "POST" });
+              console.log("🔴 Server PAUSE response:", response.status, response.ok);
+            } 
             catch (e) { console.warn("Pause server failed; local pause only.", e); }
           }
           // pause locale
           this.stopRenderLoop();
           this.stopPolling();
           this.isPaused = true;
+          // Sauvegarder l'état actuel pour potentielle restauration
+          if (this.gameState) {
+            this.pausedGameState = { ...this.gameState };
+            console.log("🔴 PAUSE - Ball position saved:", { x: this.gameState.ball.x, y: this.gameState.ball.y });
+          }
           pauseBtn.textContent = "Resume";
           console.log("Game paused");
         } else {
           // (option serveur) on tente de reprendre côté backend
           if (this.gameId) {
-            try { await fetch(`/api/games/${this.gameId}/resume`, { method: "POST" }); } 
+            try { 
+              console.log("🟢 Sending RESUME request to server...");
+              const response = await fetch(`/api/games/${this.gameId}/resume`, { method: "POST" });
+              console.log("🟢 Server RESUME response:", response.status, response.ok);
+            } 
             catch (e) { console.warn("Resume server failed; local resume only.", e); }
           }
           // reprise locale
+          this.isPaused = false;
+          // Réinitialiser l'interpolation pour éviter les glitchs
+          this.previousGameState = null;
+          
+          // Récupérer l'état actuel du serveur
+          await this.fetchGameState();
+          
+          // Si le serveur ne gère pas la pause correctement, on pourrait restaurer l'état sauvé
+          // Pour l'instant on log pour debug
+          if (this.gameState && this.pausedGameState) {
+            const deltaX = Math.abs(this.gameState.ball.x - this.pausedGameState.ball.x);
+            const deltaY = Math.abs(this.gameState.ball.y - this.pausedGameState.ball.y);
+            console.log("🟢 RESUME - Ball moved during pause:", { 
+              paused: this.pausedGameState.ball, 
+              current: this.gameState.ball, 
+              delta: { x: deltaX, y: deltaY } 
+            });
+            
+            // Si la balle a bougé de plus de 50px pendant la pause, c'est suspect
+            if (deltaX > 50 || deltaY > 50) {
+              console.warn("⚠️ Server didn't pause correctly! Ball moved too much during pause.");
+            }
+          }
+          
+          this.pausedGameState = null; // Nettoyer
           this.startRenderLoop();
           this.startPolling();
-          this.isPaused = false;
           pauseBtn.textContent = "Pause";
           console.log("Game resumed");
         }
@@ -218,9 +256,22 @@ export class GameClient {
       const data = await response.json();
       console.log('Received game state:', data);
       
-      // Stocker l'état précédent pour l'interpolation
-      this.previousGameState = this.gameState;
-      this.gameState = data.gameState || data;
+      const newGameState = data.gameState || data;
+      
+      // Détecter si la balle a été resetée (changement brusque de position)
+      const isBallReset = this.gameState && this.previousGameState && 
+        Math.abs(newGameState.ball.x - this.gameState.ball.x) > 200; // Reset si déplacement > 200px
+      
+      if (isBallReset) {
+        console.log('Ball reset detected, skipping interpolation');
+        // Ne pas utiliser l'interpolation pour un reset de balle
+        this.previousGameState = null;
+      } else {
+        // Stocker l'état précédent pour l'interpolation normale
+        this.previousGameState = this.gameState;
+      }
+      
+      this.gameState = newGameState;
       this.lastStateUpdateTime = Date.now();
       
       // Vérifier si le jeu est terminé
@@ -406,7 +457,11 @@ export class GameClient {
     // Calculer le facteur d'interpolation pour un rendu plus fluide
     const now = Date.now();
     const timeSinceUpdate = now - this.lastStateUpdateTime;
-    const interpolationFactor = Math.min(timeSinceUpdate / (1000 / 30), 1); // 30 FPS polling
+    
+    // Si trop de temps s'est écoulé (ex: après une pause), ne pas interpoler
+    const maxInterpolationTime = 100; // 100ms max
+    const shouldInterpolate = timeSinceUpdate < maxInterpolationTime;
+    const interpolationFactor = shouldInterpolate ? Math.min(timeSinceUpdate / (1000 / 30), 1) : 1;
 
     const state = this.gameState;
     const ctx = this.ctx;
@@ -417,12 +472,19 @@ export class GameClient {
     let ballX = state.ball.x;
     let ballY = state.ball.y;
 
-    if (this.previousGameState && interpolationFactor < 1) {
-      // Interpolation linéaire entre l'état précédent et actuel
+    if (this.previousGameState && interpolationFactor < 1 && !this.isPaused && shouldInterpolate) {
+      // Interpolation linéaire entre l'état précédent et actuel (seulement si pas en pause)
       p1Pos = this.lerp(this.previousGameState.p1, state.p1, interpolationFactor);
       p2Pos = this.lerp(this.previousGameState.p2, state.p2, interpolationFactor);
-      ballX = this.lerp(this.previousGameState.ball.x, state.ball.x, interpolationFactor);
-      ballY = this.lerp(this.previousGameState.ball.y, state.ball.y, interpolationFactor);
+      
+      // Vérifier si la balle ne fait pas un saut trop important (éviter les glitchs)
+      const ballDistanceX = Math.abs(state.ball.x - this.previousGameState.ball.x);
+      const ballDistanceY = Math.abs(state.ball.y - this.previousGameState.ball.y);
+      
+      if (ballDistanceX < 50 && ballDistanceY < 50) { // Seulement interpoler si mouvement raisonnable
+        ballX = this.lerp(this.previousGameState.ball.x, state.ball.x, interpolationFactor);
+        ballY = this.lerp(this.previousGameState.ball.y, state.ball.y, interpolationFactor);
+      }
     }
 
     // Effacer le canvas
