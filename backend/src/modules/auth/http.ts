@@ -1,7 +1,6 @@
 // backend/src/modules/auth/http.ts
 import type { FastifyPluginAsync } from "fastify";
-import { q } from "../../database/index.js";
-import { hashPassword, verifyPassword } from "../../common/security.js";
+import bcrypt from "bcryptjs";
 
 const authPlugin: FastifyPluginAsync = async (app) => {
   app.post("/validate-register", async (req, reply) => {
@@ -43,64 +42,5 @@ const authPlugin: FastifyPluginAsync = async (app) => {
 
   app.get("/ping", async () => ({ ok: true, service: "auth" }));
 };
-
-export default async function authRoutes(fastify: FastifyInstance) {
-  // POST /api/auth/register
-  fastify.post("/register", {
-    schema: {
-      body: {
-        type: "object",
-        required: ["username", "email", "password"],
-        additionalProperties: false,
-        properties: {
-          username: { type: "string", minLength: 3, maxLength: 32 },
-          email: { type: "string", format: "email" },
-          password: { type: "string", minLength: 8, maxLength: 128 },
-        },
-      },
-    },
-  }, async (req, reply) => {
-    const { username, email, password } = req.body as any;
-
-    const exists = await q.get("SELECT 1 FROM users WHERE email = ?", [email]);
-    if (exists) return reply.code(409).send({ error: "Email already registered" });
-
-    const pwdHash = await hashPassword(password);         // ← bcrypt ici
-    await q.run(
-      "INSERT INTO users (username, email, password) VALUES (?,?,?)",
-      [username, email, pwdHash]
-    );
-
-    return reply.code(201).send({ ok: true });
-  });
-
-  // POST /api/auth/login
-  fastify.post("/login", {
-    schema: {
-      body: {
-        type: "object",
-        required: ["email", "password"],
-        additionalProperties: false,
-        properties: {
-          email: { type: "string", format: "email" },
-          password: { type: "string", minLength: 8, maxLength: 128 },
-        },
-      },
-    },
-  }, async (req: any, reply) => {
-    const { email, password } = req.body as any;
-
-    const user = await q.get<{ id: number; username: string; password: string }>(
-      "SELECT id, username, password FROM users WHERE email = ?", [email]
-    );
-    if (!user) return reply.code(401).send({ error: "Invalid credentials" });
-
-    const ok = await verifyPassword(user.password, password); // ← bcrypt.compare
-    if (!ok) return reply.code(401).send({ error: "Invalid credentials" });
-
-    const token = fastify.jwt.sign({ sub: user.id, username: user.username }, { expiresIn: "7d" });
-    return reply.send({ token, user: { id: user.id, username: user.username, email } });
-  });
-}
 
 export default authPlugin;

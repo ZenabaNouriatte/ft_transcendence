@@ -4,8 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import sqlite3 from "sqlite3";
 import { fileURLToPath } from "node:url";
+
+// Types (optionnel, juste pour l’auto-complétion)
 import type { User } from "../types/index.js";
-import { env } from "../common/env.js";
 
 // ────────────────────────── Résolution des chemins ──────────────────────────
 const __filename = fileURLToPath(import.meta.url);
@@ -267,19 +268,3 @@ export const tournamentsRepo = {
   }
 };
 
-
-//------------------- Expose les helpers
-
-let db: Database;
-export async function initDb() {
-  db = await open({ filename: env.DB_PATH, driver: sqlite3.Database });
-  // exécuter schema.sql ici si ce n’est pas déjà le cas
-  return db;
-}
-
-// Helpers PARAMÉTRÉS
-export const q = {
-  get: <T=any>(sql: string, params: any[] = []) => db.get<T>(sql, params),
-  all: <T=any>(sql: string, params: any[] = []) => db.all<T>(sql, params),
-  run: (sql: string, params: any[] = []) => db.run(sql, params),
-};
