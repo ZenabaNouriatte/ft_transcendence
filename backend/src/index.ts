@@ -412,6 +412,59 @@ if (ROLE === "gateway") {
     }
   });
 
+  // Routes PAUSE/RESUME pour le contrôle de jeu
+  app.post("/api/games/:id/pause", async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      
+      console.log(`[Backend API] Pause request for game ${id}`);
+      
+      const room = roomManager.getRoom(id);
+      if (!room) {
+        console.log(`[Backend API] Game ${id} not found`);
+        return reply.code(404).send({ error: "Game not found" });
+      }
+
+      const success = room.pauseGame();
+      if (success) {
+        console.log(`[Backend API] Game ${id} paused successfully`);
+        return reply.send({ success: true, message: "Game paused" });
+      } else {
+        console.log(`[Backend API] Failed to pause game ${id}`);
+        return reply.code(400).send({ error: "Cannot pause game" });
+      }
+    } catch (error) {
+      request.log.error(error, "Pause game error");
+      return reply.code(500).send({ error: "Failed to pause game" });
+    }
+  });
+
+  app.post("/api/games/:id/resume", async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      
+      console.log(`[Backend API] Resume request for game ${id}`);
+      
+      const room = roomManager.getRoom(id);
+      if (!room) {
+        console.log(`[Backend API] Game ${id} not found`);
+        return reply.code(404).send({ error: "Game not found" });
+      }
+
+      const success = room.resumeGame();
+      if (success) {
+        console.log(`[Backend API] Game ${id} resumed successfully`);
+        return reply.send({ success: true, message: "Game resumed" });
+      } else {
+        console.log(`[Backend API] Failed to resume game ${id}`);
+        return reply.code(400).send({ error: "Cannot resume game" });
+      }
+    } catch (error) {
+      request.log.error(error, "Resume game error");
+      return reply.code(500).send({ error: "Failed to resume game" });
+    }
+  });
+
   app.get("/api/games/stats", async (request, reply) => {
     try {
       const userId = await getUserFromToken(request);

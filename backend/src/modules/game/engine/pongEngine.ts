@@ -7,6 +7,7 @@ export class PongEngine {
   private gameState: GameState;
   private gameEnded: boolean = false;
   private winner: string | null = null;
+  private isPaused: boolean = false;
 
   // Paramètres de jeu (identiques au frontend)
   private baseSpeed: number = 5;
@@ -74,7 +75,7 @@ export class PongEngine {
 
   // Mise à jour physique (60 FPS)
   public update(): boolean {
-    if (this.gameEnded) return false;
+    if (this.gameEnded || this.isPaused) return !this.gameEnded;
 
     this.updateAcceleration();
     this.updateBallPhysics();
@@ -215,10 +216,16 @@ export class PongEngine {
 
   // MÉTHODES POUR PAUSE/REPRISE (NOUVEAUTÉ BACKEND)
   public pause(): void {
+    this.isPaused = true;
     console.log('[Backend] Game paused');
   }
 
   public resume(): void {
+    this.isPaused = false;
     console.log('[Backend] Game resumed');
+  }
+
+  public isPausedState(): boolean {
+    return this.isPaused;
   }
 }
