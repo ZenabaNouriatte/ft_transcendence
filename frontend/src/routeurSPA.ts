@@ -29,17 +29,30 @@ const routes: Record<string, Route> = {
   
   // PAGE D'ACCUEIL
   "": () => `
-    <div class="flex flex-col items-center">
-      <h1 class="text-4xl mb-8 text-center">Welcome to our Pong Game</h1>
-      <div class="bg-blue-900 p-8 rounded-lg shadow-lg">
-        <p class="mb-6 text-xl text-blue-300 text-center">Pick your game style</p>
-        <div class="flex flex-row gap-4">
-          <button id="classicBtn" class="px-8 py-4 bg-green-600 text-white text-lg rounded hover:bg-green-500 transition-colors">
-            🎮 CLASSIC
-          </button>
-          <button id="tournamentBtn" class="px-8 py-4 bg-purple-600 text-white text-lg rounded hover:bg-purple-500 transition-colors">
-            🏆 TOURNAMENT
-          </button>
+    <div class="min-h-screen">
+      <!-- Boutons Login/Sign Up en haut à droite de la fenêtre -->
+      <div class="fixed top-4 right-8 flex gap-3 z-10">
+        <button id="loginBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors">
+          Login
+        </button>
+        <button id="signUpBtn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 transition-colors">
+          Sign Up
+        </button>
+      </div>
+      
+      <!-- Contenu principal centré -->
+      <div class="flex flex-col items-center justify-center min-h-screen">
+        <h1 class="text-4xl mb-8 text-center">Welcome to our Pong Game</h1>
+        <div class="bg-blue-900 p-8 rounded-lg shadow-lg">
+          <p class="mb-6 text-xl text-blue-300 text-center">Pick your game style</p>
+          <div class="flex flex-row gap-4">
+            <button id="classicBtn" class="px-8 py-4 bg-green-600 text-white text-lg rounded hover:bg-green-500 transition-colors">
+              🎮 CLASSIC
+            </button>
+            <button id="tournamentBtn" class="px-8 py-4 bg-purple-600 text-white text-lg rounded hover:bg-purple-500 transition-colors">
+              🏆 TOURNAMENT
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -201,16 +214,55 @@ const routes: Record<string, Route> = {
         </button>
       </div>
     </div>
+  `,
+  // PAGE INSCRIPTION
+  "#/sign-up": () => `
+    <div class="flex flex-col items-center justify-center min-h-screen">
+      <h1 class="text-3xl mb-8">Sign Up</h1>
+      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+        <!-- Formulaire d'inscription à venir -->
+      </div>
+    </div>
+  `,
+  // PAGE CONNEXION
+  "#/login": () => `
+    <div class="flex flex-col items-center justify-center min-h-screen">
+      <h1 class="text-3xl mb-8">Login</h1>
+      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+        <!-- Formulaire de connexion à venir -->
+      </div>
+    </div>
+  `,
+  // PAGE PROFIL
+  "#/profile": () => `
+    <div class="flex flex-col items-center justify-center min-h-screen">
+      <h1 class="text-3xl mb-8">Profile</h1>
+      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+        <!-- Informations du profil à venir -->
+      </div>
+    </div>
+  `,
+  // PAGE AMIS
+  "#/friends": () => `
+    <div class="flex flex-col items-center justify-center min-h-screen">
+      <h1 class="text-3xl mb-8">Friends</h1>
+      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+        <!-- Liste des amis à venir -->
+      </div>
+    </div>
+  `,
+  // PAGE PROFIL D'UN AMI
+  "#/friends-profile": () => `
+    <div class="flex flex-col items-center justify-center min-h-screen">
+      <h1 class="text-3xl mb-8">Friend's Profile</h1>
+      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+        <!-- Profil d'un ami à venir -->
+      </div>
+    </div>
   `
 };
 
 // FONCTION PRINCIPALE DE RENDU
-
-// Cette fonction est le cœur du routeur SPA. Elle :
-// 1. Lit la route actuelle (hash de l'URL)
-// 2. Nettoie le jeu précédent si nécessaire
-// 3. Affiche le HTML correspondant à la route
-// 4. Attache les événements spécifiques à chaque page
 function render() {
   const root = document.getElementById("app");
   if (!root) return;
@@ -242,6 +294,15 @@ function render() {
     
     document.getElementById("tournamentBtn")?.addEventListener("click", () => {
       location.hash = "#/tournament";
+    });
+    
+    // Gestion des boutons d'authentification
+    document.getElementById("loginBtn")?.addEventListener("click", () => {
+      location.hash = "#/login";
+    });
+    
+    document.getElementById("signUpBtn")?.addEventListener("click", () => {
+      location.hash = "#/sign-up";
     });
     
   } else if (route === "#/classic") {
