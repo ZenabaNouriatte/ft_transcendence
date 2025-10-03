@@ -1,24 +1,31 @@
-// backend/src/modules/visits/http.ts
-import type { FastifyInstance } from "fastify";
-import { getVisitTotal, incrementVisit } from "../../database/index.js";
-import { visitsDbTotal, visitsApiIncrementsTotal } from "../../common/metrics.js";
+// src/modules/visits/http.ts
+import { type FastifyPluginAsync } from "fastify";
+import { VisitsService } from "../../services/index.js";
+// (optionnel) métriques si tu veux refléter la valeur en gauge:
+// import { visitsDbTotal } from "../../common/metrics.js";
 
-export default async function visitsHttp(app: FastifyInstance) {
-  // GET /api/visits
-  app.get("/visits", async () => {
-    const total = await getVisitTotal();
-    visitsDbTotal.set(total);
-    return { total };
+const visitsHttp: FastifyPluginAsync = async (app) => {
+  // Assure la présence du schéma/ligne au chargement du plugin
+  await VisitsService.ensure();
+
+  app.get("/visits", async (_req, reply) => {
+    const total = await VisitsService.getTotal();
+    // try { visitsDbTotal.set(total); } catch {}
+    reply.type("application/json");
+    return reply.send({ total });
   });
 
-  // POST /api/visit
-  app.post("/visit", async (req) => {
-    const raw = (req.headers["x-nav-type"] as string | undefined) || "";
-    const type = raw.toLowerCase() === "navigate" ? "navigate" : "reload";
-    visitsApiIncrementsTotal.inc({ type });
-
-    const total = await incrementVisit();
-    visitsDbTotal.set(total);
-    return { ok: true, total };
+  app.post("/visit", async (req, reply) => {
+    const nav = String(req.headers["x-nav-type"] || "");
+    if (!nav) {
+      return reply.code(400).send({ error: "missing_nav_type" });
+    }
+    const total = await VisitsService.increment();
+    // try { visitsDbTotal.set(total); } catch {}
+    reply.type("application/json");
+    return reply.send({ total });
   });
-}
+};
+
+export default visitsHttp;
+
