@@ -19,6 +19,46 @@ type Route = () => string;
 // Instance globale du client de jeu (null quand pas en jeu)
 let currentGameClient: GameClient | null = null;
 
+// Fonction pour obtenir l'avatar basé sur l'ID utilisateur (correspondance directe)
+function getUserAvatarPath(userId: number): string {
+  // ID direct: user 1 → image 1.JPG, user 2 → image 2.JPG, etc.
+  // Si l'ID dépasse 15, on boucle (modulo)
+  const imageNumber = userId > 15 ? ((userId - 1) % 15) + 1 : userId;
+  return `/images/${imageNumber}.JPG`;
+}
+
+// Fonction pour récupérer l'ID utilisateur via API
+async function getCurrentUserId(): Promise<number> {
+  const currentUsername = localStorage.getItem('currentUsername');
+  if (!currentUsername || currentUsername === 'Guest') {
+    return 1; // ID par défaut
+  }
+
+  try {
+    // Appel à l'API pour récupérer la liste des utilisateurs
+    const response = await fetch('/api/users');
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // Trouver l'utilisateur par son nom
+    const user = data.users?.find((u: any) => u.username === currentUsername);
+    
+    if (user && user.id) {
+      return user.id;
+    }
+    
+    console.warn(`Utilisateur ${currentUsername} non trouvé dans l'API, utilisation de l'ID par défaut`);
+    return 1; // Fallback
+    
+  } catch (error) {
+    console.error('Erreur lors de la récupération de l\'ID utilisateur:', error);
+    return 1; // Fallback en cas d'erreur
+  }
+}
+
 // Référence à l'écouteur de clavier pour pouvoir le nettoyer
 let gameKeyListener: ((event: KeyboardEvent) => void) | null = null;
 
@@ -39,17 +79,17 @@ const routes: Record<string, Route> = {
     // Générer les boutons d'authentification selon l'état de connexion
     const authButtons = isLoggedIn 
       ? `<!-- Bouton utilisateur connecté en haut à droite -->
-         <div class="fixed top-4 right-8 z-10">
-           <button id="userProfileBtn" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-500 transition-colors flex items-center gap-2">
+         <div class="fixed top-8 right-8 z-10">
+           <button id="userProfileBtn" class="retro-btn flex items-center gap-2">
              👤 ${currentUsername}
            </button>
          </div>`
       : `<!-- Boutons Login/Sign Up en haut à droite de la fenêtre -->
-         <div class="fixed top-4 right-8 flex gap-3 z-10">
-           <button id="loginBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors">
+         <div class="fixed top-8 right-8 flex gap-3 z-10">
+           <button id="loginBtn" class="retro-btn">
              Login
            </button>
-           <button id="signUpBtn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 transition-colors">
+           <button id="signUpBtn" class="retro-btn">
              Sign Up
            </button>
          </div>`;
@@ -64,10 +104,10 @@ const routes: Record<string, Route> = {
         <div class="bg-blue-900 p-8 rounded-lg shadow-lg">
           <p class="mb-6 text-xl text-blue-300 text-center">Pick your game style</p>
           <div class="flex flex-row gap-4">
-            <button id="classicBtn" class="px-8 py-4 bg-green-600 text-white text-lg rounded hover:bg-green-500 transition-colors">
+            <button id="classicBtn" class="retro-btn">
               🎮 CLASSIC
             </button>
-            <button id="tournamentBtn" class="px-8 py-4 bg-purple-600 text-white text-lg rounded hover:bg-purple-500 transition-colors">
+            <button id="tournamentBtn" class="retro-btn">
               🏆 TOURNAMENT
             </button>
           </div>
@@ -99,12 +139,12 @@ const routes: Record<string, Route> = {
           </div>
         </div>
         
-        <button id="playBtn" class="w-full px-4 py-3 bg-green-600 text-white rounded hover:bg-green-500 transition-colors">
+        <button id="playBtn" class="retro-btn w-full">
           🏓 START GAME
         </button>
       </div>
       <div class="mt-6">
-        <button id="backBtn" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-400">
+        <button id="backBtn" class="retro-btn">
           ← Back to menu
         </button>
       </div>
@@ -139,10 +179,10 @@ const routes: Record<string, Route> = {
         
         <!-- Boutons d'action -->
         <div class="flex gap-4">
-          <button id="backToMenuBtn" class="flex-1 px-4 py-3 bg-gray-500 text-white rounded hover:bg-gray-400">
+          <button id="backToMenuBtn" class="retro-btn flex-1">
             ← Back to menu
           </button>
-          <button id="startTournamentBtn" class="flex-1 px-4 py-3 bg-green-600 text-white rounded hover:bg-green-500 transition-colors">
+          <button id="startTournamentBtn" class="retro-btn flex-1">
             🚀 Start Tournament
           </button>
         </div>
@@ -164,11 +204,11 @@ const routes: Record<string, Route> = {
           <div id="nextMatchType" class="text-xl mb-2 text-white">-</div>
           <div id="nextMatchPlayers" class="text-lg text-gray-300">- vs -</div>
         </div>
-        <button id="continueToNextMatchBtn" class="px-8 py-4 bg-green-600 text-white text-xl rounded-lg hover:bg-green-500 transition-colors shadow-lg">
+        <button id="continueToNextMatchBtn" class="retro-btn">
           🎮 Continue to Next Match
         </button>
         <div class="mt-6">
-          <button id="quitTournamentBtn" class="px-6 py-2 bg-gray-600 text-white rounded hover:bg-gray-500">
+          <button id="quitTournamentBtn" class="retro-btn">
             🏠 Quit Tournament
           </button>
         </div>
@@ -185,10 +225,10 @@ const routes: Record<string, Route> = {
           Final Score: <span class="font-bold">0 - 0</span>
         </div>
         <div class="flex gap-6 justify-center">
-          <button id="playAgainBtn" class="px-8 py-4 bg-green-600 text-white text-xl rounded-lg hover:bg-green-500 transition-colors shadow-lg">
+          <button id="playAgainBtn" class="retro-btn">
             🎮 Play Again
           </button>
-          <button id="backToMenuBtn" class="px-8 py-4 bg-gray-600 text-white text-xl rounded-lg hover:bg-gray-500 transition-colors shadow-lg">
+          <button id="backToMenuBtn" class="retro-btn">
             🏠 Back to Menu
           </button>
         </div>
@@ -218,17 +258,17 @@ const routes: Record<string, Route> = {
       
       <!-- Bouton Start (visible au début) -->
       <div id="startSection" class="flex gap-4 mb-4">
-        <button id="startBtn" class="px-8 py-4 bg-green-600 text-white text-lg rounded hover:bg-green-500 transition-colors">
+        <button id="startBtn" class="retro-btn">
           🚀 START GAME
         </button>
       </div>
       
       <!-- Boutons de contrôle du jeu (cachés au début, visibles une fois le jeu démarré) -->
       <div id="gameControls" class="hidden gap-4">
-        <button id="pauseBtn" class="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-500">
+        <button id="pauseBtn" class="retro-btn">
           Pause
         </button>
-        <button id="backToMenuBtn" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-400">
+        <button id="backToMenuBtn" class="retro-btn">
           Back to menu
         </button>
       </div>
@@ -262,7 +302,7 @@ const routes: Record<string, Route> = {
           </div>
           
           <button type="submit" id="signUpSubmit"
-            class="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-500 transition-colors">
+            class="retro-btn w-full">
             Create Account
           </button>
         </form>
@@ -290,7 +330,7 @@ const routes: Record<string, Route> = {
           </div>
           
           <button type="submit" id="loginSubmit"
-            class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-500 transition-colors">
+            class="retro-btn w-full">
             Login
           </button>
         </form>
@@ -298,18 +338,27 @@ const routes: Record<string, Route> = {
     </div>
   `,
   // PAGE PROFIL
-  "#/profile": () => `
+  "#/profile": () => {
+    const currentUsername = localStorage.getItem('currentUsername') || 'Player';
+    
+    // Rendu initial avec image placeholder (sera mise à jour via JS)
+    return `
     <div class="min-h-screen">
       <!-- Bouton retour à l'accueil en haut à gauche -->
-      <div class="fixed top-4 left-8 z-10">
-        <button id="backToHomeBtn" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 transition-colors flex items-center gap-2">
+      <div class="fixed top-8 left-8 z-10">
+        <button id="backToHomeBtn" class="retro-btn flex items-center gap-2">
           ← Home
         </button>
       </div>
       
       <!-- Contenu principal centré -->
       <div class="flex flex-col items-center justify-center min-h-screen">
-        <h1 id="profileUsername" class="text-5xl mb-8 text-white font-bold text-center">Username</h1>
+        <!-- Photo de profil avec image dynamique -->
+        <div class="profile-photo">
+          <img id="profileAvatar" src="/images/1.JPG" alt="Profile Photo" 
+               style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+        </div>
+        <h1 id="profileUsername" class="text-5xl mb-8 text-white font-bold text-center">${currentUsername}</h1>
         <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-2xl">
           <h2 class="text-2xl mb-6 text-gray-800 text-center">Profile Information</h2>
           <!-- Informations du profil à développer -->
@@ -319,14 +368,15 @@ const routes: Record<string, Route> = {
           
           <!-- Bouton de déconnexion -->
           <div class="mt-6 pt-4 border-t border-gray-300">
-            <button id="logoutBtn" class="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-500 transition-colors">
+            <button id="logoutBtn" class="retro-btn w-full">
               🚪 Logout
             </button>
           </div>
         </div>
       </div>
     </div>
-  `,
+    `;
+  },
   // PAGE AMIS
   "#/friends": () => `
     <div class="flex flex-col items-center justify-center min-h-screen">
@@ -885,6 +935,25 @@ function render() {
     if (profileUsername) {
       profileUsername.textContent = username;
     }
+
+    // Charger l'avatar depuis l'API
+    async function loadUserAvatar() {
+      try {
+        const userId = await getCurrentUserId();
+        const avatarPath = getUserAvatarPath(userId);
+        const avatarImg = document.getElementById('profileAvatar') as HTMLImageElement;
+        
+        if (avatarImg) {
+          avatarImg.src = avatarPath;
+          console.log(`Avatar chargé: User ID ${userId} → ${avatarPath}`);
+        }
+      } catch (error) {
+        console.error('Erreur lors du chargement de l\'avatar:', error);
+      }
+    }
+
+    // Charger l'avatar
+    loadUserAvatar();
     
     // Gestion du bouton retour à l'accueil
     document.getElementById('backToHomeBtn')?.addEventListener('click', () => {
