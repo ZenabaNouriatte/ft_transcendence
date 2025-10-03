@@ -28,17 +28,35 @@ let gameKeyListener: ((event: KeyboardEvent) => void) | null = null;
 const routes: Record<string, Route> = {
   
   // PAGE D'ACCUEIL
-  "": () => `
+  "": () => {
+    // Vérifier si un utilisateur est connecté
+    const currentUsername = localStorage.getItem('currentUsername');
+    const isLoggedIn = currentUsername && currentUsername !== 'Guest';
+    
+    // Debug pour voir l'état de connexion
+    console.log('Home page render - Username:', currentUsername, 'IsLoggedIn:', isLoggedIn);
+    
+    // Générer les boutons d'authentification selon l'état de connexion
+    const authButtons = isLoggedIn 
+      ? `<!-- Bouton utilisateur connecté en haut à droite -->
+         <div class="fixed top-4 right-8 z-10">
+           <button id="userProfileBtn" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-500 transition-colors flex items-center gap-2">
+             👤 ${currentUsername}
+           </button>
+         </div>`
+      : `<!-- Boutons Login/Sign Up en haut à droite de la fenêtre -->
+         <div class="fixed top-4 right-8 flex gap-3 z-10">
+           <button id="loginBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors">
+             Login
+           </button>
+           <button id="signUpBtn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 transition-colors">
+             Sign Up
+           </button>
+         </div>`;
+
+    return `
     <div class="min-h-screen">
-      <!-- Boutons Login/Sign Up en haut à droite de la fenêtre -->
-      <div class="fixed top-4 right-8 flex gap-3 z-10">
-        <button id="loginBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors">
-          Login
-        </button>
-        <button id="signUpBtn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 transition-colors">
-          Sign Up
-        </button>
-      </div>
+      ${authButtons}
       
       <!-- Contenu principal centré -->
       <div class="flex flex-col items-center justify-center min-h-screen">
@@ -56,7 +74,8 @@ const routes: Record<string, Route> = {
         </div>
       </div>
     </div>
-  `,
+    `;
+  },
   // PAGE MODE CLASSIC
   // Formulaire de saisie des noms des deux joueurs
   "#/classic": () => `
@@ -218,27 +237,93 @@ const routes: Record<string, Route> = {
   // PAGE INSCRIPTION
   "#/sign-up": () => `
     <div class="flex flex-col items-center justify-center min-h-screen">
-      <h1 class="text-3xl mb-8">Sign Up</h1>
+      <h1 class="text-3xl mb-8 text-white">Sign Up</h1>
       <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
-        <!-- Formulaire d'inscription à venir -->
+        <form id="signUpForm" class="space-y-4">
+          <div>
+            <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input type="text" id="username" name="username" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              placeholder="Enter your username">
+          </div>
+          
+          <div>
+            <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input type="email" id="email" name="email" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              placeholder="Enter your email">
+          </div>
+          
+          <div>
+            <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input type="password" id="password" name="password" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              placeholder="Enter your password">
+          </div>
+          
+          <button type="submit" id="signUpSubmit"
+            class="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-500 transition-colors">
+            Create Account
+          </button>
+        </form>
       </div>
     </div>
   `,
   // PAGE CONNEXION
   "#/login": () => `
     <div class="flex flex-col items-center justify-center min-h-screen">
-      <h1 class="text-3xl mb-8">Login</h1>
+      <h1 class="text-3xl mb-8 text-white">Login</h1>
       <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
-        <!-- Formulaire de connexion à venir -->
+        <form id="loginForm" class="space-y-4">
+          <div>
+            <label for="loginUsername" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input type="text" id="loginUsername" name="username" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              placeholder="Enter your username">
+          </div>
+          
+          <div>
+            <label for="loginPassword" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input type="password" id="loginPassword" name="password" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              placeholder="Enter your password">
+          </div>
+          
+          <button type="submit" id="loginSubmit"
+            class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-500 transition-colors">
+            Login
+          </button>
+        </form>
       </div>
     </div>
   `,
   // PAGE PROFIL
   "#/profile": () => `
-    <div class="flex flex-col items-center justify-center min-h-screen">
-      <h1 class="text-3xl mb-8">Profile</h1>
-      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
-        <!-- Informations du profil à venir -->
+    <div class="min-h-screen">
+      <!-- Bouton retour à l'accueil en haut à gauche -->
+      <div class="fixed top-4 left-8 z-10">
+        <button id="backToHomeBtn" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 transition-colors flex items-center gap-2">
+          ← Home
+        </button>
+      </div>
+      
+      <!-- Contenu principal centré -->
+      <div class="flex flex-col items-center justify-center min-h-screen">
+        <h1 id="profileUsername" class="text-5xl mb-8 text-white font-bold text-center">Username</h1>
+        <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-2xl">
+          <h2 class="text-2xl mb-6 text-gray-800 text-center">Profile Information</h2>
+          <!-- Informations du profil à développer -->
+          <div class="space-y-4 text-gray-700">
+            <p class="text-center text-gray-600">Je suis sur le coup hihi patience ! :3</p>
+          </div>
+          
+          <!-- Bouton de déconnexion -->
+          <div class="mt-6 pt-4 border-t border-gray-300">
+            <button id="logoutBtn" class="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-500 transition-colors">
+              🚪 Logout
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   `,
@@ -296,14 +381,27 @@ function render() {
       location.hash = "#/tournament";
     });
     
-    // Gestion des boutons d'authentification
-    document.getElementById("loginBtn")?.addEventListener("click", () => {
-      location.hash = "#/login";
-    });
+    // Vérifier si un utilisateur est connecté pour adapter les événements
+    const currentUsername = localStorage.getItem('currentUsername');
+    const isLoggedIn = currentUsername && currentUsername !== 'Guest';
     
-    document.getElementById("signUpBtn")?.addEventListener("click", () => {
-      location.hash = "#/sign-up";
-    });
+    console.log('Home page events - Username:', currentUsername, 'IsLoggedIn:', isLoggedIn);
+    
+    if (isLoggedIn) {
+      // Utilisateur connecté : bouton profil
+      document.getElementById("userProfileBtn")?.addEventListener("click", () => {
+        location.hash = "#/profile";
+      });
+    } else {
+      // Utilisateur non connecté : boutons login/signup
+      document.getElementById("loginBtn")?.addEventListener("click", () => {
+        location.hash = "#/login";
+      });
+      
+      document.getElementById("signUpBtn")?.addEventListener("click", () => {
+        location.hash = "#/sign-up";
+      });
+    }
     
   } else if (route === "#/classic") {
     // PAGE MODE CLASSIC
@@ -693,6 +791,124 @@ function render() {
       localStorage.removeItem('currentGameMode');
       localStorage.removeItem('lastMatchResult');
       location.hash = '';
+    });
+    
+  } else if (route === "#/sign-up") {
+    // --- PAGE D'INSCRIPTION ---
+    
+    // Gestion du formulaire d'inscription
+    const signUpForm = document.getElementById('signUpForm') as HTMLFormElement;
+    
+    signUpForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      // Récuperer les donnees du formulaire
+      const formData = new FormData(signUpForm);
+      const username = formData.get('username') as string;
+      const email = formData.get('email') as string;
+      const password = formData.get('password') as string;
+      
+      try {
+        const response = await fetch('/api/users/register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username, email, password }),
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          // Succes
+          console.log('Account created successfully:', data);
+          localStorage.setItem('currentUsername', username);
+          location.hash = '#/profile';
+        } else {
+          // Erreur
+          console.error('Registration failed:', data);
+          alert('Registration failed: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Network error:', error);
+        alert('Network error. Please try again.');
+      }
+    });
+  } else if (route === "#/login") {
+    // --- PAGE DE CONNEXION ---
+    
+    // Gestion du formulaire de connexion
+    const loginForm = document.getElementById('loginForm') as HTMLFormElement;
+    
+    loginForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      // Récuperer les donnees du formulaire
+      const formData = new FormData(loginForm);
+      const username = formData.get('username') as string;
+      const password = formData.get('password') as string;
+      
+      try {
+        const response = await fetch('/api/users/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username, password }),
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          // Succes
+          console.log('Login successful:', data);
+          localStorage.setItem('currentUsername', username);
+          location.hash = '#/profile';
+        } else {
+          // Erreur
+          console.error('Login failed:', data);
+          alert('Login failed: ' + (data.error || 'Invalid username or password'));
+        }
+      } catch (error) {
+        console.error('Network error:', error);
+        alert('Network error. Please try again.');
+      }
+    });
+  } else if (route === "#/profile") {
+    // --- PAGE DE PROFIL ---
+    
+    // Récupérer le nom d'utilisateur (pour l'instant depuis localStorage, plus tard depuis l'API)
+    const username = localStorage.getItem('currentUsername') || 'Guest';
+    
+    // Afficher le nom d'utilisateur
+    const profileUsername = document.getElementById('profileUsername');
+    if (profileUsername) {
+      profileUsername.textContent = username;
+    }
+    
+    // Gestion du bouton retour à l'accueil
+    document.getElementById('backToHomeBtn')?.addEventListener('click', () => {
+      // Si on est déjà sur l'accueil, forcer le refresh
+      if (location.hash === '' || location.hash === '#') {
+        render();
+      } else {
+        location.hash = '';
+      }
+    });
+    
+    // Gestion du bouton de déconnexion
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
+      // Nettoyer les données de l'utilisateur connecté
+      localStorage.removeItem('currentUsername');
+      
+      // Rediriger vers l'accueil (qui va maintenant afficher les boutons login/signup)
+      location.hash = '';
+      
+      // Force le re-render pour mettre à jour l'interface
+      setTimeout(() => render(), 10);
+      
+      // Afficher un message de confirmation
+      alert('You have been logged out successfully!');
     });
   }
 }
