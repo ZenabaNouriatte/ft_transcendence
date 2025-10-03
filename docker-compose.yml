@@ -34,7 +34,7 @@ services:
       - SERVICE_ROLE=gateway
       - PORT=8000
       - FRONT_ORIGINS=${FRONT_ORIGINS}
-      - DB_PATH=${DB_PATH}
+      - DB_PATH=/data/app.sqlite 
     volumes:
       - sqlite_data:/data
     expose:
@@ -82,24 +82,14 @@ services:
       - gateway
     expose: [ "8104" ]
 
-  # CONTAINER TEST WS ET API
-  visits:
-    build: ./backend
-    environment:
-      - SERVICE_ROLE=svc-visits
-      - PORT=8105
-    depends_on:
-      - gateway
-    expose: [ "8105" ]
-
   user:
     build: ./backend
     environment:
       - SERVICE_ROLE=svc-user
-      - PORT=8106
+      - PORT=8105
     depends_on:
       - gateway
-    expose: [ "8106" ]
+    expose: [ "8105" ]
 
 
 

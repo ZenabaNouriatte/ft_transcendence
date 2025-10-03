@@ -7,7 +7,6 @@ import underPressure from "@fastify/under-pressure";
 import rateLimit from "@fastify/rate-limit";
 import validator from "validator";
 
-import visitsHttp from "./modules/visits/http.js";
 import { registerRawWs } from "./ws-raw.js";
 import { initDb } from "./database/index.js";
 import {
@@ -37,7 +36,7 @@ const PORT = Number(
      ROLE === "svc-game" ? 8102 :
      ROLE === "svc-chat" ? 8103 :
      ROLE === "svc-tournament" ? 8104 :
-     ROLE === "svc-visits" ? 8105 : 8000)
+     ROLE === "svc-user" ? 8105 : 8000)
 );
 const HOST = "0.0.0.0";
 
@@ -81,34 +80,34 @@ await app.register(cors, {
   exposedHeaders: ["X-Request-ID"],
 });
 
+
 await app.register(rateLimit, {
   max: 100,
   timeWindow: "1 minute",
   skipOnError: true,
-  // IMPORTANT: on identifie bien le client (derrière le proxy)
-  keyGenerator: (req) => String(req.headers["x-forwarded-for"] || req.ip),
 
-  // 🔓 On skippe les routes techniques + visites pour éviter la flakiness du test
-  skip: (req) => {
-    const url = req.url || "";
-    const m = (req.method || "GET").toUpperCase();
+  // identifie bien le client derrière le proxy
+  keyGenerator: (req: FastifyRequest) =>
+    String(req.headers["x-forwarded-for"] ?? req.ip),
 
+  // ⬅️ v10 : utiliser allowList pour "bypasser" certaines routes
+  // (return true = pas de rate-limit)
+  allowList: (req: FastifyRequest, _key: string) => {
+    const url = req.url ?? "";
+    // on évite d’affamer health/metrics/ws pour les tests
     if (url === "/healthz") return true;
     if (url === "/metrics") return true;
     if (url.startsWith("/ws")) return true;
-
-    // Tests 'visits'
-    if (url === "/api/visits" && m === "GET") return true;
-    if (url === "/api/visit"  && m === "POST") return true;
-
     return false;
   },
 
-  errorResponseBuilder: () => ({
+  // signature attendue: (req, context) => object
+  errorResponseBuilder: (_req, _context) => ({
     error: "rate_limit_exceeded",
     message: "Too many requests, please try again later",
   }),
 });
+
 
 
 
@@ -154,7 +153,6 @@ if (ROLE === "gateway") {
   });
 
   // Modules communs
-  await app.register(visitsHttp, { prefix: "/api" });
 
   async function getUserFromToken(request: FastifyRequest): Promise<number | null> {
     const authHeader = request.headers.authorization;
@@ -989,9 +987,7 @@ if (ROLE === "gateway") {
   const { default: userPlugin } = await import("./modules/user/http.js");
   await app.register(userPlugin);
 
-} else if (ROLE === "svc-visits") {
-  // stateless (healthz/metrics only)
-}
+} 
 
 // ===================== HOOKS COMMUNS + LISTEN =====================
 registerHttpTimingHooks(app);

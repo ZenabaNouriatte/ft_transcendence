@@ -37,6 +37,6 @@ scrape_configs:
   - job_name: 'svc-tournament'
     static_configs: [{ targets: ['tournament:8104'] }]
 
-  - job_name: 'svc-visits'
-    static_configs: [{ targets: ['visits:8105'] }]
+  - job_name: 'svc-user'
+    static_configs: [{ targets: ['user:8105'] }]
 

@@ -4,6 +4,9 @@
 set -u
 set -o pipefail
 
+# Dépendance minimale
+command -v jq >/dev/null 2>&1 || { echo "jq manquant (sudo apt-get install jq)"; exit 1; }
+
 # ─────────── Config (surchargable par env) ───────────
 : "${PROXY_HTTPS:=https://localhost:8443}"
 : "${PROM_URL:=http://localhost:9090}"
@@ -34,7 +37,7 @@ sec(){ echo -e "\n${c_blue}# $*${c_reset}"; }
 http_code(){ curl "${CURL_CMN[@]}" -o /dev/null -w "%{http_code}" "$1"; }
 json_num(){ jq -r 'try .total catch empty'; }
 
-# Prometheus helpers
+# ───────────────────── Prometheus helpers ─────────────────────
 prom_raw(){ curl -sG --data-urlencode "query=$1" "$PROM_URL/api/v1/query"; }
 prom_first_num(){ jq -r '.data.result[0].value[1] // empty' 2>/dev/null | head -n1;}
 prom_query(){ prom_raw "$1" | prom_first_num; }             # 1ère valeur numérique
@@ -55,6 +58,38 @@ prom_wait_series_ge(){
     if [ "$c" -ge "$want" ]; then echo "$c"; return 0; fi
     sleep "$sleep_s"
   done; echo "0"; return 1
+}
+
+# ─────────── Helpers gateway ───────────
+# Attendre la readiness réelle via /metrics (évite 502 pendant warm-up)
+wait_gateway_ready_metrics() {
+  for _ in $(seq 1 30); do
+    local code; code=$(curl -k -s -o /dev/null -w "%{http_code}" "$PROXY_HTTPS/metrics")
+    [ "$code" = "200" ] && return 0
+    sleep 1
+  done
+  return 1
+}
+
+# Re-login avec retries ; echo le token si OK, sinon chaîne vide
+login_retry() {
+  local username="$1" pass="$2" tries="${3:-8}"
+  local res code body token=""
+  for _ in $(seq 1 "$tries"); do
+    res=$(curl -sk -X POST "$PROXY_HTTPS/api/users/login" \
+      -H 'Content-Type: application/json' \
+      --data-raw "{\"username\":\"$username\",\"password\":\"$pass\"}" \
+      -w $'\n%{http_code}')
+    code="${res##*$'\n'}"
+    body="${res%$'\n'*}"
+    if [ "$code" = "200" ]; then
+      token=$(printf '%s' "$body" | jq -r .token 2>/dev/null)
+      [ -n "$token" ] && [ "$token" != "null" ] && { echo "$token"; return 0; }
+    fi
+    sleep 1
+  done
+  echo ""
+  return 1
 }
 
 echo -e "${c_blue}=== ft_transcendence — test stack $(date '+%F %T') ===${c_reset}"
@@ -87,67 +122,6 @@ code=$(http_code "$PROXY_HTTPS/")
 code=$(http_code "$PROXY_HTTPS/ws-test.html")
 [ "$code" = "200" ] && ok "WS test page (/ws-test.html) → 200" || ko "WS test page (/ws-test.html) → $code"
 
-# ─────────────────────────────────── API ───────────────────────────────────
-sec "API (via Gateway → services)"
-
-# helper: GET /api/visits (3 tentatives, parse JSON)
-try_get_visits() {
-  for i in 1 2 3; do
-    v=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS/api/visits" | json_num)
-    [[ "$v" =~ ^[0-9]+$ ]] && { echo "$v"; return 0; }
-    sleep 1
-  done
-  echo ""
-}
-
-# 1) lecture avant
-before=$(try_get_visits)
-[[ "$before" =~ ^[0-9]+$ ]] && ok "GET /api/visits = $before" || { ko "GET /api/visits réponse inattendue"; before=""; }
-
-# 2A) POST sans headers -> doit être refusé (4xx)
-code=$(curl "${CURL_CMN[@]}" -o /dev/null -w "%{http_code}" -X POST "$PROXY_HTTPS/api/visit")
-[[ "$code" =~ ^4 ]] && ok "POST /api/visit (sans header) refusé ($code)" || sk "POST /api/visit (sans header) accepté ($code)"
-
-# 2B) POST "navigateur" : body JSON + en-têtes d'origine + signal
-post_body=$(curl "${CURL_CMN[@]}" -X POST "$PROXY_HTTPS/api/visit" \
-  -H 'Content-Type: application/json' \
-  -H 'X-Nav-Type: navigate' \
-  -H "Origin: $PROXY_HTTPS" \
-  -H "Referer: $PROXY_HTTPS/" \
-  --data-raw '{}')
-
-post_num=$(echo "$post_body" | json_num)
-
-# 3) lecture après, avec petite attente
-after=""
-for i in 1 2 3; do
-  after=$(try_get_visits)
-  [[ "$after" =~ ^[0-9]+$ ]] && break
-  sleep 1
-done
-
-# 4) évaluation
-if [[ "$post_num" =~ ^[0-9]+$ ]]; then
-  ok "POST /api/visit (avec signal) total=$post_num"
-else
-  if [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ && "$after" -ge $((before+1)) ]]; then
-    ok "POST /api/visit (avec signal) OK (compteur augmenté $before → $after)"
-  else
-    ko "POST /api/visit (avec signal) réponse inattendue (body=${post_body:0:80}...)"
-  fi
-fi
-
-# 5) validation finale du +1
-if [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ ]]; then
-  if [ "$after" -ge $((before+1)) ]; then
-    ok "Compteur visites +1 (>=) ($before → $after)"
-  else
-    ko "Compteur visites n'a pas augmenté ($before → $after)"
-  fi
-else
-  sk "Validation +1 visits sautée (valeurs non numériques: before='$before', after='$after')"
-fi
-
 # ───────────────────────── Services (pings via Gateway) ─────────────────────
 if [ "${PING_VIA_GATEWAY:-0}" = "1" ]; then
   sec "API – pings par service (via Gateway)"
@@ -167,7 +141,6 @@ tournaments|/api/tournaments/ping"
 $SVC_LIST
 EOF
 fi
-
 
 # ─────────────────────────────────── WS ────────────────────────────────────
 sec "WebSocket (via Gateway interne)"
@@ -251,9 +224,6 @@ v=$(prom_wait_value_ge 'ws_messages_total{type="chat.message"}' 1 12 5)
 c=$(prom_wait_series_ge 'websocket_connections_active{job="gateway"}' 1 8 5)
 [ "$c" -ge 1 ] && ok "Métrique websocket_connections_active présente ($c séries)" || sk "websocket_connections_active non détectée"
 
-v=$(prom_wait_value_ge 'max by() (visits_db_total)' 0 8 5)
-[ -n "$v" ] && ok "visits_db_total présent (val=$v)" || sk "visits_db_total non remonté"
-
 # ───────────────────── Architecture — Gateway-only DB & API ──────────────────
 sec "Architecture — Gateway-only DB & API"
 
@@ -264,7 +234,7 @@ else
   ko "Gateway: DB_PATH ou /data manquant"
 fi
 
-for svc in auth game chat tournament visits; do
+for svc in auth game chat tournament user; do
   # Aucun DB_PATH dans les svc-*
   if dc exec -T "$svc" sh -lc '[ -z "$DB_PATH" ]'; then
     ok "$svc: pas de DB_PATH (stateless)"
@@ -277,19 +247,12 @@ for svc in auth game chat tournament visits; do
   else
     ok "$svc: pas de /data (OK)"
   fi
-  # Les svc-* ne doivent pas servir /api/visits → 404
-  code=$(dc exec -T "$svc" node -e "fetch('http://localhost:'+process.env.PORT+'/api/visits').then(r=>{process.stdout.write(String(r.status));}).catch(()=>process.stdout.write('000'))")
-  if [ "$code" = "404" ]; then
-    ok "$svc: /api/visits → 404 (API servie par le gateway)"
-  else
-    sk "$svc: /api/visits → $code (attendu: 404)"
-  fi
 done
 
 # ────────────── Services internes (réseau docker) ────────────────
 if [ "$TEST_INTERNAL" = "1" ]; then
   sec "Services internes (healthz/metrics dans chaque conteneur)"
-  for svc in auth game chat tournament visits; do
+  for svc in auth game chat tournament user; do
     if dc exec -T "$svc" node -e "fetch('http://localhost:'+process.env.PORT+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
       ok "$svc: /healthz"
     else
@@ -329,7 +292,7 @@ $ok_kib && ok "Kibana en ligne (code $code)" || sk "Kibana non prêt (code $code
 
 # ───────── DB — création & persistance (gateway) ─────────
 if [ "${DB_PERSIST_TEST:-1}" = "1" ]; then
-  sec "DB — création & persistance (gateway uniquement)"
+  sec "DB — création & persistance (gateway via USERS)"
 
   # 1) Le fichier SQLite existe et est non vide
   if dc exec -T gateway sh -lc 'test -s /data/app.sqlite'; then
@@ -338,41 +301,66 @@ if [ "${DB_PERSIST_TEST:-1}" = "1" ]; then
     ko "gateway: /data/app.sqlite absent ou vide"
   fi
 
-  # helper: lecture JSON /api/visits avec retries
-  get_visits_json(){
-    for i in {1..15}; do
-      body=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS/api/visits" || true)
-      n=$(echo "$body" | jq -r 'try .total catch empty' 2>/dev/null)
-      if [[ "$n" =~ ^[0-9]+$ ]]; then echo "$n"; return 0; fi
-      sleep 1
-    done
-    echo ""
-  }
+  # 2) Créer un user unique
+  uname="ci_$(date +%s)_$RANDOM"
+  email="$uname@test.local"
+  pass='TempPass123!'   # attention au '!' en bash
 
-  # 2) lecture avant
-  before=$(get_visits_json)
-  if [[ ! "$before" =~ ^[0-9]+$ ]]; then
-    sk "Impossible de lire /api/visits avant restart"; before=""
+  reg_code=$(curl "${CURL_CMN[@]}" -o /tmp/reg.json -w "%{http_code}" \
+    -X POST "$PROXY_HTTPS/api/users/register" \
+    -H 'Content-Type: application/json' \
+    --data-raw "{\"username\":\"$uname\",\"email\":\"$email\",\"password\":\"$pass\"}" || true)
+
+  uid=$(jq -r '.userId // empty' /tmp/reg.json 2>/dev/null)
+
+  if [ "$reg_code" = "201" ] && [[ "$uid" =~ ^[0-9]+$ ]]; then
+    ok "Register user '$uname' (id=$uid)"
+  else
+    ko "Register user '$uname' KO (code=$reg_code, body=$(head -c 200 /tmp/reg.json))"
   fi
 
-  # 3) +1 puis restart gateway
-  curl "${CURL_CMN[@]}" -X POST "$PROXY_HTTPS/api/visit" \
-    -H 'Content-Type: application/json' -H 'X-Nav-Type: navigate' --data-raw '{}' >/dev/null
-  dc restart gateway >/dev/null
+  # 3) Login + /me pour confirmer l’insert (1 essai suffit ici)
+  TOKEN=$(login_retry "$uname" "$pass" 1)
 
-  # 4) attendre readiness
-  for _ in {1..15}; do
-    code=$(http_code "$PROXY_HTTPS/healthz")
-    [ "$code" = "200" ] && break
-    sleep 1
-  done
-
-  # 5) lecture après et évaluation
-  after=$(get_visits_json)
-  if [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ && "$after" -ge $((before+1)) ]]; then
-    ok "Persistance DB OK après restart ($before → $after)"
+  if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
+    ok "Login OK (token reçu)"
   else
-    ko "Persistance DB KO (before='$before', after='$after')"
+    ko "Login KO (pas de token)"
+  fi
+
+  me_id=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS/api/users/me" -H "Authorization: Bearer $TOKEN" \
+    | jq -r '.user.id // empty' 2>/dev/null)
+
+  if [[ "$me_id" = "$uid" ]]; then
+    ok "/api/users/me renvoie bien id=$uid"
+  else
+    ko "/api/users/me KO (id attendu=$uid, reçu=$me_id)"
+  fi
+
+  # 4) Restart gateway puis re-login avec les mêmes credentials
+  dc restart gateway >/dev/null
+  if wait_gateway_ready_metrics; then
+    ok "Gateway up après restart (via /metrics)"
+  else
+    ko "Gateway non prêt après restart"
+  fi
+
+  # Re-login avec retry (jusqu’à 8 essais)
+  TOKEN2=$(login_retry "$uname" "$pass" 8)
+
+  if [ -n "$TOKEN2" ] && [ "$TOKEN2" != "null" ]; then
+    ok "Re-login OK après restart (token reçu)"
+  else
+    ko "Re-login KO après restart"
+  fi
+
+  me_id2=$(curl "${CURL_CMN[@]}" "$PROXY_HTTPS/api/users/me" -H "Authorization: Bearer $TOKEN2" \
+    | jq -r '.user.id // empty' 2>/dev/null)
+
+  if [[ "$me_id2" = "$uid" ]]; then
+    ok "Persistance DB OK via user (id=$uid)"
+  else
+    ko "Persistance DB KO (après restart id attendu=$uid, reçu=$me_id2)"
   fi
 fi
 

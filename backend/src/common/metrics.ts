@@ -49,24 +49,11 @@ export const wsMessagesTotal = new client.Counter({
   labelNames: ["type"] as const, // ex: chat.message | game.input | invalid | unknown
 });
 
-// ------ Visits (exemple) ------
-export const visitsDbTotal = new client.Gauge({
-  name: "visits_db_total",
-  help: "Total visits as stored in the DB (snapshot on reads)",
-});
-
-export const visitsApiIncrementsTotal = new client.Counter({
-  name: "visits_api_increments_total",
-  help: "Total increments done via POST /api/visit",
-  labelNames: ["type"] as const, // ex: navigate | reload
-});
 
 // ---- Registration & Default metrics ----
 register.registerMetric(httpDuration);
 register.registerMetric(wsConnections);
 register.registerMetric(wsMessagesTotal);
-register.registerMetric(visitsDbTotal);
-register.registerMetric(visitsApiIncrementsTotal);
 register.registerMetric(httpInFlight);
 register.registerMetric(wsDisconnectsTotal);
 register.registerMetric(wsRateLimitedTotal);

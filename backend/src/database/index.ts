@@ -31,29 +31,30 @@ export function initDb(): sqlite3.Database {
   _db = new sqlite3.Database(DB_PATH);
 
   // Applique le schéma (idempotent si le SQL utilise IF NOT EXISTS)
-  // + garantit la présence de la table visits (utile au testeur)
   const schemaSql = safeReadFile(SCHEMA_PATH);
-  _db.serialize(() => {
-    if (schemaSql) _db!.exec(schemaSql);
+   _db.serialize(() => {
+    // Sécurise le journal (évite les corrupt/locks au restart)
     _db!.exec(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA synchronous = NORMAL;
       PRAGMA foreign_keys = ON;
-      CREATE TABLE IF NOT EXISTS visits (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        total INTEGER NOT NULL DEFAULT 0
-      );
-      INSERT OR IGNORE INTO visits (id, total) VALUES (1, 0);
     `);
+
+    const schemaSql = safeReadFile(SCHEMA_PATH);
+    if (schemaSql) _db!.exec(schemaSql);
+
   });
 
-  // Précharge le compteur des visites en cache (non bloquant)
-  _db.get(`SELECT total FROM visits WHERE id = 1`, (err, row: any) => {
-    if (!err && row && Number.isFinite(row.total)) {
-      _visitTotal = row.total as number;
-    }
+  // --- Logs de démarrage utiles pour le test persistance
+  _db.get(`SELECT COUNT(*) AS c FROM users`, (err: any, row: any) => {
+    const count = err ? `ERR:${err.code || err.message}` : row?.c ?? 0;
+    // eslint-disable-next-line no-console
+    console.log(`[DB] Using ${DB_PATH} — users count=${count}`);
   });
 
   return _db;
 }
+
 
 export function closeDb(): void {
   if (_db) {
@@ -94,24 +95,6 @@ export function all<T = any>(sql: string, params: any[] = []): Promise<T[]> {
   });
 }
 
-// ──────────────────────── VISITS (test API & DB) ───────────────────────────
-// On garde une API SYNCHRONE pour ne rien casser côté routes.
-// La persistance en DB est faite en arrière-plan (fire-and-forget).
-
-let _visitTotal = 0;
-
-export function getVisitTotal(): number {
-  return _visitTotal;
-}
-
-export function incrementVisit(): number {
-  _visitTotal += 1;
-  // Persistance async (sans bloquer la réponse HTTP)
-  // On ignore volontairement les erreurs (logs Fastify feront foi).
-  void run(`UPDATE visits SET total = ? WHERE id = 1`, [_visitTotal])
-    .catch(() => {/* noop */});
-  return _visitTotal;
-}
 
 // ───────────────────────────── Repos (exemples) ────────────────────────────
 // À étoffer avec les besoins du sujet. L’idée est de replacer petit à petit la

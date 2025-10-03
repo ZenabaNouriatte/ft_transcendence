@@ -98,15 +98,6 @@ CREATE TABLE IF NOT EXISTS user_stats (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Compteur de visites (utilisé par /api/visits et /api/visit)
-CREATE TABLE IF NOT EXISTS visits (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  total INTEGER NOT NULL DEFAULT 0
-);
-
--- Seed (ligne unique)
-INSERT OR IGNORE INTO visits (id, total) VALUES (1, 0);
-
 -- À exécuter une fois (migration) :
 CREATE TABLE IF NOT EXISTS friendships_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

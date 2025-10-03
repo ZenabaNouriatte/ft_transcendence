@@ -507,39 +507,4 @@ export class FriendshipService {
   }
 }
 
-// ======= VISIT POUR TEST =======================
 
-// ======= VISIT POUR TEST =======================
-
-type Row = { total: number };
-
-export const VisitsService = {
-  async ensure() {
-    await run(`
-      CREATE TABLE IF NOT EXISTS visits_total (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        total INTEGER NOT NULL DEFAULT 0
-      )
-    `);
-    await run(`INSERT OR IGNORE INTO visits_total (id, total) VALUES (1, 0)`);
-  },
-
-  async getTotal(): Promise<number> {
-    const row = await get<Row>("SELECT total FROM visits_total WHERE id = 1");
-    return row?.total ?? 0;
-  },
-
-  async increment(): Promise<number> {
-    // Transaction simple pour éviter les races
-    await run("BEGIN");
-    try {
-      await run("UPDATE visits_total SET total = total + 1 WHERE id = 1");
-      const row = await get<Row>("SELECT total FROM visits_total WHERE id = 1");
-      await run("COMMIT");
-      return row?.total ?? 0;
-    } catch (e) {
-      await run("ROLLBACK");
-      throw e;
-    }
-  },
-};
