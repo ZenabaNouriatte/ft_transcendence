@@ -6,6 +6,7 @@ import cors from "@fastify/cors";
 import underPressure from "@fastify/under-pressure";
 import rateLimit from "@fastify/rate-limit";
 import validator from "validator";
+import xss from 'xss';
 
 import { registerRawWs } from "./ws-raw.js";
 import { initDb } from "./database/index.js";
@@ -21,8 +22,18 @@ import { registerHttpTimingHooks, sendMetrics } from "./common/metrics.js";
 
 // --- Input sanitization helpers (basic XSS hygiene) ---
 function sanitizeInput(input: string, maxLength = 200): string {
-  return validator.escape(validator.trim(String(input))).substring(0, maxLength);
+  const cleaned = validator.trim(String(input));
+  return xss(cleaned).substring(0, maxLength);
 }
+
+function sanitizeUsername(username: string): string {
+  const cleaned = validator.trim(String(username));
+  if (!/^[a-zA-Z0-9_-]{3,20}$/.test(cleaned)) {
+    throw new Error("Invalid username");
+  }
+  return xss(cleaned);
+}
+
 function validateEmail(email: string): boolean {
   return validator.isEmail(String(email));
 }
@@ -121,34 +132,33 @@ if (ROLE === "gateway") {
   await initDb();
   registerRawWs(app);
 
-  let roomManager: any;
-  
   try {
     const { GameRoomManager } = await import("./modules/game/engine/gameRoomManager.js");
-    roomManager = new GameRoomManager();
+    roomManager = new GameRoomManager(); // ← assigne la variable extérieure
     console.log("GameRoomManager initialized successfully");
   } catch (error) {
     console.error("Failed to initialize GameRoomManager:", error);
-    // Créer un roomManager mock pour éviter les erreurs
+    // Fallback simple pour éviter les crashs
     roomManager = {
       createRoom: () => ({ 
         addPlayer: () => true,
         getGameState: () => ({}),
-        getStatus: () => 'waiting',
-        getPlayers: () => new Map()
+        getStatus: () => "waiting",
+        getPlayers: () => new Map(),
+        pauseGame: () => true,
+        resumeGame: () => true,
       }),
       getRoom: () => null,
       startGame: () => false,
       movePaddle: () => false,
-      getStats: () => ({ totalRooms: 0, activeGames: 0, totalPlayers: 0 })
+      getStats: () => ({ totalRooms: 0, activeGames: 0, totalPlayers: 0 }),
+      shutdown: () => {},
     };
   }
 
   process.on("SIGINT", () => {
     app.log.info("🛑 Shutting down game system...");
-    if (roomManager && roomManager.shutdown) {
-      roomManager.shutdown();
-    }
+    if (roomManager && roomManager.shutdown) roomManager.shutdown();
     process.exit(0);
   });
 
@@ -184,11 +194,18 @@ if (ROLE === "gateway") {
     try {
       const b = (request.body ?? {}) as any;
 
-      // --- light pre-sanitize here (defense in depth) ---
+      // --- sanitize avec gestion d'erreur explicite pour le username ---
+      let username: string;
+      try {
+        username = sanitizeUsername(b.username); // 
+      } catch {
+       return reply.code(400).send({ error: "Invalid username" });
+      }
+
       const payload = {
-        username: sanitizeInput(b.username, 20),
-        email:    sanitizeInput(b.email, 100),
-        password: String(b.password ?? ""),
+       username,
+       email:    sanitizeInput(b.email, 100),
+       password: String(b.password ?? ""),
       };
 
       // Petits garde-fous locaux (svc-auth revalide derrière)
@@ -225,6 +242,23 @@ if (ROLE === "gateway") {
     }
   });
 
+  app.post("/api/auth/validate-token", async (request, reply) => {
+    try {
+      const { token } = (request.body ?? {}) as { token?: string };
+      if (!token) return reply.code(400).send({ error: "invalid_payload" });
+      const r = await fetch("http://auth:8101/validate-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const data = await r.json().catch(() => ({}));
+      return reply.code(r.status).send(data);
+    } catch (e) {
+      request.log.error(e, "validate_token_proxy_failed");
+      return reply.code(500).send({ error: "proxy_failed" });
+    }
+  });
+
 
   app.get("/api/users", async () => {
     const users = await UserService.getAllUsers();
@@ -234,7 +268,7 @@ if (ROLE === "gateway") {
   app.post("/api/users/login", async (request, reply) => {
     try {
       const b = (request.body ?? {}) as any;
-      const username = sanitizeInput(b.username, 20); // ← AU LIEU DE String(...)
+      const username = sanitizeUsername(b.username);
       const password = String(b.password ?? "");
       if (!username || !password) return reply.code(400).send({ error: "invalid_payload" });
 

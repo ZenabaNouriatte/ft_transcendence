@@ -48,7 +48,7 @@ services:
 
   auth:
     build: ./backend
-    env_file: [auth.env]
+    env_file: [.env]
     environment:
       - SERVICE_ROLE=svc-auth
       - PORT=8101
