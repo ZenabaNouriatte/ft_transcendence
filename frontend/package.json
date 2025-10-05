@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "scripts": {
-    "build": "tsc && postcss src/styles.css -o dist/output.css && cp index.html dist/index.html && cp public/ws-test.html dist/ws-test.html",
+    "build": "tsc && postcss src/styles.css -o dist/output.css && cp index.html dist/index.html && cp public/ws-test.html dist/ws-test.html && cp -r public/images dist/images",
     "dev": "tsc -w",
     "prebuild": "mkdir -p dist"
   },

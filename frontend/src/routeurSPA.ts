@@ -19,6 +19,46 @@ type Route = () => string;
 // Instance globale du client de jeu (null quand pas en jeu)
 let currentGameClient: GameClient | null = null;
 
+// Fonction pour obtenir l'avatar basé sur l'ID utilisateur (correspondance directe)
+function getUserAvatarPath(userId: number): string {
+  // ID direct: user 1 → image 1.JPG, user 2 → image 2.JPG, etc.
+  // Si l'ID dépasse 15, on boucle (modulo)
+  const imageNumber = userId > 15 ? ((userId - 1) % 15) + 1 : userId;
+  return `/images/${imageNumber}.JPG`;
+}
+
+// Fonction pour récupérer l'ID utilisateur via API
+async function getCurrentUserId(): Promise<number> {
+  const currentUsername = localStorage.getItem('currentUsername');
+  if (!currentUsername || currentUsername === 'Guest') {
+    return 1; // ID par défaut
+  }
+
+  try {
+    // Appel à l'API pour récupérer la liste des utilisateurs
+    const response = await fetch('/api/users');
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // Trouver l'utilisateur par son nom
+    const user = data.users?.find((u: any) => u.username === currentUsername);
+    
+    if (user && user.id) {
+      return user.id;
+    }
+    
+    console.warn(`Utilisateur ${currentUsername} non trouvé dans l'API, utilisation de l'ID par défaut`);
+    return 1; // Fallback
+    
+  } catch (error) {
+    console.error('Erreur lors de la récupération de l\'ID utilisateur:', error);
+    return 1; // Fallback en cas d'erreur
+  }
+}
+
 // Référence à l'écouteur de clavier pour pouvoir le nettoyer
 let gameKeyListener: ((event: KeyboardEvent) => void) | null = null;
 
@@ -28,22 +68,54 @@ let gameKeyListener: ((event: KeyboardEvent) => void) | null = null;
 const routes: Record<string, Route> = {
   
   // PAGE D'ACCUEIL
-  "": () => `
-    <div class="flex flex-col items-center">
-      <h1 class="text-4xl mb-8 text-center">Welcome to our Pong Game</h1>
-      <div class="bg-blue-900 p-8 rounded-lg shadow-lg">
-        <p class="mb-6 text-xl text-blue-300 text-center">Pick your game style</p>
-        <div class="flex flex-row gap-4">
-          <button id="classicBtn" class="px-8 py-4 bg-green-600 text-white text-lg rounded hover:bg-green-500 transition-colors">
-            🎮 CLASSIC
-          </button>
-          <button id="tournamentBtn" class="px-8 py-4 bg-purple-600 text-white text-lg rounded hover:bg-purple-500 transition-colors">
-            🏆 TOURNAMENT
-          </button>
+  "": () => {
+    // Vérifier si un utilisateur est connecté
+    const currentUsername = localStorage.getItem('currentUsername');
+    const isLoggedIn = currentUsername && currentUsername !== 'Guest';
+    
+    // Debug pour voir l'état de connexion
+    console.log('Home page render - Username:', currentUsername, 'IsLoggedIn:', isLoggedIn);
+    
+    // Générer les boutons d'authentification selon l'état de connexion
+    const authButtons = isLoggedIn 
+      ? `<!-- Bouton utilisateur connecté en haut à droite -->
+         <div class="fixed top-8 right-8 z-10">
+           <button id="userProfileBtn" class="retro-btn flex items-center gap-2">
+             👤 ${currentUsername}
+           </button>
+         </div>`
+      : `<!-- Boutons Login/Sign Up en haut à droite de la fenêtre -->
+         <div class="fixed top-8 right-8 flex gap-3 z-10">
+           <button id="loginBtn" class="retro-btn">
+             Login
+           </button>
+           <button id="signUpBtn" class="retro-btn">
+             Sign Up
+           </button>
+         </div>`;
+
+    return `
+    <div class="min-h-screen">
+      ${authButtons}
+      
+      <!-- Contenu principal centré -->
+      <div class="flex flex-col items-center justify-center min-h-screen">
+        <h1 class="text-4xl mb-8 text-center">Welcome to our Pong Game</h1>
+        <div class="bg-blue-900 p-8 rounded-lg shadow-lg">
+          <p class="mb-6 text-xl text-blue-300 text-center">Pick your game style</p>
+          <div class="flex flex-row gap-4">
+            <button id="classicBtn" class="retro-btn">
+              🎮 CLASSIC
+            </button>
+            <button id="tournamentBtn" class="retro-btn">
+              🏆 TOURNAMENT
+            </button>
+          </div>
         </div>
       </div>
     </div>
-  `,
+    `;
+  },
   // PAGE MODE CLASSIC
   // Formulaire de saisie des noms des deux joueurs
   "#/classic": () => `
@@ -67,12 +139,12 @@ const routes: Record<string, Route> = {
           </div>
         </div>
         
-        <button id="playBtn" class="w-full px-4 py-3 bg-green-600 text-white rounded hover:bg-green-500 transition-colors">
+        <button id="playBtn" class="retro-btn w-full">
           🏓 START GAME
         </button>
       </div>
       <div class="mt-6">
-        <button id="backBtn" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-400">
+        <button id="backBtn" class="retro-btn">
           ← Back to menu
         </button>
       </div>
@@ -107,10 +179,10 @@ const routes: Record<string, Route> = {
         
         <!-- Boutons d'action -->
         <div class="flex gap-4">
-          <button id="backToMenuBtn" class="flex-1 px-4 py-3 bg-gray-500 text-white rounded hover:bg-gray-400">
+          <button id="backToMenuBtn" class="retro-btn flex-1">
             ← Back to menu
           </button>
-          <button id="startTournamentBtn" class="flex-1 px-4 py-3 bg-green-600 text-white rounded hover:bg-green-500 transition-colors">
+          <button id="startTournamentBtn" class="retro-btn flex-1">
             🚀 Start Tournament
           </button>
         </div>
@@ -132,11 +204,11 @@ const routes: Record<string, Route> = {
           <div id="nextMatchType" class="text-xl mb-2 text-white">-</div>
           <div id="nextMatchPlayers" class="text-lg text-gray-300">- vs -</div>
         </div>
-        <button id="continueToNextMatchBtn" class="px-8 py-4 bg-green-600 text-white text-xl rounded-lg hover:bg-green-500 transition-colors shadow-lg">
+        <button id="continueToNextMatchBtn" class="retro-btn">
           🎮 Continue to Next Match
         </button>
         <div class="mt-6">
-          <button id="quitTournamentBtn" class="px-6 py-2 bg-gray-600 text-white rounded hover:bg-gray-500">
+          <button id="quitTournamentBtn" class="retro-btn">
             🏠 Quit Tournament
           </button>
         </div>
@@ -153,10 +225,10 @@ const routes: Record<string, Route> = {
           Final Score: <span class="font-bold">0 - 0</span>
         </div>
         <div class="flex gap-6 justify-center">
-          <button id="playAgainBtn" class="px-8 py-4 bg-green-600 text-white text-xl rounded-lg hover:bg-green-500 transition-colors shadow-lg">
+          <button id="playAgainBtn" class="retro-btn">
             🎮 Play Again
           </button>
-          <button id="backToMenuBtn" class="px-8 py-4 bg-gray-600 text-white text-xl rounded-lg hover:bg-gray-500 transition-colors shadow-lg">
+          <button id="backToMenuBtn" class="retro-btn">
             🏠 Back to Menu
           </button>
         </div>
@@ -186,31 +258,146 @@ const routes: Record<string, Route> = {
       
       <!-- Bouton Start (visible au début) -->
       <div id="startSection" class="flex gap-4 mb-4">
-        <button id="startBtn" class="px-8 py-4 bg-green-600 text-white text-lg rounded hover:bg-green-500 transition-colors">
+        <button id="startBtn" class="retro-btn">
           🚀 START GAME
         </button>
       </div>
       
       <!-- Boutons de contrôle du jeu (cachés au début, visibles une fois le jeu démarré) -->
       <div id="gameControls" class="hidden gap-4">
-        <button id="pauseBtn" class="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-500">
+        <button id="pauseBtn" class="retro-btn">
           Pause
         </button>
-        <button id="backToMenuBtn" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-400">
+        <button id="backToMenuBtn" class="retro-btn">
           Back to menu
         </button>
+      </div>
+    </div>
+  `,
+  // PAGE INSCRIPTION
+  "#/sign-up": () => `
+    <div class="flex flex-col items-center justify-center min-h-screen">
+      <h1 class="text-3xl mb-8 text-white">Sign Up</h1>
+      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+        <form id="signUpForm" class="space-y-4">
+          <div>
+            <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input type="text" id="username" name="username" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              placeholder="Enter your username">
+          </div>
+          
+          <div>
+            <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input type="email" id="email" name="email" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              placeholder="Enter your email">
+          </div>
+          
+          <div>
+            <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input type="password" id="password" name="password" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              placeholder="Enter your password">
+          </div>
+          
+          <button type="submit" id="signUpSubmit"
+            class="retro-btn w-full">
+            Create Account
+          </button>
+        </form>
+      </div>
+    </div>
+  `,
+  // PAGE CONNEXION
+  "#/login": () => `
+    <div class="flex flex-col items-center justify-center min-h-screen">
+      <h1 class="text-3xl mb-8 text-white">Login</h1>
+      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+        <form id="loginForm" class="space-y-4">
+          <div>
+            <label for="loginUsername" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input type="text" id="loginUsername" name="username" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              placeholder="Enter your username">
+          </div>
+          
+          <div>
+            <label for="loginPassword" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input type="password" id="loginPassword" name="password" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              placeholder="Enter your password">
+          </div>
+          
+          <button type="submit" id="loginSubmit"
+            class="retro-btn w-full">
+            Login
+          </button>
+        </form>
+      </div>
+    </div>
+  `,
+  // PAGE PROFIL
+  "#/profile": () => {
+    const currentUsername = localStorage.getItem('currentUsername') || 'Player';
+    
+    // Rendu initial avec image placeholder (sera mise à jour via JS)
+    return `
+    <div class="min-h-screen">
+      <!-- Bouton retour à l'accueil en haut à gauche -->
+      <div class="fixed top-8 left-8 z-10">
+        <button id="backToHomeBtn" class="retro-btn flex items-center gap-2">
+          ← Home
+        </button>
+      </div>
+      
+      <!-- Contenu principal centré -->
+      <div class="flex flex-col items-center justify-center min-h-screen">
+        <!-- Photo de profil avec image dynamique -->
+        <div class="profile-photo">
+          <img id="profileAvatar" src="/images/1.JPG" alt="Profile Photo" 
+               style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+        </div>
+        <h1 id="profileUsername" class="text-5xl mb-8 text-white font-bold text-center">${currentUsername}</h1>
+        <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-2xl">
+          <h2 class="text-2xl mb-6 text-gray-800 text-center">Profile Information</h2>
+          <!-- Informations du profil à développer -->
+          <div class="space-y-4 text-gray-700">
+            <p class="text-center text-gray-600">Je suis sur le coup hihi patience ! :3</p>
+          </div>
+          
+          <!-- Bouton de déconnexion -->
+          <div class="mt-6 pt-4 border-t border-gray-300">
+            <button id="logoutBtn" class="retro-btn w-full">
+              🚪 Logout
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    `;
+  },
+  // PAGE AMIS
+  "#/friends": () => `
+    <div class="flex flex-col items-center justify-center min-h-screen">
+      <h1 class="text-3xl mb-8">Friends</h1>
+      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+        <!-- Liste des amis à venir -->
+      </div>
+    </div>
+  `,
+  // PAGE PROFIL D'UN AMI
+  "#/friends-profile": () => `
+    <div class="flex flex-col items-center justify-center min-h-screen">
+      <h1 class="text-3xl mb-8">Friend's Profile</h1>
+      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+        <!-- Profil d'un ami à venir -->
       </div>
     </div>
   `
 };
 
 // FONCTION PRINCIPALE DE RENDU
-
-// Cette fonction est le cœur du routeur SPA. Elle :
-// 1. Lit la route actuelle (hash de l'URL)
-// 2. Nettoie le jeu précédent si nécessaire
-// 3. Affiche le HTML correspondant à la route
-// 4. Attache les événements spécifiques à chaque page
 function render() {
   const root = document.getElementById("app");
   if (!root) return;
@@ -243,6 +430,28 @@ function render() {
     document.getElementById("tournamentBtn")?.addEventListener("click", () => {
       location.hash = "#/tournament";
     });
+    
+    // Vérifier si un utilisateur est connecté pour adapter les événements
+    const currentUsername = localStorage.getItem('currentUsername');
+    const isLoggedIn = currentUsername && currentUsername !== 'Guest';
+    
+    console.log('Home page events - Username:', currentUsername, 'IsLoggedIn:', isLoggedIn);
+    
+    if (isLoggedIn) {
+      // Utilisateur connecté : bouton profil
+      document.getElementById("userProfileBtn")?.addEventListener("click", () => {
+        location.hash = "#/profile";
+      });
+    } else {
+      // Utilisateur non connecté : boutons login/signup
+      document.getElementById("loginBtn")?.addEventListener("click", () => {
+        location.hash = "#/login";
+      });
+      
+      document.getElementById("signUpBtn")?.addEventListener("click", () => {
+        location.hash = "#/sign-up";
+      });
+    }
     
   } else if (route === "#/classic") {
     // PAGE MODE CLASSIC
@@ -632,6 +841,143 @@ function render() {
       localStorage.removeItem('currentGameMode');
       localStorage.removeItem('lastMatchResult');
       location.hash = '';
+    });
+    
+  } else if (route === "#/sign-up") {
+    // --- PAGE D'INSCRIPTION ---
+    
+    // Gestion du formulaire d'inscription
+    const signUpForm = document.getElementById('signUpForm') as HTMLFormElement;
+    
+    signUpForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      // Récuperer les donnees du formulaire
+      const formData = new FormData(signUpForm);
+      const username = formData.get('username') as string;
+      const email = formData.get('email') as string;
+      const password = formData.get('password') as string;
+      
+      try {
+        const response = await fetch('/api/users/register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username, email, password }),
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          // Succes
+          console.log('Account created successfully:', data);
+          localStorage.setItem('currentUsername', username);
+          location.hash = '#/profile';
+        } else {
+          // Erreur
+          console.error('Registration failed:', data);
+          alert('Registration failed: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Network error:', error);
+        alert('Network error. Please try again.');
+      }
+    });
+  } else if (route === "#/login") {
+    // --- PAGE DE CONNEXION ---
+    
+    // Gestion du formulaire de connexion
+    const loginForm = document.getElementById('loginForm') as HTMLFormElement;
+    
+    loginForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      // Récuperer les donnees du formulaire
+      const formData = new FormData(loginForm);
+      const username = formData.get('username') as string;
+      const password = formData.get('password') as string;
+      
+      try {
+        const response = await fetch('/api/users/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username, password }),
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          // Succes
+          console.log('Login successful:', data);
+          localStorage.setItem('currentUsername', username);
+          location.hash = '#/profile';
+        } else {
+          // Erreur
+          console.error('Login failed:', data);
+          alert('Login failed: ' + (data.error || 'Invalid username or password'));
+        }
+      } catch (error) {
+        console.error('Network error:', error);
+        alert('Network error. Please try again.');
+      }
+    });
+  } else if (route === "#/profile") {
+    // --- PAGE DE PROFIL ---
+    
+    // Récupérer le nom d'utilisateur (pour l'instant depuis localStorage, plus tard depuis l'API)
+    const username = localStorage.getItem('currentUsername') || 'Guest';
+    
+    // Afficher le nom d'utilisateur
+    const profileUsername = document.getElementById('profileUsername');
+    if (profileUsername) {
+      profileUsername.textContent = username;
+    }
+
+    // Charger l'avatar depuis l'API
+    async function loadUserAvatar() {
+      try {
+        const userId = await getCurrentUserId();
+        const avatarPath = getUserAvatarPath(userId);
+        const avatarImg = document.getElementById('profileAvatar') as HTMLImageElement;
+        
+        if (avatarImg) {
+          avatarImg.src = avatarPath;
+          console.log(`Avatar chargé: User ID ${userId} → ${avatarPath}`);
+        }
+      } catch (error) {
+        console.error('Erreur lors du chargement de l\'avatar:', error);
+      }
+    }
+
+    // Charger l'avatar
+    loadUserAvatar();
+    
+    // Gestion du bouton retour à l'accueil
+    document.getElementById('backToHomeBtn')?.addEventListener('click', () => {
+      // Si on est déjà sur l'accueil, forcer le refresh
+      if (location.hash === '' || location.hash === '#') {
+        render();
+      } else {
+        location.hash = '';
+      }
+    });
+    
+    // Gestion du bouton de déconnexion
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
+      // Nettoyer les données de l'utilisateur connecté
+      localStorage.removeItem('currentUsername');
+      
+      // Rediriger vers l'accueil (qui va maintenant afficher les boutons login/signup)
+      location.hash = '';
+      
+      // Force le re-render pour mettre à jour l'interface
+      setTimeout(() => render(), 10);
+      
+      // Afficher un message de confirmation
+      alert('You have been logged out successfully!');
     });
   }
 }
