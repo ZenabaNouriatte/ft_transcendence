@@ -276,11 +276,22 @@ app.post("/api/users/register", async (request, reply) => {
       const user = await UserService.findUserById(userId);
       if (user) delete (user as any).password;
       return reply.code(201).send({ ok: true, userId, user });
-
-    } catch (e) {
-      request.log.error(e, "register_failed");
-      return reply.code(500).send({ error: "register_failed" });
+} catch (e) {
+  request.log.error(e, "register_failed");
+  
+  // Meilleure gestion des erreurs
+  const error = e as any;
+  if (error?.code === "SQLITE_CONSTRAINT") {
+    if (error.message?.includes("users.email")) {
+      return reply.code(409).send({ error: "email_already_exists" });
     }
+    if (error.message?.includes("users.username")) {
+      return reply.code(409).send({ error: "username_already_taken" });
+    }
+  }
+  
+  return reply.code(500).send({ error: "register_failed" });
+}
   });
       
   app.post("/api/auth/validate-token", async (request, reply) => {

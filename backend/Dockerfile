@@ -14,7 +14,7 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
-RUN apk add --no-cache libstdc++
+RUN apk add --no-cache libstdc++ sqlite sqlite-dev
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

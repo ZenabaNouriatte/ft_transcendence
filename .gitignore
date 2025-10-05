@@ -24,3 +24,5 @@ dist/
 
 # Local environment variables
 # .env
+#*.sqlite
+#*.db

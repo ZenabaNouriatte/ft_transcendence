@@ -52,6 +52,7 @@ services:
     environment:
       - SERVICE_ROLE=svc-auth
       - PORT=8101
+      - JWT_SECRET=${JWT_SECRET} 
     command: ["node", "dist/index.js"]
     expose: [ "8101" ]
 
