@@ -132,11 +132,11 @@ export class UserService {
   static async searchUsers(q: string, limit = 20, offset = 0) {
     return all(
       `SELECT id, username, avatar, status
-         FROM users
-        WHERE username LIKE ?
-        ORDER BY username
-        LIMIT ? OFFSET ?`,
-      [`%${q}%`, limit, offset]
+      FROM users
+      WHERE username LIKE ? OR email LIKE ?
+      ORDER BY username
+      LIMIT ? OFFSET ?`,
+      [`%${q}%`, `%${q}%`, limit, offset]  
     );
   }
 

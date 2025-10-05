@@ -22,20 +22,48 @@ import { registerHttpTimingHooks, sendMetrics } from "./common/metrics.js";
 
 // --- Input sanitization helpers (basic XSS hygiene) ---
 function sanitizeInput(input: string, maxLength = 200): string {
+  if (typeof input !== 'string') return '';
   const cleaned = validator.trim(String(input));
-  return xss(cleaned).substring(0, maxLength);
+  const sanitized = xss(cleaned, { whiteList: {} }); // Aucune balise HTML
+  return sanitized.substring(0, maxLength);
 }
 
 function sanitizeUsername(username: string): string {
-  const cleaned = validator.trim(String(username));
-  if (!/^[a-zA-Z0-9_-]{3,20}$/.test(cleaned)) {
-    throw new Error("Invalid username");
+  if (typeof username !== 'string') {
+    throw new Error("Username must be a string");
   }
-  return xss(cleaned);
+  const cleaned = validator.trim(String(username));
+  
+  // Validation stricte : 3-20 caractères, alphanumérique + underscore + tiret
+  if (!/^[a-zA-Z0-9_-]{3,20}$/.test(cleaned)) {
+    throw new Error("Invalid username format");
+  }
+  
+  return xss(cleaned, { whiteList: {} });
 }
 
 function validateEmail(email: string): boolean {
+  if (typeof email !== 'string') return false;
   return validator.isEmail(String(email));
+}
+
+function validatePassword(password: string): void {
+  if (typeof password !== 'string') {
+    throw new Error("Password must be a string");
+  }
+  
+  if (password.length < 8) {
+    throw new Error("Password must be at least 8 characters");
+  }
+  
+  if (password.length > 128) {
+    throw new Error("Password too long");
+  }
+  
+  // Vérification complexité : au moins 1 lettre ET 1 chiffre
+  if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+    throw new Error("Password must contain at least one letter and one number");
+  }
 }
 // ------------------------------------------------------
 
@@ -207,6 +235,15 @@ app.post("/api/users/register", async (request, reply) => {
     const email = sanitizeInput(b.email, 100);
     if (!validateEmail(email)) {
       return reply.code(400).send({ error: "invalid_email_format" });
+    }
+
+    const password = String(b.password ?? "");
+    if (password.length < 8) {
+      return reply.code(400).send({ error: "password_too_short" });
+    }
+    // Optionnel: validation complexité
+    if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+      return reply.code(400).send({ error: "password_needs_letter_and_number" });
     }
 
     const payload = {

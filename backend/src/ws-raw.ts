@@ -9,20 +9,36 @@ import {
   wsRateLimitedTotal 
 } from "./common/metrics.js";
 
+// Fonction de sanitization si le module n'existe pas
+function sanitizeString(input: string, maxLength: number): string {
+  if (typeof input !== 'string') return '';
+  return input.replace(/[<>]/g, '').substring(0, maxLength);
+}
+
+function validateEnum<T extends readonly string[]>(
+  value: string, 
+  allowedValues: T
+): T[number] {
+  if (allowedValues.includes(value as T[number])) {
+    return value as T[number];
+  }
+  throw new Error(`Invalid value: ${value}`);
+}
+
 type Ctx = {
   isAlive: boolean;
   ip?: string;
-  userId?: number; // ← set after JWT validation (sensitive channels)
+  userId?: number;
   rate: { windowStart: number; count: number };
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Limits & timings
 // ─────────────────────────────────────────────────────────────────────────────
-const MAX_MSG_BYTES = 64 * 1024;        // 64KB max per message (close 1009 if exceeded)
-const RATE_LIMIT_WINDOW_MS = 5_000;     // 5s sliding window
-const RATE_LIMIT_MAX = 50;              // 50 messages per window per connection
-const PING_INTERVAL_MS = 20_000;        // keepalive ping every 20s
+const MAX_MSG_BYTES = 64 * 1024;
+const RATE_LIMIT_WINDOW_MS = 5_000;
+const RATE_LIMIT_MAX = 50;
+const PING_INTERVAL_MS = 20_000;
 
 const now = () => Date.now();
 
@@ -33,7 +49,6 @@ const updateGauge = (wss: WebSocketServer) => {
   try { 
     const activeConnections = wss.clients.size;
     wsConnections.set(activeConnections);
-    // Debug log
     console.log(`[WS] Active connections: ${activeConnections}`);
   } catch (e) {
     console.error("[WS] Error updating gauge:", e);
@@ -41,11 +56,10 @@ const updateGauge = (wss: WebSocketServer) => {
 };
 
 export function registerRawWs(app: FastifyInstance) {
-  // We do noServer so we can control the HTTP upgrade flow in app.server.on("upgrade")
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 1) Keepalive (ping/pong) + refresh metrics gauge periodically
+  // 1) Keepalive
   // ───────────────────────────────────────────────────────────────────────────
   const interval = setInterval(() => {
     wss.clients.forEach((ws: WebSocket & { ctx?: Ctx }) => {
@@ -63,8 +77,7 @@ export function registerRawWs(app: FastifyInstance) {
   wss.on("close", () => { clearInterval(interval); });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 2) Connection handler (runs after successful HTTP upgrade)
-  //    We attach context, perform WS auth (channel/token), set rate-limit, etc.
+  // 2) Connection handler
   // ───────────────────────────────────────────────────────────────────────────
   wss.on("connection", async (ws: WebSocket & { ctx?: Ctx }, request: IncomingMessage) => {
     // 2.a) Base context init
@@ -74,63 +87,77 @@ export function registerRawWs(app: FastifyInstance) {
       rate: { windowStart: now(), count: 0 },
     };
 
-    // bump counters
     wsConnections.inc();
     updateGauge(wss);
     app.log.info({ ip: ws.ctx.ip, totalConnections: wss.clients.size }, "WS connection established");
 
-    // 2.b) Pong → mark connection as alive
+    // 2.b) Pong handler
     ws.on("pong", () => { if (ws.ctx) ws.ctx.isAlive = true; });
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 2.c) AUTH WS (via svc-auth) + channel gating
-    //     - channel is passed as query (?channel=local|chat|game-remote)
-    //     - token can be provided as ?token=... or Authorization: Bearer ...
-    //     - chat & game-remote require a valid JWT; local does not.
-    // ─────────────────────────────────────────────────────────────────────────
+    // 2.c) AUTH WS
     try {
       const url = new URL(request.url || "/", `http://${request.headers.host}`);
-      const channel = (url.searchParams.get("channel") || "local").toLowerCase();
+      
+      const channelParam = url.searchParams.get("channel") || "local";
+      let channel: "local" | "chat" | "game-remote";
+      
+      try {
+        channel = validateEnum(channelParam, ["local", "chat", "game-remote"] as const);
+      } catch {
+        try { ws.close(1008, "invalid_channel"); } catch {}
+        return;
+      }
+      
       const isSensitiveChannel = channel === "chat" || channel === "game-remote";
 
       const bearer = request.headers["authorization"]?.toString();
-      const token = url.searchParams.get("token") || bearer?.replace(/^Bearer\s+/i, "");
+      const tokenParam = url.searchParams.get("token");
+      const token = tokenParam || bearer?.replace(/^Bearer\s+/i, "");
 
       if (isSensitiveChannel && !token) {
-        // Policy: chat & remote game require identity
         try { ws.close(1008, "token_required"); } catch {}
         return;
       }
 
       if (token) {
+        if (token.length > 1000) {
+          try { ws.close(1008, "token_too_long"); } catch {}
+          return;
+        }
+        
         const resp = await fetch("http://auth:8101/validate-token", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "X-Request-ID": request.headers["x-request-id"] as string || "ws-conn"
+          },
           body: JSON.stringify({ token }),
         });
+        
         if (!resp.ok) {
           try { ws.close(1008, "invalid_token"); } catch {}
           return;
         }
+        
         const data = await resp.json().catch(() => ({}));
+        
         if (!Number.isInteger(data.userId) || data.userId <= 0) {
-          try { ws.close(1008, "invalid_token"); } catch {}
+          try { ws.close(1008, "invalid_user_id"); } catch {}
           return;
         }
-        // attach identity to socket context
+        
         ws.ctx.userId = data.userId;
       }
 
-      // (Optional) keep channel on the instance for downstream dispatch
       (ws as any)._channel = channel;
-    } catch {
+      
+    } catch (err) {
+      app.log.error({ err }, "WS handshake error");
       try { ws.close(1008, "handshake_failed"); } catch {}
       return;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 2.d) Utility to send safely (stringify + error logging)
-    // ─────────────────────────────────────────────────────────────────────────
+    // 2.d) Safe send utility
     const safeSend = (objOrString: any) => {
       const payload = typeof objOrString === "string" ? objOrString : JSON.stringify(objOrString);
       if (ws.readyState === ws.OPEN) {
@@ -140,10 +167,9 @@ export function registerRawWs(app: FastifyInstance) {
       }
     };
 
-    // Welcome (small UX/smoke test)
     setTimeout(() => safeSend("hello: connected"), 100);
 
-    // 2.e) Error/Close hooks → metrics & logs
+    // 2.e) Error/Close handlers
     ws.on("error", (err: Error) => {
       app.log.error({ err }, "WS error");
     });
@@ -157,21 +183,14 @@ export function registerRawWs(app: FastifyInstance) {
 
     // ─────────────────────────────────────────────────────────────────────────
     // 2.f) Message handler
-    //     Steps:
-    //       (1) size bound check (1009 if too large)
-    //       (2) connection-level rate-limit
-    //       (3) JSON parse + dispatch by 'type'
-    //       (4) send ack if requestId present
     // ─────────────────────────────────────────────────────────────────────────
     ws.on("message", (buf: Buffer) => {
-      // (1) size bound BEFORE parsing
       const size = Buffer.isBuffer(buf) ? buf.length : Buffer.byteLength(String(buf));
       if (size > MAX_MSG_BYTES) {
         try { ws.close(1009, "Message too large"); } catch {}
         return;
       }
 
-      // (2) simple per-connection rate-limit
       if (ws.ctx) {
         const t = now();
         const r = ws.ctx.rate;
@@ -191,80 +210,255 @@ export function registerRawWs(app: FastifyInstance) {
       let requestId: string | undefined;
 
       try {
-        const raw = buf.toString();
+        const raw = buf.toString("utf8");
         const msg = JSON.parse(raw);
-
-        // Extract requestId as string if present
-        if (Object.prototype.hasOwnProperty.call(msg, "requestId") && msg.requestId != null) {
-          requestId = String(msg.requestId);
+        
+        if (!msg || typeof msg !== "object" || Array.isArray(msg)) {
+          throw new Error("Invalid message structure");
         }
 
-        // Dispatch by type
-        type = typeof msg?.type === "string" ? msg.type : "unknown";
+        if (Object.prototype.hasOwnProperty.call(msg, "requestId")) {
+          if (msg.requestId != null) {
+            const rid = String(msg.requestId);
+            if (rid.length > 100) {
+              throw new Error("requestId too long");
+            }
+            requestId = rid;
+          }
+        }
+
+        if (typeof msg.type !== "string") {
+          throw new Error("Missing or invalid message type");
+        }
+        
+        type = msg.type.trim();
+        
+        if (type.length > 50) {
+          throw new Error("Message type too long");
+        }
+
+        const ALLOWED_TYPES = [
+          "ws.ping",
+          "chat.message", 
+          "game.input",
+          "game.pause",
+          "game.resume"
+        ];
+        
+        if (!ALLOWED_TYPES.includes(type)) {
+          type = "unknown";
+          app.log.warn({ type: msg.type }, "Unknown WS message type");
+          safeSend({ 
+            type: "error", 
+            data: { message: "unknown_message_type" }, 
+            requestId 
+          });
+          return;
+        }
+        
         try { 
           wsMessagesTotal.inc({ type });
-          app.log.info({ type, requestId }, `WS message received, type: ${type}`);
         } catch (e) {
           app.log.error({ err: e }, "Error incrementing ws metrics");
         }
 
         switch (type) {
           case "ws.ping": {
-            safeSend({ type: "ws.pong", ts: Date.now(), requestId });
+            safeSend({ 
+              type: "ws.pong", 
+              ts: Date.now(), 
+              requestId 
+            });
             break;
           }
 
           case "chat.message": {
-            // NOTE: (ws as any)._channel === "chat" should hold here if you want to assert it
-            // and ws.ctx.userId should be set on sensitive channels.
-            app.log.info({ requestId, userId: ws.ctx?.userId }, "Chat message processed");
+            if ((ws as any)._channel !== "chat") {
+              safeSend({ 
+                type: "error", 
+                data: { message: "chat_not_allowed_on_this_channel" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            if (!ws.ctx?.userId) {
+              safeSend({ 
+                type: "error", 
+                data: { message: "authentication_required" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            if (!msg.data || typeof msg.data !== "object") {
+              safeSend({ 
+                type: "error", 
+                data: { message: "invalid_message_data" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            try {
+              const messageContent = sanitizeString(msg.data.message, 500);
+              
+              if (messageContent.length === 0) {
+                safeSend({ 
+                  type: "error", 
+                  data: { message: "empty_message" }, 
+                  requestId 
+                });
+                break;
+              }
+              
+              app.log.info({ 
+                requestId, 
+                userId: ws.ctx.userId,
+                messageLength: messageContent.length 
+              }, "Chat message processed");
+              
+            } catch (err) {
+              safeSend({ 
+                type: "error", 
+                data: { message: "invalid_message_content" }, 
+                requestId 
+              });
+            }
             break;
           }
 
           case "game.input": {
-            // NOTE: for remote game inputs; local game may not require auth.
+            if (!msg.data || typeof msg.data !== "object") {
+              safeSend({ 
+                type: "error", 
+                data: { message: "invalid_input_data" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            const { gameId, player, direction } = msg.data;
+            
+            if (typeof gameId !== "string" || gameId.length === 0 || gameId.length > 50) {
+              safeSend({ 
+                type: "error", 
+                data: { message: "invalid_game_id" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            if (player !== 1 && player !== 2) {
+              safeSend({ 
+                type: "error", 
+                data: { message: "invalid_player_number" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            const VALID_DIRECTIONS = ["up", "down", "stop"];
+            if (typeof direction !== "string" || !VALID_DIRECTIONS.includes(direction)) {
+              safeSend({ 
+                type: "error", 
+                data: { message: "invalid_direction" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            app.log.info({ 
+              requestId, 
+              gameId, 
+              player, 
+              direction 
+            }, "Game input processed");
             break;
           }
 
           default: {
-            app.log.warn({ type }, "Unknown WS message type");
-            safeSend({ type: "error", data: { message: "unknown type" }, requestId });
+            safeSend({ 
+              type: "error", 
+              data: { message: "unhandled_message_type" }, 
+              requestId 
+            });
           }
         }
 
-        // (4) ACK after handling
         if (requestId) {
-          const ack = { type: "ack", requestId };
-          app.log.info({ requestId }, "WS ack sent");
-          safeSend(ack);
+          safeSend({ 
+            type: "ack", 
+            requestId,
+            timestamp: Date.now()
+          });
         }
 
       } catch (parseError) {
-        // malformed JSON
         try { wsMessagesTotal.inc({ type: "invalid" }); } catch {}
-        safeSend({ type: "error", data: { message: "invalid json" }, requestId });
-        app.log.warn({ parseError }, "Invalid JSON received");
+        
+        const errorMsg = parseError instanceof Error ? parseError.message : "parse_error";
+        
+        safeSend({ 
+          type: "error", 
+          data: { message: errorMsg }, 
+          requestId 
+        });
+        
+        app.log.warn({ parseError, requestId }, "WS message parsing failed");
       }
-    });
-  });
+    }); // Fin du handler 'message'
+  }); // Fin du handler 'connection'
 
   // ───────────────────────────────────────────────────────────────────────────
   // 3) HTTP → WS Upgrade gate
-  //    IMPORTANT: accept /ws with query string too (e.g. /ws?channel=chat&token=...)
   // ───────────────────────────────────────────────────────────────────────────
   app.server.on("upgrade", (request: IncomingMessage, socket: any, head: Buffer) => {
     try {
       const url = new URL(request.url || "/", `http://${request.headers.host}`);
-      const pathname = url.pathname; // "/ws"
-      if (pathname === "/ws") {
-        wss.handleUpgrade(request, socket, head, (socketWs: WebSocket) => {
-          wss.emit("connection", socketWs, request);
-        });
-      } else {
+      const pathname = url.pathname;
+      
+      if (pathname !== "/ws") {
+        socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
         socket.destroy();
+        return;
       }
-    } catch {
+      
+      const isProduction = process.env.NODE_ENV === "production";
+      if (isProduction) {
+        const origin = request.headers.origin;
+        const allowedOrigins = (process.env.FRONT_ORIGINS || "").split(",");
+        
+        if (origin && !allowedOrigins.includes(origin)) {
+          app.log.warn({ origin }, "WS upgrade rejected: invalid origin");
+          socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+          socket.destroy();
+          return;
+        }
+      }
+      
+      const wsKey = request.headers["sec-websocket-key"];
+      if (!wsKey) {
+        socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      
+      const MAX_CONNECTIONS = Number(process.env.MAX_WS_CONNECTIONS || 1000);
+      if (wss.clients.size >= MAX_CONNECTIONS) {
+        app.log.warn("WS upgrade rejected: max connections reached");
+        socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      
+      wss.handleUpgrade(request, socket, head, (socketWs: WebSocket) => {
+        wss.emit("connection", socketWs, request);
+      });
+      
+    } catch (err) {
+      app.log.error({ err }, "WS upgrade error");
       socket.destroy();
     }
   });
-}
+} 
