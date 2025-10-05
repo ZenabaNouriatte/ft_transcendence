@@ -11,9 +11,16 @@ function isValidEmail(v: unknown): v is string {
 }
 function isValidAvatar(v: unknown): v is string {
   if (typeof v !== "string") return false;
+  
+  // Longueur max raisonnable
+  if (v.length > 500) return false;
+  
   try {
     const u = new URL(v);
-    return u.protocol === "http:" || u.protocol === "https:";
+    // Protocoles autorisés uniquement
+    if (!['http:', 'https:'].includes(u.protocol)) return false;
+    
+    return true;
   } catch {
     return false;
   }

@@ -190,35 +190,39 @@ if (ROLE === "gateway") {
   };
 
   // ===================== AUTH =====================
-  app.post("/api/users/register", async (request, reply) => {
+
+app.post("/api/users/register", async (request, reply) => {
+  try {
+    const b = (request.body ?? {}) as any;
+
+    // --- sanitize avec gestion d'erreur explicite pour le username ---
+    let username: string;
     try {
-      const b = (request.body ?? {}) as any;
+      username = sanitizeUsername(b.username);
+    } catch {
+      return reply.code(400).send({ error: "Invalid username" });
+    }
 
-      // --- sanitize avec gestion d'erreur explicite pour le username ---
-      let username: string;
-      try {
-        username = sanitizeUsername(b.username); // 
-      } catch {
-       return reply.code(400).send({ error: "Invalid username" });
-      }
+    // Validation email robuste
+    const email = sanitizeInput(b.email, 100);
+    if (!validateEmail(email)) {
+      return reply.code(400).send({ error: "invalid_email_format" });
+    }
 
-      const payload = {
-       username,
-       email:    sanitizeInput(b.email, 100),
-       password: String(b.password ?? ""),
-      };
+    const payload = {
+      username,
+      email: email.toLowerCase(), // Normalisation
+      password: String(b.password ?? ""),
+    };
 
-      // Petits garde-fous locaux (svc-auth revalide derrière)
-      if (payload.username.length < 3) {
-        return reply.code(400).send({ error: "username_too_short" });
-      }
-      if (!validateEmail(payload.email)) {
-        return reply.code(400).send({ error: "invalid_email_format" });
-      }
-      if (payload.password.length < 8) {
-        return reply.code(400).send({ error: "password_too_short" });
-      }
-      // ---------------------------------------------------
+    // Petits garde-fous locaux (svc-auth revalide derrière)
+    if (payload.username.length < 3) {
+      return reply.code(400).send({ error: "username_too_short" });
+    }
+    if (payload.password.length < 8) {
+      return reply.code(400).send({ error: "password_too_short" });
+    }
+    // ---------------------------------------------------
 
       const resp = await fetch("http://auth:8101/validate-register", {
         method: "POST",
@@ -241,7 +245,7 @@ if (ROLE === "gateway") {
       return reply.code(500).send({ error: "register_failed" });
     }
   });
-
+      
   app.post("/api/auth/validate-token", async (request, reply) => {
     try {
       const { token } = (request.body ?? {}) as { token?: string };
@@ -260,9 +264,17 @@ if (ROLE === "gateway") {
   });
 
 
-  app.get("/api/users", async () => {
-    const users = await UserService.getAllUsers();
-    return { users: users.map(({ password, ...rest }: any) => rest) };
+  app.get("/api/users", async (request, reply) => {
+    try {
+      const userId = await getUserFromToken(request);
+      if (!userId) return reply.code(401).send({ error: "Authentification requise" });
+
+      const users = await UserService.getAllUsers();
+      return { users: users.map(({ password, ...rest }: any) => rest) };
+    } catch (error) {
+      request.log.error(error, "Users list error");
+      return reply.code(500).send({ error: "Erreur serveur" });
+    }
   });
 
   app.post("/api/users/login", async (request, reply) => {
@@ -533,6 +545,7 @@ if (ROLE === "gateway") {
     }
   });
 
+  // route stats de jeu
   app.get("/api/games/stats", async (request, reply) => {
     try {
       const userId = await getUserFromToken(request);
@@ -1001,7 +1014,7 @@ if (ROLE === "gateway") {
   app.get("/api/tournaments/ping", async () => ({ ok: true, service: "tournaments" }));
 
 // ==== MICROSERVICES =========================================================
-} else if (ROLE === "svc-auth") {
+} else if (ROLE === "svc-auth") { //1040
   const { default: authPlugin } = await import("./modules/auth/http.js");
   await app.register(authPlugin);
 
