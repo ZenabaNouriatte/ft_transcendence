@@ -80,8 +80,9 @@ const routes: Record<string, Route> = {
     const authButtons = isLoggedIn 
       ? `<!-- Bouton utilisateur connecté en haut à droite -->
          <div class="fixed top-8 right-8 z-10">
-           <button id="userProfileBtn" class="retro-btn flex items-center gap-2">
-             👤 ${currentUsername}
+           <button id="userProfileBtn" class="retro-btn hover-blue flex items-center gap-2">
+             <div id="userMiniAvatar" class="mini-avatar" style="background-image: url('/images/1.JPG')"></div>
+             ${currentUsername}
            </button>
          </div>`
       : `<!-- Boutons Login/Sign Up en haut à droite de la fenêtre -->
@@ -100,15 +101,15 @@ const routes: Record<string, Route> = {
       
       <!-- Contenu principal centré -->
       <div class="flex flex-col items-center justify-center min-h-screen">
-        <h1 class="text-4xl mb-8 text-center">Welcome to our Pong Game</h1>
-        <div class="bg-blue-900 p-8 rounded-lg shadow-lg">
-          <p class="mb-6 text-xl text-blue-300 text-center">Pick your game style</p>
-          <div class="flex flex-row gap-4">
-            <button id="classicBtn" class="retro-btn">
-              🎮 CLASSIC
+        <img src="/images/titre.png" alt="Pong Game Logo" class="main-logo">
+        <div class="game-selection-box">
+          <p class="game-selection-text">Pick your game style</p>
+          <div class="game-buttons-container">
+            <button id="classicBtn" class="retro-btn hover-green">
+              <img class="btn-icon" src="/images/classic.png" alt="Classic">CLASSIC
             </button>
-            <button id="tournamentBtn" class="retro-btn">
-              🏆 TOURNAMENT
+            <button id="tournamentBtn" class="retro-btn hover-orange">
+              <img class="btn-icon" src="/images/tournament.png" alt="Tournament">TOURNAMENT
             </button>
           </div>
         </div>
@@ -121,7 +122,7 @@ const routes: Record<string, Route> = {
   "#/classic": () => `
     <div class="flex flex-col items-center">
       <h1 class="text-3xl mb-8">Classic Mode</h1>
-      <div class="bg-blue-900 p-6 rounded-lg shadow-lg max-w-2xl w-full">
+      <div class="bg-black bg-opacity-60 p-6 rounded-lg shadow-lg max-w-2xl w-full">
         <p class="mb-6 text-blue-300 text-center">Enter players usernames:</p>
         
         <!-- Formulaire des deux joueurs en grid responsive -->
@@ -154,7 +155,7 @@ const routes: Record<string, Route> = {
   "#/tournament": () => `
     <div class="flex flex-col items-center">
       <h1 class="text-3xl mb-8">🏆 Create Tournament 🏆</h1>
-      <div class="bg-purple-900 p-8 rounded-lg shadow-lg max-w-2xl w-full">
+      <div class="bg-black bg-opacity-60 p-8 rounded-lg shadow-lg max-w-2xl w-full">
         <p class="mb-6 text-purple-300 text-center">Enter players' usernames:</p>
         
         <!-- Liste des 4 joueurs fixes -->
@@ -192,7 +193,7 @@ const routes: Record<string, Route> = {
   // PAGE DE TRANSITION ENTRE MATCHS DE TOURNOI
   "#/tournament-transition": () => `
     <div class="flex flex-col items-center">
-      <div class="bg-purple-900 p-8 rounded-lg shadow-2xl max-w-2xl w-full text-center mb-8">
+      <div class="bg-black bg-opacity-60 p-8 rounded-lg shadow-2xl max-w-2xl w-full text-center mb-8">
         <h1 class="text-4xl mb-6 text-white font-bold">🏆 Tournament Progress 🏆</h1>
         <div id="matchResult" class="mb-6">
           <h2 class="text-3xl mb-4 text-green-400 font-bold">Match Result</h2>
@@ -218,7 +219,7 @@ const routes: Record<string, Route> = {
   // PAGE DE VICTOIRE
   "#/victory": () => `
     <div class="flex flex-col items-center">
-      <div class="bg-gradient-to-r from-yellow-300 via-yellow-400 to-yellow-500 p-8 rounded-lg shadow-2xl max-w-2xl w-full text-center mb-8">
+      <div class="bg-yellow-400 bg-opacity-80 p-8 rounded-lg shadow-2xl max-w-2xl w-full text-center mb-8">
         <h1 class="text-5xl mb-4 text-black font-bold">🏆 VICTORY 🏆</h1>
         <h2 id="winnerName" class="text-4xl mb-6 text-black font-bold">Winner Name</h2>
         <div id="finalScore" class="text-2xl mb-8 text-black">
@@ -278,7 +279,7 @@ const routes: Record<string, Route> = {
   "#/sign-up": () => `
     <div class="flex flex-col items-center justify-center min-h-screen">
       <h1 class="text-3xl mb-8 text-white">Sign Up</h1>
-      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+      <div class="bg-white bg-opacity-90 p-8 rounded shadow-lg w-full max-w-md">
         <form id="signUpForm" class="space-y-4">
           <div>
             <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
@@ -313,7 +314,7 @@ const routes: Record<string, Route> = {
   "#/login": () => `
     <div class="flex flex-col items-center justify-center min-h-screen">
       <h1 class="text-3xl mb-8 text-white">Login</h1>
-      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+      <div class="bg-white bg-opacity-90 p-8 rounded shadow-lg w-full max-w-md">
         <form id="loginForm" class="space-y-4">
           <div>
             <label for="loginUsername" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
@@ -359,7 +360,7 @@ const routes: Record<string, Route> = {
                style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
         </div>
         <h1 id="profileUsername" class="text-5xl mb-8 text-white font-bold text-center">${currentUsername}</h1>
-        <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-2xl">
+        <div class="bg-white bg-opacity-90 p-8 rounded-lg shadow-lg w-full max-w-2xl">
           <h2 class="text-2xl mb-6 text-gray-800 text-center">Profile Information</h2>
           <!-- Informations du profil à développer -->
           <div class="space-y-4 text-gray-700">
@@ -381,7 +382,7 @@ const routes: Record<string, Route> = {
   "#/friends": () => `
     <div class="flex flex-col items-center justify-center min-h-screen">
       <h1 class="text-3xl mb-8">Friends</h1>
-      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+      <div class="bg-white bg-opacity-90 p-8 rounded shadow-lg w-full max-w-md">
         <!-- Liste des amis à venir -->
       </div>
     </div>
@@ -390,7 +391,7 @@ const routes: Record<string, Route> = {
   "#/friends-profile": () => `
     <div class="flex flex-col items-center justify-center min-h-screen">
       <h1 class="text-3xl mb-8">Friend's Profile</h1>
-      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+      <div class="bg-white bg-opacity-90 p-8 rounded shadow-lg w-full max-w-md">
         <!-- Profil d'un ami à venir -->
       </div>
     </div>
@@ -442,6 +443,25 @@ function render() {
       document.getElementById("userProfileBtn")?.addEventListener("click", () => {
         location.hash = "#/profile";
       });
+
+      // Charger l'avatar de l'utilisateur dans le mini bouton
+      async function loadUserMiniAvatar() {
+        try {
+          const userId = await getCurrentUserId();
+          const avatarPath = getUserAvatarPath(userId);
+          const miniAvatar = document.getElementById('userMiniAvatar') as HTMLElement;
+          
+          if (miniAvatar) {
+            miniAvatar.style.backgroundImage = `url('${avatarPath}')`;
+            console.log(`Mini avatar chargé: User ID ${userId} → ${avatarPath}`);
+          }
+        } catch (error) {
+          console.error('Erreur lors du chargement du mini avatar:', error);
+        }
+      }
+
+      // Charger le mini avatar
+      loadUserMiniAvatar();
     } else {
       // Utilisateur non connecté : boutons login/signup
       document.getElementById("loginBtn")?.addEventListener("click", () => {
