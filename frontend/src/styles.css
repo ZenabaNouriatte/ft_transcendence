@@ -34,6 +34,37 @@ body {
   white-space: nowrap;
 }
 
+/* Version petite du bouton retro */
+.retro-btn-small {
+  background-color: #f0e6d6;
+  color: #6d5a42;
+  font-size: 14px;
+  font-family: 'Courier New', monospace;
+  padding: 8px 20px;
+  border: 2px solid #8b7355;
+  border-radius: 25px;
+  cursor: pointer;
+  box-shadow: 0px 3px 0px #4a3c2a;
+  transition: all 0.15s ease;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  display: inline-block;
+  text-align: center;
+  text-decoration: none;
+  min-width: 120px;
+}
+
+.retro-btn-small:hover {
+  transform: translateY(1px);
+  box-shadow: 0px 2px 0px #4a3c2a;
+}
+
+.retro-btn-small:active {
+  transform: translateY(3px);
+  box-shadow: none;
+}
+
 /* Icônes dans les boutons */
 .btn-icon {
   width: 24px;
@@ -76,6 +107,171 @@ body {
   min-width: 400px;
   max-width: 600px;
   margin: 0 auto;
+}
+
+/* Boîte de formulaire style page d'accueil */
+.form-box {
+  background-color: rgba(251, 222, 156, 0.6);
+  padding: 2.5rem;
+  border-radius: 16px;
+  border: 3px solid #8b7355;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-width: 500px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Boîte de formulaire pour les pages d'authentification (plus large) */
+.form-box-auth {
+  background-color: rgba(251, 222, 156, 0.6);
+  padding: 2.5rem;
+  border-radius: 16px;
+  border: 3px solid #8b7355;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-width: 420px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Boîte de formulaire avec bordure verte (page Classic) */
+.form-box-green {
+  background-color: rgba(251, 222, 156, 0.6);
+  padding: 2.5rem;
+  border-radius: 16px;
+  border: 7px solid #8bc470;
+  box-shadow: 0 4px 12px rgba(139, 196, 112, 0.3);
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Boîte de formulaire avec bordure orange (page Tournament) */
+.form-box-orange {
+  background-color: rgba(251, 222, 156, 0.6);
+  padding: 2.5rem;
+  border-radius: 16px;
+  border: 7px solid #f0c35a;
+  box-shadow: 0 4px 12px rgba(240, 195, 90, 0.3);
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Texte de description dans les formulaires */
+.form-description {
+  margin-bottom: 2rem;
+  font-size: 1.25rem;
+  color: #6d5a42;
+  text-align: center;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Texte de description vert pour page Classic */
+.form-description-green {
+  margin-bottom: 2rem;
+  font-size: 1.25rem;
+  color: #6b8a4f;
+  text-align: center;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Texte de description orange pour page Tournament */
+.form-description-orange {
+  margin-bottom: 2rem;
+  font-size: 1.25rem;
+  color: #c4941f;
+  text-align: center;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Numéros des joueurs orange pour page Tournament */
+.player-number-orange {
+  color: #c4941f;
+  font-weight: bold;
+  font-size: 1.125rem;
+}
+
+/* Labels des joueurs verts pour page Classic */
+.player-label-green {
+  color: #6b8a4f;
+  font-weight: bold;
+}
+
+/* Champs de saisie stylisés */
+.styled-input {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 2px solid #8b7355;
+  background-color: #f0e6d6;
+  color: #6d5a42;
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.styled-input:focus {
+  outline: none;
+  border-color: #6d5a42;
+  box-shadow: 0 0 8px rgba(139, 115, 85, 0.3);
+}
+
+.styled-input::placeholder {
+  color: #8b7355;
+  opacity: 0.7;
+}
+
+/* Labels pour les champs */
+.form-label {
+  display: block;
+  color: #6d5a42;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  font-family: 'Courier New', monospace;
+  text-transform: uppercase;
+}
+
+/* Labels pour les pages d'authentification */
+.auth-label {
+  display: block;
+  color: #6d5a42;
+  font-size: 14px;
+  font-weight: bold;
+  margin-bottom: 8px;
+  font-family: 'Courier New', monospace;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Texte de navigation pour les pages d'authentification */
+.auth-navigation-text {
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  color: #6d5a42;
+  font-weight: bold;
+}
+
+.auth-navigation-link {
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  color: #254376;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.auth-navigation-link:hover {
+  color: #1a2c52;
+}
+
+/* Container spécial pour réduire l'espacement entre les mots */
+.auth-navigation-container {
+  word-spacing: -2px;
+  letter-spacing: -0.3px;
 }
 
 /* Texte dans la boîte de sélection du mode de jeu */

@@ -121,31 +121,31 @@ const routes: Record<string, Route> = {
   // Formulaire de saisie des noms des deux joueurs
   "#/classic": () => `
     <div class="flex flex-col items-center">
-      <h1 class="text-3xl mb-8">Classic Mode</h1>
-      <div class="bg-black bg-opacity-60 p-6 rounded-lg shadow-lg max-w-2xl w-full">
-        <p class="mb-6 text-blue-300 text-center">Enter players usernames:</p>
+      <h1 class="text-3xl mb-8 text-white">Classic Mode</h1>
+      <div class="form-box-green">
+        <p class="form-description-green">Enter players' usernames:</p>
         
         <!-- Formulaire des deux joueurs en grid responsive -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div>
-            <label class="block text-blue-200 text-sm mb-2"><strong>Player 1</strong> (Left - W/S):</label>
-            <input id="player1Input" class="w-full p-3 rounded text-black" 
+            <label class="form-label"><span class="player-label-green">Player 1</span> (Left - W/S):</label>
+            <input id="player1Input" class="styled-input" 
                    placeholder="Player 1 username" maxlength="20">
           </div>
           
           <div>
-            <label class="block text-blue-200 text-sm mb-2"><strong>Player 2</strong> (Right - I/K):</label>
-            <input id="player2Input" class="w-full p-3 rounded text-black" 
+            <label class="form-label"><span class="player-label-green">Player 2</span> (Right - I/K):</label>
+            <input id="player2Input" class="styled-input" 
                    placeholder="Player 2 username" maxlength="20">
           </div>
         </div>
         
-        <button id="playBtn" class="retro-btn w-full">
-          🏓 START GAME
+        <button id="playBtn" class="retro-btn hover-green w-full">
+          <img class="btn-icon" src="/images/classic.png" alt="Play">START GAME
         </button>
       </div>
       <div class="mt-6">
-        <button id="backBtn" class="retro-btn">
+        <button id="backBtn" class="retro-btn-small hover-blue">
           ← Back to menu
         </button>
       </div>
@@ -154,39 +154,38 @@ const routes: Record<string, Route> = {
   // PAGE TOURNAMENT - Saisie de 4 joueurs pour un tournoi
   "#/tournament": () => `
     <div class="flex flex-col items-center">
-      <h1 class="text-3xl mb-8">🏆 Create Tournament 🏆</h1>
-      <div class="bg-black bg-opacity-60 p-8 rounded-lg shadow-lg max-w-2xl w-full">
-        <p class="mb-6 text-purple-300 text-center">Enter players' usernames:</p>
+      <h1 class="text-3xl mb-8 text-white">🏆 Create Tournament 🏆</h1>
+      <div class="form-box-orange">
+        <p class="form-description-orange">Enter players' usernames:</p>
         
         <!-- Liste des 4 joueurs fixes -->
         <div id="playersList" class="mb-6">
-          <div class="player-entry mb-3 flex items-center gap-3">
-            <span class="w-8 text-purple-200 font-bold">1.</span>
-            <input type="text" class="player-input flex-1 p-3 rounded text-black" placeholder="Player 1 username" maxlength="20" data-index="0">
+          <div class="player-entry mb-4 flex items-center gap-3">
+            <span class="w-8 player-number-orange">1.</span>
+            <input type="text" class="player-input styled-input flex-1" placeholder="Player 1 username" maxlength="20" data-index="0">
           </div>
-          <div class="player-entry mb-3 flex items-center gap-3">
-            <span class="w-8 text-purple-200 font-bold">2.</span>
-            <input type="text" class="player-input flex-1 p-3 rounded text-black" placeholder="Player 2 username" maxlength="20" data-index="1">
+          <div class="player-entry mb-4 flex items-center gap-3">
+            <span class="w-8 player-number-orange">2.</span>
+            <input type="text" class="player-input styled-input flex-1" placeholder="Player 2 username" maxlength="20" data-index="1">
           </div>
-          <div class="player-entry mb-3 flex items-center gap-3">
-            <span class="w-8 text-purple-200 font-bold">3.</span>
-            <input type="text" class="player-input flex-1 p-3 rounded text-black" placeholder="Player 3 username" maxlength="20" data-index="2">
+          <div class="player-entry mb-4 flex items-center gap-3">
+            <span class="w-8 player-number-orange">3.</span>
+            <input type="text" class="player-input styled-input flex-1" placeholder="Player 3 username" maxlength="20" data-index="2">
           </div>
-          <div class="player-entry mb-3 flex items-center gap-3">
-            <span class="w-8 text-purple-200 font-bold">4.</span>
-            <input type="text" class="player-input flex-1 p-3 rounded text-black" placeholder="Player 4 username" maxlength="20" data-index="3">
+          <div class="player-entry mb-4 flex items-center gap-3">
+            <span class="w-8 player-number-orange">4.</span>
+            <input type="text" class="player-input styled-input flex-1" placeholder="Player 4 username" maxlength="20" data-index="3">
           </div>
         </div>
         
-        <!-- Boutons d'action -->
-        <div class="flex gap-4">
-          <button id="backToMenuBtn" class="retro-btn flex-1">
-            ← Back to menu
-          </button>
-          <button id="startTournamentBtn" class="retro-btn flex-1">
-            🚀 Start Tournament
-          </button>
-        </div>
+        <button id="startTournamentBtn" class="retro-btn hover-orange w-full">
+          <img class="btn-icon" src="/images/tournament.png" alt="Tournament">Start Tournament
+        </button>
+      </div>
+      <div class="mt-6">
+        <button id="backToMenuBtn" class="retro-btn-small hover-blue">
+          ← Back to menu
+        </button>
       </div>
     </div>
   `,
@@ -219,18 +218,18 @@ const routes: Record<string, Route> = {
   // PAGE DE VICTOIRE
   "#/victory": () => `
     <div class="flex flex-col items-center">
-      <div class="bg-yellow-400 bg-opacity-80 p-8 rounded-lg shadow-2xl max-w-2xl w-full text-center mb-8">
-        <h1 class="text-5xl mb-4 text-black font-bold">🏆 VICTORY 🏆</h1>
-        <h2 id="winnerName" class="text-4xl mb-6 text-black font-bold">Winner Name</h2>
-        <div id="finalScore" class="text-2xl mb-8 text-black">
+      <div class="bg-yellow-400 bg-opacity-80 p-12 rounded-lg shadow-2xl max-w-4xl w-full text-center mb-8">
+        <h1 class="text-6xl mb-6 text-black font-bold">🏆 VICTORY 🏆</h1>
+        <h2 id="winnerName" class="text-5xl mb-8 text-black font-bold">Winner Name</h2>
+        <div id="finalScore" class="text-3xl mb-10 text-black">
           Final Score: <span class="font-bold">0 - 0</span>
         </div>
-        <div class="flex gap-6 justify-center">
-          <button id="playAgainBtn" class="retro-btn">
-            🎮 Play Again
+        <div class="flex gap-8 justify-center">
+          <button id="playAgainBtn" class="retro-btn hover-blue">
+            <img class="btn-icon" src="/images/classic.png" alt="Play">Play Again
           </button>
-          <button id="backToMenuBtn" class="retro-btn">
-            🏠 Back to Menu
+          <button id="backToMenuBtn" class="retro-btn hover-blue">
+            ← Back to Menu
           </button>
         </div>
       </div>
@@ -260,17 +259,17 @@ const routes: Record<string, Route> = {
       <!-- Bouton Start (visible au début) -->
       <div id="startSection" class="flex gap-4 mb-4">
         <button id="startBtn" class="retro-btn">
-          🚀 START GAME
+          <img class="btn-icon" src="/images/classic.png" alt="Play">START GAME
         </button>
       </div>
       
       <!-- Boutons de contrôle du jeu (cachés au début, visibles une fois le jeu démarré) -->
       <div id="gameControls" class="hidden gap-4">
-        <button id="pauseBtn" class="retro-btn">
+        <button id="pauseBtn" class="retro-btn-small hover-blue">
           Pause
         </button>
-        <button id="backToMenuBtn" class="retro-btn">
-          Back to menu
+        <button id="backToMenuBtn" class="retro-btn-small hover-blue">
+          ← Back to menu
         </button>
       </div>
     </div>
@@ -279,26 +278,26 @@ const routes: Record<string, Route> = {
   "#/sign-up": () => `
     <div class="flex flex-col items-center justify-center min-h-screen">
       <h1 class="text-3xl mb-8 text-white">Sign Up</h1>
-      <div class="bg-white bg-opacity-90 p-8 rounded shadow-lg w-full max-w-md">
+      <div class="form-box-auth">
         <form id="signUpForm" class="space-y-4">
           <div>
-            <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <label for="username" class="auth-label">Username</label>
             <input type="text" id="username" name="username" required
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              class="styled-input"
               placeholder="Enter your username">
           </div>
           
           <div>
-            <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label for="email" class="auth-label">Email</label>
             <input type="email" id="email" name="email" required
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              class="styled-input"
               placeholder="Enter your email">
           </div>
           
           <div>
-            <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label for="password" class="auth-label">Password</label>
             <input type="password" id="password" name="password" required
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              class="styled-input"
               placeholder="Enter your password">
           </div>
           
@@ -307,6 +306,17 @@ const routes: Record<string, Route> = {
             Create Account
           </button>
         </form>
+        
+        <div class="mt-6 text-center auth-navigation-container">
+          <span class="auth-navigation-text">Already have an account? </span>
+          <a href="#/login" class="auth-navigation-link">Login here</a>
+        </div>
+      </div>
+      
+      <div class="mt-6 text-center">
+        <button id="backToMenuSignup" class="retro-btn-small hover-blue">
+          ← Back to Menu
+        </button>
       </div>
     </div>
   `,
@@ -314,19 +324,19 @@ const routes: Record<string, Route> = {
   "#/login": () => `
     <div class="flex flex-col items-center justify-center min-h-screen">
       <h1 class="text-3xl mb-8 text-white">Login</h1>
-      <div class="bg-white bg-opacity-90 p-8 rounded shadow-lg w-full max-w-md">
+      <div class="form-box-auth">
         <form id="loginForm" class="space-y-4">
           <div>
-            <label for="loginUsername" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <label for="loginUsername" class="auth-label">Username</label>
             <input type="text" id="loginUsername" name="username" required
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              class="styled-input"
               placeholder="Enter your username">
           </div>
           
           <div>
-            <label for="loginPassword" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label for="loginPassword" class="auth-label">Password</label>
             <input type="password" id="loginPassword" name="password" required
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              class="styled-input"
               placeholder="Enter your password">
           </div>
           
@@ -335,6 +345,17 @@ const routes: Record<string, Route> = {
             Login
           </button>
         </form>
+        
+        <div class="mt-6 text-center auth-navigation-container">
+          <span class="auth-navigation-text">Don't have an account? </span>
+          <a href="#/sign-up" class="auth-navigation-link">Sign up here</a>
+        </div>
+      </div>
+      
+      <div class="mt-6 text-center">
+        <button id="backToMenuLogin" class="retro-btn-small hover-blue">
+          ← Back to Menu
+        </button>
       </div>
     </div>
   `,
@@ -904,6 +925,11 @@ function render() {
         alert('Network error. Please try again.');
       }
     });
+    
+    // Gestion du bouton "Back to Menu"
+    document.getElementById("backToMenuSignup")?.addEventListener("click", () => {
+      location.hash = '';
+    });
   } else if (route === "#/login") {
     // --- PAGE DE CONNEXION ---
     
@@ -943,6 +969,11 @@ function render() {
         console.error('Network error:', error);
         alert('Network error. Please try again.');
       }
+    });
+    
+    // Gestion du bouton "Back to Menu"
+    document.getElementById("backToMenuLogin")?.addEventListener("click", () => {
+      location.hash = '';
     });
   } else if (route === "#/profile") {
     // --- PAGE DE PROFIL ---
