@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Raleway:wght@700;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -17,7 +19,7 @@ body {
   background-color: #f0e6d6;
   color: #6d5a42;
   font-size: 18px;
-  font-family: 'Courier New', monospace;
+  font-family: monospace, sans-serif;
   padding: 16px 40px;
   border: 2px solid #8b7355;
   border-radius: 50px;
@@ -39,7 +41,7 @@ body {
   background-color: #f0e6d6;
   color: #6d5a42;
   font-size: 14px;
-  font-family: 'Courier New', monospace;
+  font-family: monospace, sans-serif;
   padding: 8px 20px;
   border: 2px solid #8b7355;
   border-radius: 25px;
@@ -56,13 +58,15 @@ body {
 }
 
 .retro-btn-small:hover {
-  transform: translateY(1px);
-  box-shadow: 0px 2px 0px #4a3c2a;
+  background-color: #e8dcc8;
+  transform: translateY(-2px);
+  box-shadow: 0px 8px 0px #4a3c2a;
 }
 
 .retro-btn-small:active {
-  transform: translateY(3px);
-  box-shadow: none;
+  background-color: #ddd0bb;
+  box-shadow: 0px 2px 0px #4a3c2a;
+  transform: translateY(4px);
 }
 
 /* Icônes dans les boutons */
@@ -157,6 +161,18 @@ body {
   margin: 0 auto;
 }
 
+/* Boîte de formulaire avec bordure bleue (page Profile) */
+.form-box-blue {
+  background-color: rgba(251, 222, 156, 0.6);
+  padding: 2.5rem;
+  border-radius: 16px;
+  border: 4px solid #254376;
+  box-shadow: 0 4px 12px rgba(37, 67, 118, 0.3);
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+}
+
 /* Texte de description dans les formulaires */
 .form-description {
   margin-bottom: 2rem;
@@ -208,7 +224,7 @@ body {
   border: 2px solid #8b7355;
   background-color: #f0e6d6;
   color: #6d5a42;
-  font-family: 'Courier New', monospace;
+  font-family: monospace, sans-serif;
   font-size: 16px;
   font-weight: 500;
   transition: all 0.15s ease;
@@ -232,7 +248,7 @@ body {
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 8px;
-  font-family: 'Courier New', monospace;
+  font-family: monospace, sans-serif;
   text-transform: uppercase;
 }
 
@@ -243,21 +259,21 @@ body {
   font-size: 14px;
   font-weight: bold;
   margin-bottom: 8px;
-  font-family: 'Courier New', monospace;
+  font-family: monospace, sans-serif;
   text-transform: uppercase;
   letter-spacing: 1px;
 }
 
 /* Texte de navigation pour les pages d'authentification */
 .auth-navigation-text {
-  font-family: 'Courier New', monospace;
+  font-family: monospace, sans-serif;
   font-size: 14px;
   color: #6d5a42;
   font-weight: bold;
 }
 
 .auth-navigation-link {
-  font-family: 'Courier New', monospace;
+  font-family: monospace, sans-serif;
   font-size: 14px;
   color: #254376;
   font-weight: bold;
@@ -318,10 +334,10 @@ body {
 
 /* Hover spécial bleu pour le bouton utilisateur */
 .retro-btn.hover-blue:hover {
-  background-color: #8fa3d9;
+  background-color: #8fb5d9;
   color: #fff;
   transform: translateY(-2px);
-  box-shadow: 0px 8px 0px #6e85c1;
+  box-shadow: 0px 8px 0px #7998b6;
 }
 
 /* Active spécial bleu pour le bouton utilisateur */
@@ -348,6 +364,36 @@ body {
   transform: translateY(4px);
 }
 
+/* Hover classique beige pour les boutons de victoire */
+.retro-btn.hover-classic:hover {
+  background-color: #e8dcc8;
+  transform: translateY(-2px);
+  box-shadow: 0px 8px 0px #4a3c2a;
+}
+
+/* Active classique beige pour les boutons de victoire */
+.retro-btn.hover-classic:active {
+  background-color: #ddd0bb;
+  box-shadow: 0px 2px 0px #4a3c2a;
+  transform: translateY(4px);
+}
+
+/* Hover rouge/jaune pour le bouton quit tournament */
+.retro-btn-small.hover-red:hover {
+  background-color: #c75353;
+  color: #6d5a42;
+  transform: translateY(-2px);
+  box-shadow: 0px 8px 0px #4a3c2a;
+}
+
+/* Active rouge/jaune pour le bouton quit tournament */
+.retro-btn-small.hover-red:active {
+  background-color: #f7ee7a;
+  color: #6d5a42;
+  box-shadow: 0px 2px 0px #4a3c2a;
+  transform: translateY(4px);
+}
+
 /* Effet du clic */
 .retro-btn:active {
   background-color: #ddd0bb;
@@ -360,7 +406,7 @@ body {
   width: 200px;
   height: 200px;
   border-radius: 50%;
-  border: 4px solid #254376;
+  border: 5px solid #254376;
   background-color: #f5f5f5;
   margin: 0 auto 24px auto;
   overflow: hidden;
@@ -372,7 +418,7 @@ body {
   align-items: center;
   justify-content: center;
   color: #2d2d2d;
-  font-family: 'Courier New', monospace;
+  font-family: monospace, sans-serif;
   font-size: 18px;
   font-weight: bold;
 }
@@ -388,6 +434,62 @@ body {
 .profile-photo-frame .placeholder {
   color: #2d2d2d;
   font-size: 18px;
-  font-family: 'Courier New', monospace;
+  font-family: monospace, sans-serif;
   text-align: center;
+}
+
+/* Classes pour les titres avec police Raleway */
+.page-title {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+.page-title-large {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 900;
+  font-size: 3rem;
+  letter-spacing: 2px;
+  margin-bottom: 1rem;
+}
+
+.page-title-medium {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 900;
+  font-size: 2rem;
+  letter-spacing: 1px;
+  margin-bottom: 1.5rem;
+}
+
+.page-title-winner {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 900;
+  font-size: 3.5rem;
+  letter-spacing: 2px;
+  margin-bottom: 1rem;
+}
+
+.page-title-score {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 900;
+  font-size: 1.8rem;
+  letter-spacing: 1px;
+  margin-bottom: 2rem;
+}
+
+/* Variantes de couleurs pour chaque page */
+.page-title-green {
+  color: #8bc470; /* Couleur verte déjà utilisée sur la page Classic */
+}
+
+.page-title-orange {
+  color: #f0c35a; /* Couleur orange déjà utilisée sur la page Tournament */
+}
+
+.page-title-blue {
+  color: #254376; /* Couleur bleue déjà utilisée pour le profil */
+}
+
+.page-title-brown {
+  color: #6d5a42; /* Couleur marron du texte de la page d'accueil */
 }

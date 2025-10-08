@@ -121,7 +121,7 @@ const routes: Record<string, Route> = {
   // Formulaire de saisie des noms des deux joueurs
   "#/classic": () => `
     <div class="flex flex-col items-center">
-      <h1 class="text-3xl mb-8 text-white">Classic Mode</h1>
+      <h1 class="page-title-large page-title-green">Classic</h1>
       <div class="form-box-green">
         <p class="form-description-green">Enter players' usernames:</p>
         
@@ -146,7 +146,7 @@ const routes: Record<string, Route> = {
       </div>
       <div class="mt-6">
         <button id="backBtn" class="retro-btn-small hover-blue">
-          ← Back to menu
+          Back to Menu
         </button>
       </div>
     </div>
@@ -154,7 +154,7 @@ const routes: Record<string, Route> = {
   // PAGE TOURNAMENT - Saisie de 4 joueurs pour un tournoi
   "#/tournament": () => `
     <div class="flex flex-col items-center">
-      <h1 class="text-3xl mb-8 text-white">🏆 Create Tournament 🏆</h1>
+      <h1 class="page-title-large page-title-orange">Tournament</h1>
       <div class="form-box-orange">
         <p class="form-description-orange">Enter players' usernames:</p>
         
@@ -184,7 +184,7 @@ const routes: Record<string, Route> = {
       </div>
       <div class="mt-6">
         <button id="backToMenuBtn" class="retro-btn-small hover-blue">
-          ← Back to menu
+          Back to Menu
         </button>
       </div>
     </div>
@@ -192,44 +192,46 @@ const routes: Record<string, Route> = {
   // PAGE DE TRANSITION ENTRE MATCHS DE TOURNOI
   "#/tournament-transition": () => `
     <div class="flex flex-col items-center">
-      <div class="bg-black bg-opacity-60 p-8 rounded-lg shadow-2xl max-w-2xl w-full text-center mb-8">
-        <h1 class="text-4xl mb-6 text-white font-bold">🏆 Tournament Progress 🏆</h1>
+      <h1 class="page-title-large page-title-orange">Tournament Progress</h1>
+      <div class="form-box-orange">
         <div id="matchResult" class="mb-6">
-          <h2 class="text-3xl mb-4 text-green-400 font-bold">Match Result</h2>
-          <div id="matchWinner" class="text-2xl mb-2 text-white">Winner: <span class="font-bold">-</span></div>
-          <div id="matchScore" class="text-xl mb-4 text-gray-300">Score: <span class="font-bold">-</span></div>
+          <div id="matchWinner" class="text-xl mb-2 text-center form-description-orange">Winner: <span class="font-bold">-</span></div>
+          <div id="matchScore" class="text-lg mb-4 text-center player-number-orange">Score: <span class="font-bold">-</span></div>
         </div>
-        <div id="nextMatchInfo" class="mb-6">
-          <h3 class="text-2xl mb-4 text-blue-400 font-bold">Next Match</h3>
-          <div id="nextMatchType" class="text-xl mb-2 text-white">-</div>
-          <div id="nextMatchPlayers" class="text-lg text-gray-300">- vs -</div>
+        
+        <div class="border-t border-orange-300 pt-6 mb-6">
+          <div id="nextMatchInfo">
+            <div id="nextMatchType" class="text-xl mb-2 text-center form-description-orange">-</div>
+            <div id="nextMatchPlayers" class="text-lg text-center player-number-orange">- vs -</div>
+          </div>
         </div>
-        <button id="continueToNextMatchBtn" class="retro-btn">
-          🎮 Continue to Next Match
+        
+        <button id="continueToNextMatchBtn" class="retro-btn hover-orange w-full mb-4">
+          Continue to Next Match
         </button>
-        <div class="mt-6">
-          <button id="quitTournamentBtn" class="retro-btn">
-            🏠 Quit Tournament
-          </button>
-        </div>
+      </div>
+      <div class="mt-6">
+        <button id="quitTournamentBtn" class="retro-btn-small hover-red">
+          Quit Tournament
+        </button>
       </div>
     </div>
   `,
   // PAGE DE VICTOIRE
   "#/victory": () => `
     <div class="flex flex-col items-center">
-      <div class="bg-yellow-400 bg-opacity-80 p-12 rounded-lg shadow-2xl max-w-4xl w-full text-center mb-8">
-        <h1 class="text-6xl mb-6 text-black font-bold">🏆 VICTORY 🏆</h1>
-        <h2 id="winnerName" class="text-5xl mb-8 text-black font-bold">Winner Name</h2>
-        <div id="finalScore" class="text-3xl mb-10 text-black">
+      <div class="bg-yellow-300 bg-opacity-70 p-12 rounded-3xl shadow-2xl max-w-4xl w-full text-center mb-8">
+        <h1 class="page-title-winner" style="color: #000;">VICTORY</h1>
+        <h2 id="winnerName" class="page-title-winner" style="color: #000;">Winner Name</h2>
+        <div id="finalScore" class="page-title-score" style="color: #000;">
           Final Score: <span class="font-bold">0 - 0</span>
         </div>
         <div class="flex gap-8 justify-center">
-          <button id="playAgainBtn" class="retro-btn hover-blue">
+          <button id="playAgainBtn" class="retro-btn hover-classic">
             <img class="btn-icon" src="/images/classic.png" alt="Play">Play Again
           </button>
-          <button id="backToMenuBtn" class="retro-btn hover-blue">
-            ← Back to Menu
+          <button id="backToMenuBtn" class="retro-btn hover-classic">
+            Back to Menu
           </button>
         </div>
       </div>
@@ -269,7 +271,7 @@ const routes: Record<string, Route> = {
           Pause
         </button>
         <button id="backToMenuBtn" class="retro-btn-small hover-blue">
-          ← Back to menu
+          Back to Menu
         </button>
       </div>
     </div>
@@ -277,7 +279,7 @@ const routes: Record<string, Route> = {
   // PAGE INSCRIPTION
   "#/sign-up": () => `
     <div class="flex flex-col items-center justify-center min-h-screen">
-      <h1 class="text-3xl mb-8 text-white">Sign Up</h1>
+      <h1 class="page-title-large page-title-brown">Sign Up</h1>
       <div class="form-box-auth">
         <form id="signUpForm" class="space-y-4">
           <div>
@@ -315,7 +317,7 @@ const routes: Record<string, Route> = {
       
       <div class="mt-6 text-center">
         <button id="backToMenuSignup" class="retro-btn-small hover-blue">
-          ← Back to Menu
+          Back to Menu
         </button>
       </div>
     </div>
@@ -323,7 +325,7 @@ const routes: Record<string, Route> = {
   // PAGE CONNEXION
   "#/login": () => `
     <div class="flex flex-col items-center justify-center min-h-screen">
-      <h1 class="text-3xl mb-8 text-white">Login</h1>
+      <h1 class="page-title-large page-title-brown">Login</h1>
       <div class="form-box-auth">
         <form id="loginForm" class="space-y-4">
           <div>
@@ -354,7 +356,7 @@ const routes: Record<string, Route> = {
       
       <div class="mt-6 text-center">
         <button id="backToMenuLogin" class="retro-btn-small hover-blue">
-          ← Back to Menu
+          Back to Menu
         </button>
       </div>
     </div>
@@ -380,8 +382,8 @@ const routes: Record<string, Route> = {
           <img id="profileAvatar" src="/images/1.JPG" alt="Profile Photo" 
                style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
         </div>
-        <h1 id="profileUsername" class="text-5xl mb-8 text-white font-bold text-center">${currentUsername}</h1>
-        <div class="bg-white bg-opacity-90 p-8 rounded-lg shadow-lg w-full max-w-2xl">
+        <h1 id="profileUsername" class="page-title-winner page-title-blue text-center">${currentUsername}</h1>
+        <div class="form-box-blue">
           <h2 class="text-2xl mb-6 text-gray-800 text-center">Profile Information</h2>
           <!-- Informations du profil à développer -->
           <div class="space-y-4 text-gray-700">
@@ -391,7 +393,7 @@ const routes: Record<string, Route> = {
           <!-- Bouton de déconnexion -->
           <div class="mt-6 pt-4 border-t border-gray-300">
             <button id="logoutBtn" class="retro-btn w-full">
-              🚪 Logout
+              Logout
             </button>
           </div>
         </div>
