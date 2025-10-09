@@ -224,7 +224,7 @@ body {
   border: 2px solid #8b7355;
   background-color: #f0e6d6;
   color: #6d5a42;
-  font-family: monospace, sans-serif;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
   font-size: 16px;
   font-weight: 500;
   transition: all 0.15s ease;
@@ -248,7 +248,7 @@ body {
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 8px;
-  font-family: monospace, sans-serif;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
   text-transform: uppercase;
 }
 
@@ -259,21 +259,21 @@ body {
   font-size: 14px;
   font-weight: bold;
   margin-bottom: 8px;
-  font-family: monospace, sans-serif;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
   text-transform: uppercase;
   letter-spacing: 1px;
 }
 
 /* Texte de navigation pour les pages d'authentification */
 .auth-navigation-text {
-  font-family: monospace, sans-serif;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
   font-size: 14px;
   color: #6d5a42;
   font-weight: bold;
 }
 
 .auth-navigation-link {
-  font-family: monospace, sans-serif;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
   font-size: 14px;
   color: #254376;
   font-weight: bold;
@@ -380,17 +380,17 @@ body {
 
 /* Hover rouge/jaune pour le bouton quit tournament */
 .retro-btn-small.hover-red:hover {
-  background-color: #c75353;
+  background-color: #ee8989;
   color: #6d5a42;
   transform: translateY(-2px);
-  box-shadow: 0px 8px 0px #4a3c2a;
+  box-shadow: 0px 8px 0px #b15b5b;
 }
 
 /* Active rouge/jaune pour le bouton quit tournament */
 .retro-btn-small.hover-red:active {
-  background-color: #f7ee7a;
+  background-color: #ee8989;
   color: #6d5a42;
-  box-shadow: 0px 2px 0px #4a3c2a;
+  box-shadow: 0px 2px 0px #b15b5b;
   transform: translateY(4px);
 }
 
@@ -418,7 +418,7 @@ body {
   align-items: center;
   justify-content: center;
   color: #2d2d2d;
-  font-family: monospace, sans-serif;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
   font-size: 18px;
   font-weight: bold;
 }
@@ -434,7 +434,7 @@ body {
 .profile-photo-frame .placeholder {
   color: #2d2d2d;
   font-size: 18px;
-  font-family: monospace, sans-serif;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
   text-align: center;
 }
 
