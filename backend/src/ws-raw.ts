@@ -48,6 +48,7 @@ const now = () => Date.now();
 // Presence: per-user connection refcount
 // ─────────────────────────────────────────────────────────────────────────────
 const userConnCount = new Map<number, number>();
+let nextConnId = 1;
 
 function incConn(uid: number): number {
   const n = (userConnCount.get(uid) ?? 0) + 1;
@@ -106,6 +107,7 @@ export function registerRawWs(app: FastifyInstance) {
       ip: request.socket?.remoteAddress,
       rate: { windowStart: now(), count: 0 },
     };
+    (ws as any)._connId = nextConnId++;
 
     wsConnections.inc();
     updateGauge(wss);
@@ -173,6 +175,16 @@ export function registerRawWs(app: FastifyInstance) {
             if (after === 1) {
               await UserService.updateUserStatus(ws.ctx.userId, "online");
             }
+             app.log.info(
+              {
+                connId: (ws as any)._connId,
+                userId: ws.ctx.userId,
+                channel: (ws as any)._channel,
+                totalConnections: wss.clients.size,
+                userOpenConns: after, // connexions ouvertes pour CE user
+              },
+              "WS connection established"
+            );
           } catch (e) {
             app.log.error({ e }, "presence:set_online_failed");
           }
@@ -201,28 +213,43 @@ export function registerRawWs(app: FastifyInstance) {
     setTimeout(() => safeSend("hello: connected"), 100);
 
     // 2.e) Error/Close handlers
-    ws.on("error", (err: Error) => {
-      app.log.error({ err }, "WS error");
-    });
-
     ws.on("close", (code: number, reason: Buffer) => {
       try { wsConnections.dec(); } catch {}
-      try { wsDisconnectsTotal.inc({ code: String(code) }); } catch {}
       updateGauge(wss);
-      app.log.info({ code, reason: reason.toString(), totalConnections: wss.clients.size }, "WS closed");
+
+      let left = -1;
+      if (ws.ctx?.userId) {
+        left = decConn(ws.ctx.userId);
+      }
+
+      // ✅ métrique Prometheus: on garde 'code' (faible cardinalité) et on ajoute 'final'
+      try {
+        wsDisconnectsTotal.inc({ code: String(code) });  // ✅ garder uniquement 'code'
+      } catch {}
+
+      app.log.info(
+        {
+          connId: (ws as any)._connId,
+          userId: ws.ctx?.userId,
+          left,
+          code,
+          reason: reason.toString(),
+          totalConnections: wss.clients.size,
+        },
+        "WS closed"
+      );
+
       (async () => {
         try {
-          if (ws.ctx?.userId) {
-            const left = decConn(ws.ctx.userId);
-            if (left === 0) {
-              await UserService.updateUserStatus(ws.ctx.userId, "offline");
-            }
+          if (ws.ctx?.userId && left === 0) {
+            await UserService.updateUserStatus(ws.ctx.userId, "offline");
           }
         } catch (e) {
           app.log.error({ e }, "presence:set_offline_failed");
         }
       })();
     });
+
 
     // ─────────────────────────────────────────────────────────────────────────
     // 2.f) Message handler
