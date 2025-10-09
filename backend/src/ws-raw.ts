@@ -45,6 +45,24 @@ const PING_INTERVAL_MS = 20_000;
 const now = () => Date.now();
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Presence: per-user connection refcount
+// ─────────────────────────────────────────────────────────────────────────────
+const userConnCount = new Map<number, number>();
+
+function incConn(uid: number): number {
+  const n = (userConnCount.get(uid) ?? 0) + 1;
+  userConnCount.set(uid, n);
+  return n;
+}
+function decConn(uid: number): number {
+  const n = (userConnCount.get(uid) ?? 1) - 1;
+  if (n <= 0) { userConnCount.delete(uid); return 0; }
+  userConnCount.set(uid, n);
+  return n;
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Prometheus gauge refresh helper
 // ─────────────────────────────────────────────────────────────────────────────
 const updateGauge = (wss: WebSocketServer) => {
@@ -148,14 +166,18 @@ export function registerRawWs(app: FastifyInstance) {
           return;
         }
         
-        ws.ctx.userId = data.userId;
-        if (ws.ctx.userId) {
+       ws.ctx.userId = data.userId;
+       if (ws.ctx.userId) {
           try {
-            await UserService.updateUserStatus(ws.ctx.userId, "online");
+            const after = incConn(ws.ctx.userId);
+            if (after === 1) {
+              await UserService.updateUserStatus(ws.ctx.userId, "online");
+            }
           } catch (e) {
             app.log.error({ e }, "presence:set_online_failed");
           }
         }
+
       }
 
       (ws as any)._channel = channel;
@@ -191,7 +213,10 @@ export function registerRawWs(app: FastifyInstance) {
       (async () => {
         try {
           if (ws.ctx?.userId) {
-            await UserService.updateUserStatus(ws.ctx.userId, "offline");
+            const left = decConn(ws.ctx.userId);
+            if (left === 0) {
+              await UserService.updateUserStatus(ws.ctx.userId, "offline");
+            }
           }
         } catch (e) {
           app.log.error({ e }, "presence:set_offline_failed");
