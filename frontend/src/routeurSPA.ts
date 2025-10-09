@@ -67,6 +67,42 @@ function bootPresenceFromStorage() {
   if (t) Presence.connect(t);
 }
 
+// put this near your Presence block, top of routeurSPA.ts
+async function syncAuthFromBackend(): Promise<void> {
+  var t = localStorage.getItem('token');
+  if (!t) {
+    // pas loggé : nettoie juste le nom local
+    localStorage.removeItem('currentUsername');
+    return;
+  }
+
+  try {
+    var r = await fetch('/api/users/me', {
+      headers: { 'Authorization': 'Bearer ' + t }
+    });
+
+    if (!r.ok) {
+      // token invalide → purge
+      localStorage.removeItem('token');
+      localStorage.removeItem('currentUsername');
+      return;
+    }
+
+    var data = await r.json();
+    var user = data && data.user ? data.user : null;
+
+    if (user && user.username) {
+      localStorage.setItem('currentUsername', user.username);
+    } else {
+      localStorage.removeItem('currentUsername');
+    }
+  } catch (_e) {
+    // en cas d'erreur réseau, on ne casse pas l'app
+    console.warn('GET /api/users/me error');
+  }
+}
+
+
 
 // Type pour une fonction qui retourne le HTML d'une page
 type Route = () => string;
@@ -89,20 +125,27 @@ async function getCurrentUserId(): Promise<number> {
 
   try {
     const r = await fetch('/api/users/me', {
-      headers: { 'Authorization': `Bearer ${t}` }
+      headers: { Authorization: `Bearer ${t}` },
     });
     if (!r.ok) {
-      console.warn('GET /api/users/me failed:', r.status);
+      // optional: also clear stale name
+      localStorage.removeItem('currentUsername');
       return 1;
     }
-    const data = await r.json();
-    const id = data?.user?.id || data?.userId;
-    return Number.isInteger(id) ? id : 1;
+    const { user } = await r.json();
+    if (user?.id && user?.username) {
+      localStorage.setItem('currentUsername', user.username); // keep name fresh
+      return user.id;
+    }
+    localStorage.removeItem('currentUsername');
+    return 1;
   } catch (e) {
-    console.error('getCurrentUserId error:', e);
+    console.warn('getCurrentUserId:', e);
+    localStorage.removeItem('currentUsername');
     return 1;
   }
 }
+
 
 
 // Référence à l'écouteur de clavier pour pouvoir le nettoyer
@@ -1052,11 +1095,30 @@ function render() {
 // Lancer le rendu au chargement de la page
 // Auto-connect si un token existe déjà (après reload)
 // Auto-connect si un token existe déjà ET rendre la page
+// Au lieu de: syncAuthFromBackend().finally(() => render());
 window.addEventListener('DOMContentLoaded', () => {
-  const saved = localStorage.getItem('token');
-  if (saved) Presence.connect(saved);
-  render();                      
+  (async () => {
+    try {
+      // met à jour/efface token + username en fonction du backend
+      await syncAuthFromBackend();
+    } catch (e) {
+      console.warn('syncAuthFromBackend failed', e);
+    }
+
+    // Connecte le WS seulement si le token est encore présent après la sync
+    const t = localStorage.getItem('token');
+    if (t) {
+      Presence.connect(t);
+    } else {
+      // aucune auth côté backend → nettoie l’UI locale
+      localStorage.removeItem('currentUsername');
+    }
+
+    render();
+  })();
 });
+
+
 
 // Render sur navigation hash
 window.addEventListener('hashchange', render);
