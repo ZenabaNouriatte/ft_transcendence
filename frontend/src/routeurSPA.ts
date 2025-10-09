@@ -169,8 +169,9 @@ const routes: Record<string, Route> = {
     const authButtons = isLoggedIn 
       ? `<!-- Bouton utilisateur connecté en haut à droite -->
          <div class="fixed top-8 right-8 z-10">
-           <button id="userProfileBtn" class="retro-btn flex items-center gap-2">
-             👤 ${currentUsername}
+           <button id="userProfileBtn" class="retro-btn hover-blue flex items-center gap-2">
+             <div id="userMiniAvatar" class="mini-avatar" style="background-image: url('/images/1.JPG')"></div>
+             ${currentUsername}
            </button>
          </div>`
       : `<!-- Boutons Login/Sign Up en haut à droite de la fenêtre -->
@@ -189,15 +190,15 @@ const routes: Record<string, Route> = {
       
       <!-- Contenu principal centré -->
       <div class="flex flex-col items-center justify-center min-h-screen">
-        <h1 class="text-4xl mb-8 text-center">Welcome to our Pong Game</h1>
-        <div class="bg-blue-900 p-8 rounded-lg shadow-lg">
-          <p class="mb-6 text-xl text-blue-300 text-center">Pick your game style</p>
-          <div class="flex flex-row gap-4">
-            <button id="classicBtn" class="retro-btn">
-              🎮 CLASSIC
+        <img src="/images/titre.png" alt="Pong Game Logo" class="main-logo">
+        <div class="game-selection-box">
+          <p class="game-selection-text">Pick your game style</p>
+          <div class="game-buttons-container">
+            <button id="classicBtn" class="retro-btn hover-green">
+              <img class="btn-icon" src="/images/classic.png" alt="Classic">CLASSIC
             </button>
-            <button id="tournamentBtn" class="retro-btn">
-              🏆 TOURNAMENT
+            <button id="tournamentBtn" class="retro-btn hover-orange">
+              <img class="btn-icon" src="/images/tournament.png" alt="Tournament">TOURNAMENT
             </button>
           </div>
         </div>
@@ -209,32 +210,32 @@ const routes: Record<string, Route> = {
   // Formulaire de saisie des noms des deux joueurs
   "#/classic": () => `
     <div class="flex flex-col items-center">
-      <h1 class="text-3xl mb-8">Classic Mode</h1>
-      <div class="bg-blue-900 p-6 rounded-lg shadow-lg max-w-2xl w-full">
-        <p class="mb-6 text-blue-300 text-center">Enter players usernames:</p>
+      <h1 class="page-title-large page-title-green">Classic</h1>
+      <div class="form-box-green">
+        <p class="form-description-green">Enter players' usernames:</p>
         
         <!-- Formulaire des deux joueurs en grid responsive -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div>
-            <label class="block text-blue-200 text-sm mb-2"><strong>Player 1</strong> (Left - W/S):</label>
-            <input id="player1Input" class="w-full p-3 rounded text-black" 
+            <label class="form-label"><span class="player-label-green">Player 1</span> (Left - W/S):</label>
+            <input id="player1Input" class="styled-input" 
                    placeholder="Player 1 username" maxlength="20">
           </div>
           
           <div>
-            <label class="block text-blue-200 text-sm mb-2"><strong>Player 2</strong> (Right - I/K):</label>
-            <input id="player2Input" class="w-full p-3 rounded text-black" 
+            <label class="form-label"><span class="player-label-green">Player 2</span> (Right - I/K):</label>
+            <input id="player2Input" class="styled-input" 
                    placeholder="Player 2 username" maxlength="20">
           </div>
         </div>
         
-        <button id="playBtn" class="retro-btn w-full">
-          🏓 START GAME
+        <button id="playBtn" class="retro-btn hover-green w-full">
+          <img class="btn-icon" src="/images/classic.png" alt="Play">START GAME
         </button>
       </div>
       <div class="mt-6">
-        <button id="backBtn" class="retro-btn">
-          ← Back to menu
+        <button id="backBtn" class="retro-btn-small hover-blue">
+          Back to Menu
         </button>
       </div>
     </div>
@@ -242,83 +243,84 @@ const routes: Record<string, Route> = {
   // PAGE TOURNAMENT - Saisie de 4 joueurs pour un tournoi
   "#/tournament": () => `
     <div class="flex flex-col items-center">
-      <h1 class="text-3xl mb-8">🏆 Create Tournament 🏆</h1>
-      <div class="bg-purple-900 p-8 rounded-lg shadow-lg max-w-2xl w-full">
-        <p class="mb-6 text-purple-300 text-center">Enter players' usernames:</p>
+      <h1 class="page-title-large page-title-orange">Tournament</h1>
+      <div class="form-box-orange">
+        <p class="form-description-orange">Enter players' usernames:</p>
         
         <!-- Liste des 4 joueurs fixes -->
         <div id="playersList" class="mb-6">
-          <div class="player-entry mb-3 flex items-center gap-3">
-            <span class="w-8 text-purple-200 font-bold">1.</span>
-            <input type="text" class="player-input flex-1 p-3 rounded text-black" placeholder="Player 1 username" maxlength="20" data-index="0">
+          <div class="player-entry mb-4 flex items-center gap-3">
+            <span class="w-8 player-number-orange">1.</span>
+            <input type="text" class="player-input styled-input flex-1" placeholder="Player 1 username" maxlength="20" data-index="0">
           </div>
-          <div class="player-entry mb-3 flex items-center gap-3">
-            <span class="w-8 text-purple-200 font-bold">2.</span>
-            <input type="text" class="player-input flex-1 p-3 rounded text-black" placeholder="Player 2 username" maxlength="20" data-index="1">
+          <div class="player-entry mb-4 flex items-center gap-3">
+            <span class="w-8 player-number-orange">2.</span>
+            <input type="text" class="player-input styled-input flex-1" placeholder="Player 2 username" maxlength="20" data-index="1">
           </div>
-          <div class="player-entry mb-3 flex items-center gap-3">
-            <span class="w-8 text-purple-200 font-bold">3.</span>
-            <input type="text" class="player-input flex-1 p-3 rounded text-black" placeholder="Player 3 username" maxlength="20" data-index="2">
+          <div class="player-entry mb-4 flex items-center gap-3">
+            <span class="w-8 player-number-orange">3.</span>
+            <input type="text" class="player-input styled-input flex-1" placeholder="Player 3 username" maxlength="20" data-index="2">
           </div>
-          <div class="player-entry mb-3 flex items-center gap-3">
-            <span class="w-8 text-purple-200 font-bold">4.</span>
-            <input type="text" class="player-input flex-1 p-3 rounded text-black" placeholder="Player 4 username" maxlength="20" data-index="3">
+          <div class="player-entry mb-4 flex items-center gap-3">
+            <span class="w-8 player-number-orange">4.</span>
+            <input type="text" class="player-input styled-input flex-1" placeholder="Player 4 username" maxlength="20" data-index="3">
           </div>
         </div>
         
-        <!-- Boutons d'action -->
-        <div class="flex gap-4">
-          <button id="backToMenuBtn" class="retro-btn flex-1">
-            ← Back to menu
-          </button>
-          <button id="startTournamentBtn" class="retro-btn flex-1">
-            🚀 Start Tournament
-          </button>
-        </div>
+        <button id="startTournamentBtn" class="retro-btn hover-orange w-full">
+          <img class="btn-icon" src="/images/tournament.png" alt="Tournament">Start Tournament
+        </button>
+      </div>
+      <div class="mt-6">
+        <button id="backToMenuBtn" class="retro-btn-small hover-blue">
+          Back to Menu
+        </button>
       </div>
     </div>
   `,
   // PAGE DE TRANSITION ENTRE MATCHS DE TOURNOI
   "#/tournament-transition": () => `
     <div class="flex flex-col items-center">
-      <div class="bg-purple-900 p-8 rounded-lg shadow-2xl max-w-2xl w-full text-center mb-8">
-        <h1 class="text-4xl mb-6 text-white font-bold">🏆 Tournament Progress 🏆</h1>
+      <h1 class="page-title-large page-title-orange">Tournament Progress</h1>
+      <div class="form-box-orange">
         <div id="matchResult" class="mb-6">
-          <h2 class="text-3xl mb-4 text-green-400 font-bold">Match Result</h2>
-          <div id="matchWinner" class="text-2xl mb-2 text-white">Winner: <span class="font-bold">-</span></div>
-          <div id="matchScore" class="text-xl mb-4 text-gray-300">Score: <span class="font-bold">-</span></div>
+          <div id="matchWinner" class="text-xl mb-2 text-center form-description-orange">Winner: <span class="font-bold">-</span></div>
+          <div id="matchScore" class="text-lg mb-4 text-center player-number-orange">Score: <span class="font-bold">-</span></div>
         </div>
-        <div id="nextMatchInfo" class="mb-6">
-          <h3 class="text-2xl mb-4 text-blue-400 font-bold">Next Match</h3>
-          <div id="nextMatchType" class="text-xl mb-2 text-white">-</div>
-          <div id="nextMatchPlayers" class="text-lg text-gray-300">- vs -</div>
+        
+        <div class="border-t border-orange-300 pt-6 mb-6">
+          <div id="nextMatchInfo">
+            <div id="nextMatchType" class="text-xl mb-2 text-center form-description-orange">-</div>
+            <div id="nextMatchPlayers" class="text-lg text-center player-number-orange">- vs -</div>
+          </div>
         </div>
-        <button id="continueToNextMatchBtn" class="retro-btn">
-          🎮 Continue to Next Match
+        
+        <button id="continueToNextMatchBtn" class="retro-btn hover-orange w-full mb-4">
+          Continue to Next Match
         </button>
-        <div class="mt-6">
-          <button id="quitTournamentBtn" class="retro-btn">
-            🏠 Quit Tournament
-          </button>
-        </div>
+      </div>
+      <div class="mt-6">
+        <button id="quitTournamentBtn" class="retro-btn-small hover-red">
+          Quit Tournament
+        </button>
       </div>
     </div>
   `,
   // PAGE DE VICTOIRE
   "#/victory": () => `
     <div class="flex flex-col items-center">
-      <div class="bg-gradient-to-r from-yellow-300 via-yellow-400 to-yellow-500 p-8 rounded-lg shadow-2xl max-w-2xl w-full text-center mb-8">
-        <h1 class="text-5xl mb-4 text-black font-bold">🏆 VICTORY 🏆</h1>
-        <h2 id="winnerName" class="text-4xl mb-6 text-black font-bold">Winner Name</h2>
-        <div id="finalScore" class="text-2xl mb-8 text-black">
+      <div class="bg-yellow-300 bg-opacity-70 p-12 rounded-3xl shadow-2xl max-w-4xl w-full text-center mb-8">
+        <h1 class="page-title-winner" style="color: #000;">VICTORY</h1>
+        <h2 id="winnerName" class="page-title-winner" style="color: #000;">Winner Name</h2>
+        <div id="finalScore" class="page-title-score" style="color: #000;">
           Final Score: <span class="font-bold">0 - 0</span>
         </div>
-        <div class="flex gap-6 justify-center">
-          <button id="playAgainBtn" class="retro-btn">
-            🎮 Play Again
+        <div class="flex gap-8 justify-center">
+          <button id="playAgainBtn" class="retro-btn hover-classic">
+            <img class="btn-icon" src="/images/classic.png" alt="Play">Play Again
           </button>
-          <button id="backToMenuBtn" class="retro-btn">
-            🏠 Back to Menu
+          <button id="backToMenuBtn" class="retro-btn hover-classic">
+            Back to Menu
           </button>
         </div>
       </div>
@@ -348,17 +350,17 @@ const routes: Record<string, Route> = {
       <!-- Bouton Start (visible au début) -->
       <div id="startSection" class="flex gap-4 mb-4">
         <button id="startBtn" class="retro-btn">
-          🚀 START GAME
+          <img class="btn-icon" src="/images/classic.png" alt="Play">START GAME
         </button>
       </div>
       
       <!-- Boutons de contrôle du jeu (cachés au début, visibles une fois le jeu démarré) -->
       <div id="gameControls" class="hidden gap-4">
-        <button id="pauseBtn" class="retro-btn">
+        <button id="pauseBtn" class="retro-btn-small hover-blue">
           Pause
         </button>
-        <button id="backToMenuBtn" class="retro-btn">
-          Back to menu
+        <button id="backToMenuBtn" class="retro-btn-small hover-blue">
+          Back to Menu
         </button>
       </div>
     </div>
@@ -366,27 +368,27 @@ const routes: Record<string, Route> = {
   // PAGE INSCRIPTION
   "#/sign-up": () => `
     <div class="flex flex-col items-center justify-center min-h-screen">
-      <h1 class="text-3xl mb-8 text-white">Sign Up</h1>
-      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+      <h1 class="page-title-large page-title-brown">Sign Up</h1>
+      <div class="form-box-auth">
         <form id="signUpForm" class="space-y-4">
           <div>
-            <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <label for="username" class="auth-label">Username</label>
             <input type="text" id="username" name="username" required
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              class="styled-input"
               placeholder="Enter your username">
           </div>
           
           <div>
-            <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label for="email" class="auth-label">Email</label>
             <input type="email" id="email" name="email" required
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              class="styled-input"
               placeholder="Enter your email">
           </div>
           
           <div>
-            <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label for="password" class="auth-label">Password</label>
             <input type="password" id="password" name="password" required
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              class="styled-input"
               placeholder="Enter your password">
           </div>
           
@@ -395,26 +397,37 @@ const routes: Record<string, Route> = {
             Create Account
           </button>
         </form>
+        
+        <div class="mt-6 text-center auth-navigation-container">
+          <span class="auth-navigation-text">Already have an account? </span>
+          <a href="#/login" class="auth-navigation-link">Login here</a>
+        </div>
+      </div>
+      
+      <div class="mt-6 text-center">
+        <button id="backToMenuSignup" class="retro-btn-small hover-blue">
+          Back to Menu
+        </button>
       </div>
     </div>
   `,
   // PAGE CONNEXION
   "#/login": () => `
     <div class="flex flex-col items-center justify-center min-h-screen">
-      <h1 class="text-3xl mb-8 text-white">Login</h1>
-      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+      <h1 class="page-title-large page-title-brown">Login</h1>
+      <div class="form-box-auth">
         <form id="loginForm" class="space-y-4">
           <div>
-            <label for="loginUsername" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <label for="loginUsername" class="auth-label">Username</label>
             <input type="text" id="loginUsername" name="username" required
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              class="styled-input"
               placeholder="Enter your username">
           </div>
           
           <div>
-            <label for="loginPassword" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label for="loginPassword" class="auth-label">Password</label>
             <input type="password" id="loginPassword" name="password" required
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              class="styled-input"
               placeholder="Enter your password">
           </div>
           
@@ -423,6 +436,17 @@ const routes: Record<string, Route> = {
             Login
           </button>
         </form>
+        
+        <div class="mt-6 text-center auth-navigation-container">
+          <span class="auth-navigation-text">Don't have an account? </span>
+          <a href="#/sign-up" class="auth-navigation-link">Sign up here</a>
+        </div>
+      </div>
+      
+      <div class="mt-6 text-center">
+        <button id="backToMenuLogin" class="retro-btn-small hover-blue">
+          Back to Menu
+        </button>
       </div>
     </div>
   `,
@@ -447,8 +471,8 @@ const routes: Record<string, Route> = {
           <img id="profileAvatar" src="/images/1.JPG" alt="Profile Photo" 
                style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
         </div>
-        <h1 id="profileUsername" class="text-5xl mb-8 text-white font-bold text-center">${currentUsername}</h1>
-        <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-2xl">
+        <h1 id="profileUsername" class="page-title-winner page-title-blue text-center">${currentUsername}</h1>
+        <div class="form-box-blue">
           <h2 class="text-2xl mb-6 text-gray-800 text-center">Profile Information</h2>
           <!-- Informations du profil à développer -->
           <div class="space-y-4 text-gray-700">
@@ -458,7 +482,7 @@ const routes: Record<string, Route> = {
           <!-- Bouton de déconnexion -->
           <div class="mt-6 pt-4 border-t border-gray-300">
             <button id="logoutBtn" class="retro-btn w-full">
-              🚪 Logout
+              Logout
             </button>
           </div>
         </div>
@@ -470,7 +494,7 @@ const routes: Record<string, Route> = {
   "#/friends": () => `
     <div class="flex flex-col items-center justify-center min-h-screen">
       <h1 class="text-3xl mb-8">Friends</h1>
-      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+      <div class="bg-white bg-opacity-90 p-8 rounded shadow-lg w-full max-w-md">
         <!-- Liste des amis à venir -->
       </div>
     </div>
@@ -479,7 +503,7 @@ const routes: Record<string, Route> = {
   "#/friends-profile": () => `
     <div class="flex flex-col items-center justify-center min-h-screen">
       <h1 class="text-3xl mb-8">Friend's Profile</h1>
-      <div class="bg-white p-8 rounded shadow-lg w-full max-w-md">
+      <div class="bg-white bg-opacity-90 p-8 rounded shadow-lg w-full max-w-md">
         <!-- Profil d'un ami à venir -->
       </div>
     </div>
@@ -531,6 +555,25 @@ function render() {
       document.getElementById("userProfileBtn")?.addEventListener("click", () => {
         location.hash = "#/profile";
       });
+
+      // Charger l'avatar de l'utilisateur dans le mini bouton
+      async function loadUserMiniAvatar() {
+        try {
+          const userId = await getCurrentUserId();
+          const avatarPath = getUserAvatarPath(userId);
+          const miniAvatar = document.getElementById('userMiniAvatar') as HTMLElement;
+          
+          if (miniAvatar) {
+            miniAvatar.style.backgroundImage = `url('${avatarPath}')`;
+            console.log(`Mini avatar chargé: User ID ${userId} → ${avatarPath}`);
+          }
+        } catch (error) {
+          console.error('Erreur lors du chargement du mini avatar:', error);
+        }
+      }
+
+      // Charger le mini avatar
+      loadUserMiniAvatar();
     } else {
       // Utilisateur non connecté : boutons login/signup
       document.getElementById("loginBtn")?.addEventListener("click", () => {
@@ -984,6 +1027,11 @@ function render() {
         alert('Network error. Please try again.');
       }
     });
+    
+    // Gestion du bouton "Back to Menu"
+    document.getElementById("backToMenuSignup")?.addEventListener("click", () => {
+      location.hash = '';
+    });
   } else if (route === "#/login") {
     // --- PAGE DE CONNEXION ---
     
@@ -999,38 +1047,36 @@ function render() {
       const password = formData.get('password') as string;
       
       try {
-            const response = await fetch('/api/users/login', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ username, password }),
-            });
-
-            const data = await response.json();
-
-            if (response.ok) {
-              console.log('Login successful:', data);
-
-              // token robuste (peu importe la forme de la payload)
-              const token = data.token || data?.data?.token;
-              if (token) {
-                localStorage.setItem('token', token);
-                Presence.connect(token);
-              } else {
-                console.warn('No token in login payload:', data);
-              }
-              const name = data.user?.username || username;
-              localStorage.setItem('currentUsername', username);
-              location.hash = '#/profile';
-            } else {
-              console.error('Login failed:', data);
-              alert('Login failed: ' + (data.error || 'Invalid username or password'));
-            }
-          } catch (error) {
-            console.error('Network error:', error);
-            alert('Network error. Please try again.');
-          }
+        const response = await fetch('/api/users/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username, password }),
         });
-      } else if (route === "#/profile") {
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          // Succes
+          console.log('Login successful:', data);
+          localStorage.setItem('currentUsername', username);
+          location.hash = '#/profile';
+        } else {
+          // Erreur
+          console.error('Login failed:', data);
+          alert('Login failed: ' + (data.error || 'Invalid username or password'));
+        }
+      } catch (error) {
+        console.error('Network error:', error);
+        alert('Network error. Please try again.');
+      }
+    });
+    // Gestion du bouton "Back to Menu"
+    document.getElementById("backToMenuLogin")?.addEventListener("click", () => {
+      location.hash = '';
+    });
+  } else if (route === "#/profile") {
     // --- PAGE DE PROFIL ---
     
     // Récupérer le nom d'utilisateur (pour l'instant depuis localStorage, plus tard depuis l'API)
