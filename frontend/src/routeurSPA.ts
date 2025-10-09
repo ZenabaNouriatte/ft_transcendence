@@ -13,6 +13,61 @@
 
 import { GameClient } from './gameClient.js';
 
+// ===== Presence WS (singleton) =====
+const Presence = (() => {
+  let sock: WebSocket | null = null;
+  let token: string | null = null;
+  let reconnectTimer: number | null = null;
+
+  function wsUrl(t: string) {
+    // même host/port que la page -> OK derrière nginx
+    return `wss://${location.host}/ws?channel=chat&token=${encodeURIComponent(t)}`;
+  }
+
+  function connect(t: string) {
+    token = t;
+    disconnect();
+    if (!token) return;
+
+    const u = wsUrl(token);
+    sock = new WebSocket(u);
+
+    sock.onopen = () => console.log('[presence] open');
+    sock.onmessage = (e) => console.log('[presence] msg:', e.data);
+    sock.onclose = (e) => {
+      console.log('[presence] close', e.code, e.reason);
+      sock = null;
+      if (token && reconnectTimer === null) {
+        reconnectTimer = window.setTimeout(() => {
+          reconnectTimer = null;
+          connect(token!);
+        }, 2000);
+      }
+    };
+    sock.onerror = (e) => console.warn('[presence] error', e);
+  }
+
+  function disconnect() {
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    if (sock && sock.readyState === WebSocket.OPEN) { try { sock.close(1000, 'bye'); } catch {} }
+    sock = null;
+  }
+
+  function clear() {
+    token = null;
+    disconnect();
+  }
+
+  return { connect, disconnect, clear };
+})();
+
+function bootPresenceFromStorage() {
+  const t = localStorage.getItem('token');
+  console.log('[bootPresence] token in storage =', !!t);
+  if (t) Presence.connect(t);
+}
+
+
 // Type pour une fonction qui retourne le HTML d'une page
 type Route = () => string;
 
@@ -35,29 +90,34 @@ async function getCurrentUserId(): Promise<number> {
   }
 
   try {
-    // Appel à l'API pour récupérer la liste des utilisateurs
-    const response = await fetch('/api/users');
+    // ✅ Ajout du Bearer si on a un token
+    const headers: Record<string, string> = {};
+    const t = localStorage.getItem('token');
+    if (t) headers['Authorization'] = `Bearer ${t}`;
+
+    // ✅ Requête avec headers -> évite le 401
+    const response = await fetch('/api/users', { headers });
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
+
     const data = await response.json();
-    
+
     // Trouver l'utilisateur par son nom
     const user = data.users?.find((u: any) => u.username === currentUsername);
-    
     if (user && user.id) {
       return user.id;
     }
-    
+
     console.warn(`Utilisateur ${currentUsername} non trouvé dans l'API, utilisation de l'ID par défaut`);
     return 1; // Fallback
-    
+
   } catch (error) {
-    console.error('Erreur lors de la récupération de l\'ID utilisateur:', error);
+    console.error("Erreur lors de la récupération de l'ID utilisateur:", error);
     return 1; // Fallback en cas d'erreur
   }
 }
+
 
 // Référence à l'écouteur de clavier pour pouvoir le nettoyer
 let gameKeyListener: ((event: KeyboardEvent) => void) | null = null;
@@ -870,15 +930,23 @@ function render() {
         const data = await response.json();
         
         if (response.ok) {
-          // Succes
-          console.log('Account created successfully:', data);
+          // Succès login
+          console.log('Login successful:', data);
+
+          // Stocke le JWT et ouvre le WS de présence
+          if (data.token) {
+            localStorage.setItem('token', data.token);
+            Presence.connect(data.token);
+          }
+
           localStorage.setItem('currentUsername', username);
           location.hash = '#/profile';
         } else {
           // Erreur
-          console.error('Registration failed:', data);
-          alert('Registration failed: ' + (data.error || 'Unknown error'));
+          console.error('Login failed:', data);
+          alert('Login failed: ' + (data.error || 'Invalid username or password'));
         }
+
       } catch (error) {
         console.error('Network error:', error);
         alert('Network error. Please try again.');
@@ -899,32 +967,38 @@ function render() {
       const password = formData.get('password') as string;
       
       try {
-        const response = await fetch('/api/users/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ username, password }),
+            const response = await fetch('/api/users/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username, password }),
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+              console.log('Login successful:', data);
+
+              // token robuste (peu importe la forme de la payload)
+              const token = data.token || data?.data?.token;
+              if (token) {
+                localStorage.setItem('token', token);
+                Presence.connect(token);
+              } else {
+                console.warn('No token in login payload:', data);
+              }
+
+              localStorage.setItem('currentUsername', username);
+              location.hash = '#/profile';
+            } else {
+              console.error('Login failed:', data);
+              alert('Login failed: ' + (data.error || 'Invalid username or password'));
+            }
+          } catch (error) {
+            console.error('Network error:', error);
+            alert('Network error. Please try again.');
+          }
         });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-          // Succes
-          console.log('Login successful:', data);
-          localStorage.setItem('currentUsername', username);
-          location.hash = '#/profile';
-        } else {
-          // Erreur
-          console.error('Login failed:', data);
-          alert('Login failed: ' + (data.error || 'Invalid username or password'));
-        }
-      } catch (error) {
-        console.error('Network error:', error);
-        alert('Network error. Please try again.');
-      }
-    });
-  } else if (route === "#/profile") {
+      } else if (route === "#/profile") {
     // --- PAGE DE PROFIL ---
     
     // Récupérer le nom d'utilisateur (pour l'instant depuis localStorage, plus tard depuis l'API)
@@ -968,6 +1042,8 @@ function render() {
     // Gestion du bouton de déconnexion
     document.getElementById('logoutBtn')?.addEventListener('click', () => {
       // Nettoyer les données de l'utilisateur connecté
+      Presence.clear();                 // <-- coupe la socket et oublie le token côté client
+      localStorage.removeItem('token');
       localStorage.removeItem('currentUsername');
       
       // Rediriger vers l'accueil (qui va maintenant afficher les boutons login/signup)
@@ -985,7 +1061,10 @@ function render() {
 // INITIALISATION DU ROUTEUR SPA
 
 // Lancer le rendu au chargement de la page
-window.addEventListener("DOMContentLoaded", render);
+window.addEventListener("DOMContentLoaded", () => {
+  bootPresenceFromStorage();
+  render();
+});
 
 // Lancer le rendu à chaque changement de hash (navigation)
 window.addEventListener("hashchange", render);

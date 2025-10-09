@@ -8,6 +8,8 @@ import {
   wsDisconnectsTotal, 
   wsRateLimitedTotal 
 } from "./common/metrics.js";
+import { UserService } from "./services/index.js";
+
 
 // Fonction de sanitization si le module n'existe pas
 function sanitizeString(input: string, maxLength: number): string {
@@ -147,6 +149,13 @@ export function registerRawWs(app: FastifyInstance) {
         }
         
         ws.ctx.userId = data.userId;
+        if (ws.ctx.userId) {
+          try {
+            await UserService.updateUserStatus(ws.ctx.userId, "online");
+          } catch (e) {
+            app.log.error({ e }, "presence:set_online_failed");
+          }
+        }
       }
 
       (ws as any)._channel = channel;
@@ -179,6 +188,15 @@ export function registerRawWs(app: FastifyInstance) {
       try { wsDisconnectsTotal.inc({ code: String(code) }); } catch {}
       updateGauge(wss);
       app.log.info({ code, reason: reason.toString(), totalConnections: wss.clients.size }, "WS closed");
+      (async () => {
+        try {
+          if (ws.ctx?.userId) {
+            await UserService.updateUserStatus(ws.ctx.userId, "offline");
+          }
+        } catch (e) {
+          app.log.error({ e }, "presence:set_offline_failed");
+        }
+      })();
     });
 
     // ─────────────────────────────────────────────────────────────────────────
