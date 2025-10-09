@@ -1,4 +1,4 @@
-// backend/src/index.ts (merged)
+// backend/src/index.ts
 
 import Fastify, { type FastifyRequest, type FastifyReply } from "fastify";
 import helmet from "@fastify/helmet";
@@ -7,6 +7,8 @@ import underPressure from "@fastify/under-pressure";
 import rateLimit from "@fastify/rate-limit";
 import validator from "validator";
 import xss from 'xss';
+import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
+
 
 import { registerRawWs } from "./ws-raw.js";
 import { initDb } from "./database/index.js";
@@ -18,6 +20,14 @@ import {
   FriendshipService,
 } from "./services/index.js";
 import { registerHttpTimingHooks, sendMetrics } from "./common/metrics.js";
+
+
+const JWT_SECRET: Secret = process.env.JWT_SECRET || "dev-secret";
+const SIGN_OPTS: SignOptions = { expiresIn: "24h", algorithm: "HS256" };
+
+function issueTokenForUser(userId: number): string {
+  return jwt.sign({ userId }, JWT_SECRET, SIGN_OPTS);
+}
 
 
 // --- Input sanitization helpers (basic XSS hygiene) ---
@@ -270,28 +280,34 @@ app.post("/api/users/register", async (request, reply) => {
       if (!resp.ok) {
         return reply.code(resp.status).send({ error: "auth_validate_failed", details: data });
       }
-
       const userId = await UserService.createUser(data as any);
       await StatsService.initUserStats(userId);
+
       const user = await UserService.findUserById(userId);
       if (user) delete (user as any).password;
-      return reply.code(201).send({ ok: true, userId, user });
-} catch (e) {
-  request.log.error(e, "register_failed");
-  
-  // Meilleure gestion des erreurs
-  const error = e as any;
-  if (error?.code === "SQLITE_CONSTRAINT") {
-    if (error.message?.includes("users.email")) {
-      return reply.code(409).send({ error: "email_already_exists" });
-    }
-    if (error.message?.includes("users.username")) {
-      return reply.code(409).send({ error: "username_already_taken" });
-    }
-  }
-  
-  return reply.code(500).send({ error: "register_failed" });
-}
+
+      // émettre le JWT dès l’inscription
+      const token = issueTokenForUser(userId);
+
+      // ⚠️ renvoyer le token dans la réponse
+      return reply.code(201).send({ ok: true, userId, user, token });
+
+      } catch (e) {
+        request.log.error(e, "register_failed");
+        
+        // Meilleure gestion des erreurs
+        const error = e as any;
+        if (error?.code === "SQLITE_CONSTRAINT") {
+          if (error.message?.includes("users.email")) {
+            return reply.code(409).send({ error: "email_already_exists" });
+          }
+          if (error.message?.includes("users.username")) {
+            return reply.code(409).send({ error: "username_already_taken" });
+          }
+        }
+        
+        return reply.code(500).send({ error: "register_failed" });
+      }
   });
       
   app.post("/api/auth/validate-token", async (request, reply) => {

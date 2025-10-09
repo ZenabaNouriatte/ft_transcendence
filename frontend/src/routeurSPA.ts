@@ -84,37 +84,23 @@ function getUserAvatarPath(userId: number): string {
 
 // Fonction pour récupérer l'ID utilisateur via API
 async function getCurrentUserId(): Promise<number> {
-  const currentUsername = localStorage.getItem('currentUsername');
-  if (!currentUsername || currentUsername === 'Guest') {
-    return 1; // ID par défaut
-  }
+  const t = localStorage.getItem('token');
+  if (!t) return 1; // invité
 
   try {
-    // ✅ Ajout du Bearer si on a un token
-    const headers: Record<string, string> = {};
-    const t = localStorage.getItem('token');
-    if (t) headers['Authorization'] = `Bearer ${t}`;
-
-    // ✅ Requête avec headers -> évite le 401
-    const response = await fetch('/api/users', { headers });
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    const r = await fetch('/api/users/me', {
+      headers: { 'Authorization': `Bearer ${t}` }
+    });
+    if (!r.ok) {
+      console.warn('GET /api/users/me failed:', r.status);
+      return 1;
     }
-
-    const data = await response.json();
-
-    // Trouver l'utilisateur par son nom
-    const user = data.users?.find((u: any) => u.username === currentUsername);
-    if (user && user.id) {
-      return user.id;
-    }
-
-    console.warn(`Utilisateur ${currentUsername} non trouvé dans l'API, utilisation de l'ID par défaut`);
-    return 1; // Fallback
-
-  } catch (error) {
-    console.error("Erreur lors de la récupération de l'ID utilisateur:", error);
-    return 1; // Fallback en cas d'erreur
+    const data = await r.json();
+    const id = data?.user?.id || data?.userId;
+    return Number.isInteger(id) ? id : 1;
+  } catch (e) {
+    console.error('getCurrentUserId error:', e);
+    return 1;
   }
 }
 
@@ -931,14 +917,17 @@ function render() {
         
         if (response.ok) {
           // Succès login
-          console.log('Login successful:', data);
+          console.log('Registration successful:', data);
 
           // Stocke le JWT et ouvre le WS de présence
           if (data.token) {
             localStorage.setItem('token', data.token);
             Presence.connect(data.token);
+          } else {
+            console.warn('No token returned on register:', data);
           }
 
+          const name = data.user?.username || username;
           localStorage.setItem('currentUsername', username);
           location.hash = '#/profile';
         } else {
@@ -986,7 +975,7 @@ function render() {
               } else {
                 console.warn('No token in login payload:', data);
               }
-
+              const name = data.user?.username || username;
               localStorage.setItem('currentUsername', username);
               location.hash = '#/profile';
             } else {
@@ -1061,10 +1050,13 @@ function render() {
 // INITIALISATION DU ROUTEUR SPA
 
 // Lancer le rendu au chargement de la page
-window.addEventListener("DOMContentLoaded", () => {
-  bootPresenceFromStorage();
-  render();
+// Auto-connect si un token existe déjà (après reload)
+// Auto-connect si un token existe déjà ET rendre la page
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('token');
+  if (saved) Presence.connect(saved);
+  render();                      
 });
 
-// Lancer le rendu à chaque changement de hash (navigation)
-window.addEventListener("hashchange", render);
+// Render sur navigation hash
+window.addEventListener('hashchange', render);
