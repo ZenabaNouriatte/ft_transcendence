@@ -15,6 +15,8 @@ export class GameClient {
   private pausedGameState: GameState | null = null; // État sauvegardé pendant la pause
   private animationId: number | null = null;
   private pollingInterval: number | null = null;
+
+  
   
   // États des touches pour les contrôles
   private keys: { [key: string]: boolean } = {};
@@ -22,6 +24,10 @@ export class GameClient {
   private lastControlUpdate: number = 0;
   private controlUpdateInterval: number = 8; // Envoyer les contrôles toutes les 8ms (~120 FPS pour fluidité max)
 
+  private currentBackoff: number = 1000; // Start avec 1 seconde
+  private lastSuccessfulFetch: number = 0;
+  private errorCount: number = 0;
+  private readonly MAX_ERROR_COUNT: number = 5;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -242,47 +248,90 @@ export class GameClient {
     }
   }
 
-  // Récupérer l'état du jeu via HTTP
-  private async fetchGameState(): Promise<void> {
-    try {
-      console.log('Fetching game state for ID:', this.gameId);
-      const response = await fetch(`/api/games/${this.gameId}/state`);
-      
-      if (!response.ok) {
-        console.error('Failed to fetch game state, status:', response.status);
-        return;
-      }
+//Recup l'etat du jeu via http
+// Ajouter ces propriétés dans la classe GameClient
 
-      const data = await response.json();
-      console.log('Received game state:', data);
-      
-      const newGameState = data.gameState || data;
-      
-      // Détecter si la balle a été resetée (changement brusque de position)
-      const isBallReset = this.gameState && this.previousGameState && 
-        Math.abs(newGameState.ball.x - this.gameState.ball.x) > 200; // Reset si déplacement > 200px
-      
-      if (isBallReset) {
-        console.log('Ball reset detected, skipping interpolation');
-        // Ne pas utiliser l'interpolation pour un reset de balle
-        this.previousGameState = null;
-      } else {
-        // Stocker l'état précédent pour l'interpolation normale
-        this.previousGameState = this.gameState;
-      }
-      
-      this.gameState = newGameState;
-      this.lastStateUpdateTime = Date.now();
-      
-      // Vérifier si le jeu est terminé
-      if (data.status === 'ended' && data.gameState) {
-        console.log('Game ended, redirecting to victory page');
-        this.handleGameEnd(data.gameState);
-      }
-    } catch (error) {
-      console.error('Error fetching game state:', error);
+private async fetchGameState(): Promise<void> {
+    // Protection anti-spam - attendre au moins 50ms entre requêtes
+    const now = Date.now();
+    if (now - this.lastSuccessfulFetch < 50) {
+        return;
     }
-  }
+
+    try {
+        console.log('Fetching game state for ID:', this.gameId);
+        const response = await fetch(`/api/games/${this.gameId}/state`);
+        
+        if (!response.ok) {
+            await this.handleNetworkError(response.status);
+            return;
+        }
+
+        // Reset du compteur d'erreurs en cas de succès
+        this.errorCount = 0;
+        this.currentBackoff = 1000;
+        this.lastSuccessfulFetch = Date.now();
+
+        const data = await response.json();
+        console.log('Received game state:', data);
+        
+        const newGameState = data.gameState || data;
+        
+        // Détecter si la balle a été resetée (changement brusque de position)
+        const isBallReset = this.gameState && this.previousGameState && 
+            Math.abs(newGameState.ball.x - this.gameState.ball.x) > 200;
+        
+        if (isBallReset) {
+            console.log('Ball reset detected, skipping interpolation');
+            this.previousGameState = null;
+        } else {
+            this.previousGameState = this.gameState;
+        }
+        
+        this.gameState = newGameState;
+        this.lastStateUpdateTime = Date.now();
+        
+        // Vérifier si le jeu est terminé
+        if (data.status === 'ended' && data.gameState) {
+            console.log('Game ended, redirecting to victory page');
+            this.handleGameEnd(data.gameState);
+        }
+    } catch (error) {
+        await this.handleNetworkError('network_error');
+    }
+}
+
+private async handleNetworkError(errorType: string | number): Promise<void> {
+    this.errorCount++;
+    
+    console.warn(`Network error (${errorType}), count: ${this.errorCount}`);
+    
+    // Arrêter le polling temporairement
+    if (this.pollingInterval) {
+        clearInterval(this.pollingInterval);
+        this.pollingInterval = null;
+    }
+    
+    // Backoff exponentiel avec limite
+    this.currentBackoff = Math.min(this.currentBackoff * 1.5, 10000); // Max 10 secondes
+    
+    // Si trop d'erreurs, arrêter complètement
+    if (this.errorCount >= this.MAX_ERROR_COUNT) {
+        console.error('Too many network errors, stopping game');
+        this.stop();
+        return;
+    }
+    
+    console.log(`Retrying in ${this.currentBackoff}ms...`);
+    
+    // Redémarrer après le backoff
+    setTimeout(() => {
+        if (this.isPlaying && !this.isPaused) {
+            this.startPolling();
+        }
+    }, this.currentBackoff);
+}
+
 
   // Gérer la fin du jeu
   private async handleGameEnd(finalGameState?: any) {
@@ -429,7 +478,7 @@ export class GameClient {
       if (this.isPlaying) {
         this.fetchGameState();
       }
-    }, 33); // ~30 FPS pour le polling (moins agressif que le rendu)
+    }, 66); // 66ms = ~15 FPS au lieu de 33ms
   }
 
   // Arrêter le polling
