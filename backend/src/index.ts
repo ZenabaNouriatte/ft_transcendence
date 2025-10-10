@@ -288,6 +288,8 @@ app.post("/api/users/register", async (request, reply) => {
 
       // émettre le JWT dès l’inscription
       const token = issueTokenForUser(userId);
+      await UserService.updateUserStatus(userId, "online");
+
 
       // ⚠️ renvoyer le token dans la réponse
       return reply.code(201).send({ ok: true, userId, user, token });
@@ -351,6 +353,11 @@ app.post("/api/users/register", async (request, reply) => {
       const user = await UserService.findUserByUsername(username);
       if (!user) return reply.code(401).send({ error: "invalid_credentials" });
 
+      const userId = Number((user as any).id);
+      if (!Number.isInteger(userId)) {
+        return reply.code(500).send({ error: "invalid_user_id" });
+      }
+
       const v = await fetch("http://auth:8101/validate-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -361,15 +368,36 @@ app.post("/api/users/register", async (request, reply) => {
       const t = await fetch("http://auth:8101/generate-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id }),
+        body: JSON.stringify({  userId }),
       });
       const { token } = await t.json();
 
       const { password: _pw, ...userWithoutPassword } = user as any;
+      await UserService.updateUserStatus( userId, "online");
       return { ok: true, user: userWithoutPassword, token };
     } catch (e) {
       request.log.error(e, "login_failed");
       return reply.code(500).send({ error: "login_failed" });
+    }
+  });
+
+  // Route de logout explicite
+  app.post("/api/users/logout", async (request, reply) => {
+    try {
+      const userId = await getUserFromToken(request);
+      if (!userId) {
+        // Pas d'erreur si pas authentifié, juste un succès silencieux
+        return reply.send({ ok: true });
+      }
+
+      // Marquer l'utilisateur offline immédiatement
+      await UserService.updateUserStatus(userId, "offline");
+      
+      request.log.info({ userId }, "User logged out");
+      return reply.send({ ok: true });
+    } catch (e) {
+      request.log.error(e, "logout_failed");
+      return reply.code(500).send({ error: "logout_failed" });
     }
   });
 

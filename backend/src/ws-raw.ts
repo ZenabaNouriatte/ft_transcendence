@@ -40,7 +40,8 @@ type Ctx = {
 const MAX_MSG_BYTES = 64 * 1024;
 const RATE_LIMIT_WINDOW_MS = 5_000;
 const RATE_LIMIT_MAX = 50;
-const PING_INTERVAL_MS = 20_000;
+const PING_INTERVAL_MS = 10_000;
+const PONG_TIMEOUT_MS = 5_000;
 
 const now = () => Date.now();
 
@@ -79,23 +80,29 @@ const updateGauge = (wss: WebSocketServer) => {
 export function registerRawWs(app: FastifyInstance) {
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // 1) Keepalive
-  // ───────────────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────────────────
+  // 1) Keepalive optimisé
+  // ────────────────────────────────────────────────────────────────────────────
   const interval = setInterval(() => {
     wss.clients.forEach((ws: WebSocket & { ctx?: Ctx }) => {
       if (!ws.ctx) return;
+      
+      // Si pas de pong reçu depuis le dernier ping, terminer immédiatement
       if (ws.ctx.isAlive === false) {
+        app.log.warn({ 
+          connId: (ws as any)._connId, 
+          userId: ws.ctx.userId 
+        }, '⚠️ WS timeout: no pong received, terminating connection');
         try { ws.terminate(); } catch {}
         return;
       }
+      
+      // Marquer comme "en attente de pong" et envoyer ping
       ws.ctx.isAlive = false;
       try { ws.ping(); } catch {}
     });
     updateGauge(wss);
   }, PING_INTERVAL_MS);
-
-  wss.on("close", () => { clearInterval(interval); });
 
   // ───────────────────────────────────────────────────────────────────────────
   // 2) Connection handler
@@ -129,6 +136,8 @@ export function registerRawWs(app: FastifyInstance) {
         try { ws.close(1008, "invalid_channel"); } catch {}
         return;
       }
+
+      (ws as any)._channel = channel;
       
       const isSensitiveChannel = channel === "chat" || channel === "game-remote";
 
@@ -191,9 +200,6 @@ export function registerRawWs(app: FastifyInstance) {
         }
 
       }
-
-      (ws as any)._channel = channel;
-      
     } catch (err) {
       app.log.error({ err }, "WS handshake error");
       try { ws.close(1008, "handshake_failed"); } catch {}

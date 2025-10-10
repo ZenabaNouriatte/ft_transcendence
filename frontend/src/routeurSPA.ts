@@ -12,6 +12,8 @@
 // - "#/victory" : Page de victoire avec affichage du gagnant et score final
 
 import { GameClient } from './gameClient.js';
+console.log('[build] routeurSPA loaded @', new Date().toISOString());
+
 
 // ===== Presence WS (singleton) =====
 const Presence = (() => {
@@ -32,10 +34,10 @@ const Presence = (() => {
     const u = wsUrl(token);
     sock = new WebSocket(u);
 
-    sock.onopen = () => console.log('[presence] open');
+    sock.onopen = () => console.log('[presence]✅ WebSocket opened');
     sock.onmessage = (e) => console.log('[presence] msg:', e.data);
     sock.onclose = (e) => {
-      console.log('[presence] close', e.code, e.reason);
+      console.log('[presence] ❌ WebSocket closed:', e.code, e.reason);
       sock = null;
       if (token && reconnectTimer === null) {
         reconnectTimer = window.setTimeout(() => {
@@ -44,12 +46,17 @@ const Presence = (() => {
         }, 2000);
       }
     };
-    sock.onerror = (e) => console.warn('[presence] error', e);
+    sock.onerror = (e) => console.warn('[presence] ⚠️ WebSocket error:', e);
   }
 
   function disconnect() {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-    if (sock && sock.readyState === WebSocket.OPEN) { try { sock.close(1000, 'bye'); } catch {} }
+    if (sock && sock.readyState === WebSocket.OPEN) { 
+      try { 
+        sock.close(1000, 'bye'); 
+        console.log('[presence] 🔌 Explicit disconnect');
+      } catch {} 
+    }
     sock = null;
   }
 
@@ -61,10 +68,19 @@ const Presence = (() => {
   return { connect, disconnect, clear };
 })();
 
+window.addEventListener('beforeunload', () => {
+  console.log('[presence] 🚪 Page closing, disconnecting WebSocket...');
+  Presence.disconnect();
+});
+
 function bootPresenceFromStorage() {
   const t = localStorage.getItem('token');
   console.log('[bootPresence] token in storage =', !!t);
   if (t) Presence.connect(t);
+  // Fermer proprement la WS quand l’onglet se ferme (ne touche pas au token)
+  window.addEventListener('beforeunload', () => {
+    try { Presence.disconnect(); } catch {}
+  });
 }
 
 // put this near your Presence block, top of routeurSPA.ts
@@ -1060,6 +1076,13 @@ function render() {
         if (response.ok) {
           // Succes
           console.log('Login successful:', data);
+          if (data.token) {
+            localStorage.setItem('token', data.token);
+            Presence.connect(data.token);
+          } else {
+            console.warn('No token returned on login:', data);
+          }
+
           localStorage.setItem('currentUsername', username);
           location.hash = '#/profile';
         } else {
@@ -1118,20 +1141,59 @@ function render() {
     });
     
     // Gestion du bouton de déconnexion
-    document.getElementById('logoutBtn')?.addEventListener('click', () => {
-      // Nettoyer les données de l'utilisateur connecté
-      Presence.clear();                 // <-- coupe la socket et oublie le token côté client
-      localStorage.removeItem('token');
-      localStorage.removeItem('currentUsername');
-      
-      // Rediriger vers l'accueil (qui va maintenant afficher les boutons login/signup)
-      location.hash = '';
-      
-      // Force le re-render pour mettre à jour l'interface
-      setTimeout(() => render(), 10);
-      
-      // Afficher un message de confirmation
-      alert('You have been logged out successfully!');
+    document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+    // 1) marquer offline côté backend (si aucune WS n’est ouverte, ça force l’état)
+    const t = localStorage.getItem('token');
+    if (t) {
+      await fetch('/api/users/logout', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + t,
+          'Content-Type': 'application/json'
+        }
+      }).catch(() => {});
+    }
+      try {
+        // 1. Appeler la route de logout pour marquer offline immédiatement
+        const token = localStorage.getItem('token');
+        if (token) {
+          await fetch('/api/users/logout', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          }).catch(() => {}); // Ignore les erreurs réseau
+        }
+
+        // 2. Fermer proprement la WS
+        Presence.disconnect();
+        
+        // 3. Attendre un peu pour que la WS se ferme côté serveur
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // 4. Nettoyer les données locales
+        Presence.clear();
+        localStorage.removeItem('token');
+        localStorage.removeItem('currentUsername');
+        
+        // 5. Rediriger vers l'accueil
+        location.hash = '';
+        
+        // Force le re-render pour mettre à jour l'interface
+        setTimeout(() => render(), 10);
+        
+        // Afficher un message de confirmation
+        alert('You have been logged out successfully!');
+      } catch (error) {
+        console.error('Logout error:', error);
+        // En cas d'erreur, nettoyer quand même localement
+        Presence.clear();
+        localStorage.removeItem('token');
+        localStorage.removeItem('currentUsername');
+        location.hash = '';
+        setTimeout(() => render(), 10);
+      }
     });
   }
 }
@@ -1163,8 +1225,6 @@ window.addEventListener('DOMContentLoaded', () => {
     render();
   })();
 });
-
-
 
 // Render sur navigation hash
 window.addEventListener('hashchange', render);
