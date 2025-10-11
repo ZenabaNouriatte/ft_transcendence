@@ -1160,3 +1160,4 @@ app.setErrorHandler((err, _req, reply) => {
 
 await app.listen({ host: HOST, port: PORT });
 app.log.info(`Service role=${ROLE} listening on ${PORT}`);
+export { roomManager };
