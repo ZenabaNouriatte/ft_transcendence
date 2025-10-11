@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Testeur ft_transcendence - Version COMPLÈTE (53 tests)
-# Messages clairs mais tous les tests conservés
 
 set -u
 set -o pipefail
@@ -80,6 +78,140 @@ echo -e "${c_blue}
    TESTS ft_transcendence - $(date '+%d/%m/%Y %H:%M')
 ===============================================${c_reset}
 "
+# ===============================
+# 0. PROXY TLS & WS (PUBLIC_HOST)
+# ===============================
+section "0. PROXY TLS & WS (PUBLIC_HOST)"
+command -v dc >/dev/null 2>&1 || dc() { docker compose "$@"; }
+
+# Détection de l'hôte public + forcer PROXY_HTTPS
+if [ -x ./scripts/public_host.sh ]; then
+  HOST="$(./scripts/public_host.sh 2>/dev/null || echo 127.0.0.1)"
+else
+  HOST="127.0.0.1"
+fi
+PROXY_HTTPS="https://${HOST}:8443"
+echo "PUBLIC_HOST détecté: $HOST"
+
+# Certificat TLS - SAN (supporte 'IP Address:' et 'IP.n = ...')
+echo "Certificat TLS - SAN..."
+SAN_OUT="$(
+  printf '' \
+  | openssl s_client -connect ${HOST}:8443 -servername ${HOST} 2>/dev/null \
+  | openssl x509 -noout -ext subjectAltName 2>/dev/null
+)"
+if printf '%s\n' "$SAN_OUT" | grep -qE "(IP Address:|IP\.[0-9]+[[:space:]]*=\s*)${HOST}\b"; then
+  ok "Cert SAN contient IP=${HOST}"
+else
+  ko "Cert SAN ne contient pas IP=${HOST}"
+  echo "$SAN_OUT" | sed -n '1,12p'
+fi
+
+# Handshake WebSocket via proxy (HTTP/1.1 → 101) avec SNI
+echo "Handshake WebSocket via proxy (HTTP/1.1 → 101)..."
+WS_RESP="$(
+  printf 'GET /ws?channel=local HTTP/1.1\r\nHost: %s:8443\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\n\r\n' "$HOST" \
+  | openssl s_client -connect ${HOST}:8443 -servername ${HOST} -quiet 2>/dev/null \
+  | sed -n '1,5p' || true
+)"
+if echo "$WS_RESP" | grep -q "HTTP/1.1 101"; then
+  ok "Upgrade WebSocket via proxy réussi (101 Switching Protocols)"
+else
+  ko "Upgrade WebSocket via proxy échoué"
+  echo "$WS_RESP"
+fi
+
+# FRONT_ORIGINS côté gateway (vérifie aussi le rôle)
+echo "FRONT_ORIGINS côté gateway..."
+FO_LINE="$(dc exec -T gateway sh -lc 'echo "NODE_ENV=$NODE_ENV | FRONT_ORIGINS=$FRONT_ORIGINS | SERVICE_ROLE=$SERVICE_ROLE"' 2>/dev/null || true)"
+if [ -z "$FO_LINE" ]; then
+  echo "(debug) 'dc exec' n'a rien renvoyé — état des conteneurs :"
+  docker compose ps
+  echo "(debug) dump env direct :"
+  docker compose exec -T gateway env | grep -E '^(SERVICE_ROLE|FRONT_ORIGINS|NODE_ENV)=' || true
+fi
+if printf '%s' "$FO_LINE" | grep -q "SERVICE_ROLE=gateway" \
+   && printf '%s' "$FO_LINE" | grep -q "https://${HOST}:8443"; then
+  ok "FRONT_ORIGINS inclut https://${HOST}:8443 et SERVICE_ROLE=gateway"
+else
+  ko "FRONT_ORIGINS ou SERVICE_ROLE mal configuré"
+  printf '%s\n' "$FO_LINE"
+fi
+
+echo "Vérification préliminaire DB (table users)…"
+tries=20
+until dc exec -T gateway sh -lc 'sqlite3 "$DB_PATH" ".tables" | grep -qw users' >/dev/null 2>&1; do
+  tries=$((tries-1))
+  [ $tries -le 0 ] && break
+  sleep 1
+done
+if dc exec -T gateway sh -lc 'sqlite3 "$DB_PATH" ".tables" | grep -qw users'; then
+  ok "Table 'users' présente"
+else
+  ko "Table 'users' absente (initDb non terminé ?)"
+  dc exec -T gateway sh -lc 'echo "SERVICE_ROLE=$SERVICE_ROLE | DB_PATH=$DB_PATH"; sqlite3 "$DB_PATH" ".schema users"'
+  exit 1
+fi 
+
+#Register → online → logout → offline (self-check)
+test_online_offline() {
+  command -v jq >/dev/null 2>&1 || { ko "jq manquant"; return 1; }
+
+  local HOST="$1" U="tester_$RANDOM" P="Pass1234" TOKEN tries=5
+
+  # Register → token
+  TOKEN="$(curl -sk "https://${HOST}:8443/api/users/register" \
+    -H 'Content-Type: application/json' \
+    --data "{\"username\":\"${U}\",\"email\":\"${U}@example.com\",\"password\":\"${P}\"}" \
+    | jq -r '.token // empty')"
+
+  if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+    ko "Échec register/token"
+    return 1
+  fi
+
+  # petit backoff (DB write)
+  sleep 0.2
+
+  # ONLINE (retry court)
+  local ok_online=0
+  for _ in $(seq 1 $tries); do
+    if dc exec -T gateway sh -lc \
+      "sqlite3 -csv \"\$DB_PATH\" \"SELECT status FROM users WHERE username='${U}';\"" \
+      | grep -q '^online$'; then
+      ok_online=1; break
+    fi
+    sleep 0.2
+  done
+  [ $ok_online -eq 1 ] && ok "Après register: status=online" || ko "Status pas online après register"
+
+  # Logout (filet)
+  local hdr="$(mktemp)"
+  curl -sk -X POST "https://${HOST}:8443/api/users/logout" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -D "$hdr" >/dev/null 2>&1 || true
+  grep -qE '^HTTP/2 200|^HTTP/1.1 200' "$hdr" \
+    && ok "Route /api/users/logout répond 200" \
+    || ko "Route /api/users/logout ne répond pas 200"
+  rm -f "$hdr"
+  sleep 0.2
+
+  # OFFLINE
+  if dc exec -T gateway sh -lc \
+    "sqlite3 -csv \"\$DB_PATH\" \"SELECT status FROM users WHERE username='${U}';\"" \
+    | grep -q '^offline$'; then
+    ok "Après logout: status=offline"
+  else
+    ko "Status pas offline après logout"
+  fi
+
+  # Cleanup user de test
+  dc exec -T gateway sh -lc \
+    "sqlite3 \"\$DB_PATH\" \"DELETE FROM users WHERE username='${U}';\"" >/dev/null 2>&1 || true
+}
+
+echo "Cycle register → online → logout → offline…"
+test_online_offline "$HOST"
 
 # ===============================
 # 1. INFRASTRUCTURE DE BASE

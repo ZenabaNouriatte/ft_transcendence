@@ -1,8 +1,10 @@
 .PHONY: up down re logs ps clean certs
 
+PUBLIC_HOST := $(shell ./scripts/public_host.sh)
+FRONT_ORIGINS := https://$(PUBLIC_HOST):8443,https://localhost:8443
+
 up:
-	PUBLIC_HOST=$(PUBLIC_HOST)
-	docker compose up -d --build
+	PUBLIC_HOST="$(PUBLIC_HOST)" FRONT_ORIGINS="$(FRONT_ORIGINS)" docker compose up -d --build
 	./scripts/elk-init.sh
 	docker compose restart kibana
 
@@ -18,7 +20,7 @@ ps:
 	docker compose ps
 
 clean:
-	docker compose down -v
+	PUBLIC_HOST="$(PUBLIC_HOST)" FRONT_ORIGINS="$(FRONT_ORIGINS)" docker compose down -v
 
 build:
 	docker compose build --no-cache --pull

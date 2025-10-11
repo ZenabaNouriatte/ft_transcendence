@@ -35,7 +35,7 @@ services:
       PORT: "8000"
       NODE_ENV: "production"
       DB_PATH: /data/app.sqlite
-      FRONT_ORIGINS: "https://192.168.1.154:8443,https://localhost:8443"
+      FRONT_ORIGINS: "${FRONT_ORIGINS}"
     volumes:
       - sqlite_data:/data
     expose:
