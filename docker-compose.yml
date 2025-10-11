@@ -5,8 +5,8 @@ services:
       - "0.0.0.0:8080:80"
       - "0.0.0.0:8443:443"
     environment:
-    - ALLOWLIST_IPS=0.0.0.0/0 ::/0
-#    - FRONTEND_ORIGIN=192.168.1.154:8443
+      PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+      FRONTEND_ORIGIN: "https://${PUBLIC_HOST:-localhost}:8443"
     depends_on:
       frontend: { condition: service_started }
       gateway:  { condition: service_started }
@@ -31,10 +31,11 @@ services:
     build: ./backend
     env_file: [.env]
     environment:
-      - SERVICE_ROLE=gateway
-      - PORT=8000
-      - FRONT_ORIGINS=${FRONT_ORIGINS}
-      - DB_PATH=/data/app.sqlite 
+      SERVICE_ROLE: gateway
+      PORT: "8000"
+      NODE_ENV: "production"
+      DB_PATH: /data/app.sqlite
+      FRONT_ORIGINS: "https://192.168.1.154:8443,https://localhost:8443"
     volumes:
       - sqlite_data:/data
     expose:

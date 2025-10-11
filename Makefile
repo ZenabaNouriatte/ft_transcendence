@@ -1,7 +1,8 @@
 .PHONY: up down re logs ps clean certs
 
 up:
-	docker compose up -d
+	PUBLIC_HOST=$(PUBLIC_HOST)
+	docker compose up -d --build
 	./scripts/elk-init.sh
 	docker compose restart kibana
 

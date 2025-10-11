@@ -1,64 +1,62 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env sh
+set -eu
 
 CERT=/etc/nginx/certs/server.crt
 KEY=/etc/nginx/certs/server.key
 CONF_TMPL=/etc/nginx/nginx.conf.tmpl
 CONF_OUT=/etc/nginx/nginx.conf
 
-# Récupérer l'IP publique si disponible
-PUBLIC_IP="${PUBLIC_IP:-}"
-SANS="DNS:localhost,IP:127.0.0.1,IP:0.0.0.0,IP:::1"
+# 1) L’hôte public vu par les clients (IP ou DNS) — passé par l’hôte Mac
+PUBLIC_HOST="${PUBLIC_HOST:-localhost}"
+mkdir -p /etc/nginx/certs
 
-if [[ -n "$PUBLIC_IP" ]]; then
-    SANS+=",IP:${PUBLIC_IP}"
-fi
+# 2) Construire le SAN: localhost + 127.0.0.1 + PUBLIC_HOST (IP ou DNS)
+CN="$PUBLIC_HOST"
+ALT_BLOCK='DNS.1 = localhost\nIP.1 = 127.0.0.1'
+case "$PUBLIC_HOST" in
+  *.*.*.*) ALT_BLOCK="$ALT_BLOCK\nIP.2 = $PUBLIC_HOST" ;; # IP v4
+  *)       ALT_BLOCK="$ALT_BLOCK\nDNS.2 = $PUBLIC_HOST" ;; # Nom DNS
+esac
 
-# 1) Générer le certificat avec SAN étendu
-if [[ ! -s "$CERT" || ! -s "$KEY" ]]; then
-    echo "[proxy] Generating TLS certificate with SAN: ${SANS}"
-    
-    cat > /tmp/openssl.cnf <<CFG
+# 3) (Re)générer le certificat (toujours, pour éviter un vieux cert)
+cat > /tmp/openssl.cnf <<EOF
 [req]
 distinguished_name = dn
 x509_extensions = v3_req
 prompt = no
-
 [dn]
-CN = ft-transcendence
-
+CN = $CN
 [v3_req]
 keyUsage = digitalSignature, keyEncipherment
 extendedKeyUsage = serverAuth
-subjectAltName = $SANS
+subjectAltName = @alt
 basicConstraints = CA:FALSE
-CFG
+[alt]
+$ALT_BLOCK
+EOF
 
-    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout "$KEY" \
-        -out "$CERT" \
-        -config /tmp/openssl.cnf \
-        -subj "/C=FR/ST=Paris/L=Paris/O=42/OU=Transcendence/CN=ft-transcendence"
-    
-    rm -f /tmp/openssl.cnf
-    echo "[proxy] Certificate generated with SAN: $SANS"
-fi
+openssl req -x509 -nodes -newkey rsa:2048 -days 30 \
+  -keyout "$KEY" -out "$CERT" -config /tmp/openssl.cnf >/dev/null 2>&1 || {
+  echo "[proxy] openssl failed"; exit 1; }
+rm -f /tmp/openssl.cnf
+openssl x509 -in "$CERT" -noout -ext subjectAltName || true
 
-# 2) Allowlist IPs -> directives "allow"
+# 4) Rendu du template Nginx (tes substitutions existantes)
 GATEWAY_IP="$(ip route | awk '/default/ {print $3; exit}')" || true
 ALLOWLIST_DEFAULT="127.0.0.1 ::1 ${GATEWAY_IP:-}"
 ALLOW_DIRECTIVES=""
 for ip in ${ALLOWLIST_IPS:-$ALLOWLIST_DEFAULT}; do
-  [[ -n "$ip" ]] || continue
-  ALLOW_DIRECTIVES+=$'    allow '"${ip};\n"
+  [ -n "$ip" ] || continue
+  ALLOW_DIRECTIVES="$ALLOW_DIRECTIVES    allow $ip;\n"
 done
 
-# 3) Rendu du template
-sed -e "s|\${ALLOW_DIRECTIVES}|${ALLOW_DIRECTIVES}|g" \
-    -e "s|\${FRONTEND_ORIGIN}|${FRONTEND_ORIGIN:-https://localhost:8443}|g" \
-    "$CONF_TMPL" > "$CONF_OUT"
+: "${FRONTEND_ORIGIN:=https://${PUBLIC_HOST}:8443}"
 
-# 4) Lint + start
+# Remplace les placeholders dans le template
+# (attention aux quotes pour préserver \n)
+printf "%b" "$(sed -e "s|\${ALLOW_DIRECTIVES}|${ALLOW_DIRECTIVES}|g" \
+                   -e "s|\${FRONTEND_ORIGIN}|${FRONTEND_ORIGIN}|g" \
+                   "$CONF_TMPL")" > "$CONF_OUT"
+
 nginx -t
-echo "[proxy] Starting nginx with certificate valid for all IPs"
 exec "$@"
