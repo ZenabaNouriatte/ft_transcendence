@@ -1325,13 +1325,25 @@ function render() {
       ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
-    // très important : attacher cette socket à la room
+        console.log('[remote] WebSocket connected, attaching to game...');
+        // Attacher cette socket à la room IMMÉDIATEMENT
         ws!.send(JSON.stringify({
           type: 'game.attach',
           data: { gameId },
           requestId: Date.now().toString()
         }));
-      };
+  
+      // Également s'abonner aux mises à jour du jeu
+      setTimeout(() => {
+        if (ws?.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'game.paddle_move', // Ce message déclenche l'envoi de l'état
+            data: { gameId, direction: 'stop' },
+            requestId: Date.now().toString()
+          }));
+        }
+      }, 100);
+    };
 
       ws.onmessage = async (ev) => {
         try {
@@ -1352,8 +1364,13 @@ function render() {
               break;
             }
             case 'game_state': {
+              console.log('[remote] Received game state:', msg);
               const st = msg.data?.gameState || msg.data?.state || msg.data;
-              if (st) draw(st);
+              if (st) {
+                draw(st);
+              } else {
+                console.warn('[remote] No game state in message:', msg);
+              }
               break;
             }
             case 'game_ended': {
@@ -1390,6 +1407,11 @@ function render() {
     }, { once: true });
 
     connect();
+    console.log('[remote] Starting remote game with:', {
+      gameId,
+      token: token ? 'present' : 'missing',
+      wsUrl
+    });
   } else if (route === "#/sign-up") {
     // --- PAGE D'INSCRIPTION ---
     

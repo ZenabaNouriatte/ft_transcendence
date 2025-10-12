@@ -242,16 +242,24 @@ export class GameRoomInstance {
     // (Ré)attacher la socket de ce joueur
     this.wsConnections.set(userId, ws);
 
-    // envoyer un snapshot immédiat pour dessiner le canvas sans attendre le tick suivant
+    // envoyer un snapshot COMPLET immédiat pour dessiner le canvas sans attendre le tick suivant
     const snapshot = {
       type: 'game_state',
       gameId: this.gameId,
-      data: { gameState: this.engine.getGameState() },
+      data: { 
+        gameState: this.engine.getGameState(),
+        players: Array.from(this.players.values())
+      },
       timestamp: Date.now(),
     };
     try {
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(snapshot));
-    } catch {}
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify(snapshot));
+        console.log(`[Backend] Sent initial game state to player ${userId}`);
+      }
+    } catch (error) {
+      console.error(`[Backend] Failed to send initial state to player ${userId}:`, error);
+    }
     return true;
   }
 
