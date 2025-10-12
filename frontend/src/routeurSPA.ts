@@ -1,7 +1,7 @@
 // ROUTEUR SPA (SINGLE PAGE APPLICATION)
 
  // Ce fichier gère toute la navigation et l'interface utilisateur de l'application.
- // Il implémente un système de routage basé sur les hash (#) de l'URL pour créer
+ // Il implémente un système de routage basé les hash (#) de l'URL pour créer
  // une Single Page Application (SPA) avec plusieurs "pages" :
 
 // Pages disponibles:
@@ -80,7 +80,7 @@ function bootPresenceFromStorage() {
   const t = localStorage.getItem('token');
   console.log('[bootPresence] token in storage =', !!t);
   if (t) Presence.connect(t);
-  // Fermer proprement la WS quand l’onglet se ferme (ne touche pas au token)
+  // Fermer proprement la WS quand l'onglet se ferme (ne touche pas au token)
   window.addEventListener('beforeunload', () => {
     try { Presence.disconnect(); } catch {}
   });
@@ -577,8 +577,29 @@ const routes: Record<string, Route> = {
       <div class="bg-white bg-opacity-90 p-8 rounded shadow-lg w-full max-w-md">
         <!-- Profil d'un ami à venir -->
       </div>
+    </div> 
+  `,
+  "#/game-remote": () => `
+  <div class="flex flex-col items-center">
+    <div id="playerNamesRemote" class="mb-6 text-gray-300 flex items-center justify-between" style="width: 800px; position: relative;">
+      <div class="flex flex-col items-center" style="width: 200px;">
+        <span id="pLeftName" class="text-xl font-bold text-white">Left</span>
+        <span class="text-sm text-gray-400">(W/S)</span>
+      </div>
+      <span class="text-lg text-gray-500 font-medium absolute left-1/2 transform -translate-x-1/2">VS</span>
+      <div class="flex flex-col items-center" style="width: 200px;">
+        <span id="pRightName" class="text-xl font-bold text-white">Right</span>
+        <span class="text-sm text-gray-400">(↑/↓)</span>
+      </div>
     </div>
-  `
+
+    <canvas id="remoteCanvas" class="mb-4"></canvas>
+
+    <div class="flex gap-4">
+      <button id="backFromRemote" class="retro-btn-small hover-blue">Back to Menu</button>
+    </div>
+  </div>
+`
 };
 
 // FONCTION PRINCIPALE DE RENDU
@@ -813,7 +834,7 @@ function render() {
         });
       });
     }
-    
+
     // Event listeners
     document.getElementById("startTournamentBtn")?.addEventListener("click", startTournament);
     document.getElementById("backToMenuBtn")?.addEventListener("click", () => {
@@ -1055,7 +1076,6 @@ function render() {
   const currentUsername = localStorage.getItem('currentUsername');
   const token = sessionStorage.getItem('token') || localStorage.getItem('token');
 
-
   if (!currentUsername || !token) {
     location.hash = "#/login";
     return;
@@ -1064,16 +1084,25 @@ function render() {
   let ws: WebSocket | null = null;
   let currentGameId: string | null = null;
 
-  function wsUrlGameRemote(t: string) {
-    // même host/port → OK derrière ton proxy
-    return `wss://${location.host}/ws?channel=game-remote&token=${encodeURIComponent(t)}`;
+  // DOM helpers
+  function byId<T extends HTMLElement>(id: string): T {
+    const el = document.getElementById(id);
+    if (!el) throw new Error(`Missing #${id}`);
+    return el as T;
   }
 
-  function connectWebSocket() {
+  // Connecter le WebSocket
+  function connectWebSocket(): WebSocket {
     if (ws && ws.readyState === WebSocket.OPEN) return ws;
-    ws = new WebSocket(wsUrlGameRemote(token!));
 
-    ws.onopen = () => console.log('[Remote] WebSocket connected');
+    const HOST = location.hostname;
+    const wsUrl = `wss://${HOST}:8443/ws?channel=game-remote&token=${encodeURIComponent(token!)}`;
+
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log('[Remote] WebSocket connected');
+    };
 
     ws.onmessage = (event) => {
       try {
@@ -1081,26 +1110,46 @@ function render() {
         console.log('[Remote] Received:', msg);
 
         switch (msg.type) {
-          case 'game.created':
-            currentGameId = msg.data.gameId;
-            document.getElementById('gameIdDisplay')!.textContent = currentGameId!;
-            document.getElementById('waitingMessage')!.classList.remove('hidden');
+          case 'game.created': {
+            currentGameId = msg.data?.gameId || msg.gameId || null;
+            if (currentGameId) {
+              byId<HTMLSpanElement>('gameIdDisplay').textContent = currentGameId;
+              byId<HTMLDivElement>('waitingMessage').classList.remove('hidden');
+            }
             break;
+          }
 
-          case 'game.joined':
-            // on stocke et on bascule vers la page de jeu (à implémenter ensuite)
-            localStorage.setItem('remoteGameId', msg.data.gameId);
+          case 'game.joined': {
+            const gid = msg.data?.gameId || msg.gameId || currentGameId || '';
+            if (!gid) { alert('Join ok but missing gameId'); break; }
+            localStorage.setItem('remoteGameId', gid);
             localStorage.setItem('currentGameMode', 'remote');
-            alert('Opponent joined! Redirecting to game...');
             location.hash = '#/game-remote';
             break;
+          }
 
-          case 'game.waiting_list':
-            displayGamesList(msg.data.rooms);
+          case 'game_started': {
+            // l'hôte reçoit ceci quand le 2e joueur arrive et que la partie démarre
+            const gid = msg.data?.gameId || msg.gameId || currentGameId || '';
+            if (!currentGameId) currentGameId = gid;
+            localStorage.setItem('remoteGameId', gid);
+            localStorage.setItem('currentGameMode', 'remote');
+            location.hash = '#/game-remote';
             break;
+          }
 
-          case 'error':
-            alert('Error: ' + (msg.data.message || 'Unknown error'));
+          case 'game.waiting_list': {
+            displayGamesList(msg.data?.rooms || []);
+            break;
+          }
+
+          case 'error': {
+            alert('Error: ' + (msg.data?.message || 'Unknown error'));
+            break;
+          }
+
+          default:
+            // ignore
             break;
         }
       } catch (err) {
@@ -1120,9 +1169,11 @@ function render() {
     return ws;
   }
 
+  // Afficher la liste des parties disponibles
   function displayGamesList(rooms: Array<{ gameId: string; hostUsername: string; createdAt: number }>) {
-    const listEl = document.getElementById('gamesList')!;
-    if (rooms.length === 0) {
+    const listEl = byId<HTMLDivElement>('gamesList');
+
+    if (!rooms.length) {
       listEl.innerHTML = '<p class="text-gray-500 text-center">No games available. Create one!</p>';
       return;
     }
@@ -1139,26 +1190,29 @@ function render() {
       </div>
     `).join('');
 
-    document.querySelectorAll('.joinGameBtn').forEach(btn => {
+    // Attacher les événements de clic
+    document.querySelectorAll<HTMLButtonElement>('.joinGameBtn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const gameId = (btn as HTMLElement).dataset.gameId!;
-        joinRemoteGame(gameId);
+        const gid = btn.dataset.gameId!;
+        joinRemoteGame(gid);
       });
     });
   }
 
+  // Créer une partie remote
   function createRemoteGame() {
-    const sock = connectWebSocket()!;
+    const sock = connectWebSocket();
     sock.send(JSON.stringify({
       type: 'game.create_remote',
       data: { username: currentUsername },
       requestId: Date.now().toString()
     }));
-    document.getElementById('createRemoteBtn')!.setAttribute('disabled', 'true');
+    byId<HTMLButtonElement>('createRemoteBtn').setAttribute('disabled', 'true');
   }
 
+  // Rejoindre une partie remote
   function joinRemoteGame(gameId: string) {
-    const sock = connectWebSocket()!;
+    const sock = connectWebSocket();
     sock.send(JSON.stringify({
       type: 'game.join_remote',
       data: { gameId, username: currentUsername },
@@ -1166,24 +1220,176 @@ function render() {
     }));
   }
 
+  // Rafraîchir la liste des rooms
   function refreshList() {
-    const sock = connectWebSocket()!;
+    const sock = connectWebSocket();
     sock.send(JSON.stringify({
       type: 'game.list_waiting',
       requestId: Date.now().toString()
     }));
   }
 
-  document.getElementById('createRemoteBtn')?.addEventListener('click', createRemoteGame);
-  document.getElementById('refreshListBtn')?.addEventListener('click', refreshList);
-  document.getElementById('backToMenuRemote')?.addEventListener('click', () => {
+  // Wire UI
+  const createBtn = document.getElementById('createRemoteBtn');
+  if (createBtn) createBtn.addEventListener('click', createRemoteGame);
+
+  const refreshBtn = document.getElementById('refreshListBtn');
+  if (refreshBtn) refreshBtn.addEventListener('click', refreshList);
+
+  const backBtn = document.getElementById('backToMenuRemote');
+  if (backBtn) backBtn.addEventListener('click', () => {
     try { ws?.close(); } catch {}
     location.hash = '';
   });
 
-  // Autoconnect
+  // Connecte la WS immédiatement
   connectWebSocket();
+  } else if (route === "#/game-remote") {
+    const canvas = document.getElementById("remoteCanvas") as HTMLCanvasElement;
+    const ctx = canvas.getContext("2d")!;
+    const token = sessionStorage.getItem('token') || localStorage.getItem('token');
+    const gameId = localStorage.getItem('remoteGameId');
+    const host = location.hostname;
+    const wsUrl = `wss://${host}:8443/ws?channel=game-remote&token=${encodeURIComponent(token || "")}`;
 
+    if (!token || !gameId) {
+      alert("Missing token or gameId. Go back to Remote lobby.");
+      location.hash = "#/remote";
+      return;
+    }
+
+    let W = 800, H = 400;
+    canvas.width = W; canvas.height = H;
+
+    let ws: WebSocket | null = null;
+    let myPaddle: 'left' | 'right' | null = null;
+    let leftName = 'Left', rightName = 'Right';
+    let pressedUp = false, pressedDown = false;
+    let lastSent: 'up' | 'down' | 'stop' = 'stop';
+
+    const setNames = () => {
+      const l = document.getElementById('pLeftName'); if (l) l.textContent = leftName;
+      const r = document.getElementById('pRightName'); if (r) r.textContent = rightName;
+    };
+    setNames();
+
+    function draw(state: any) {
+      W = state.width || 800; H = state.height || 400;
+      if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+      ctx.clearRect(0, 0, W, H);
+      // filet
+      ctx.globalAlpha = 0.2; ctx.fillStyle = "#fff";
+      for (let y=0; y<H; y+=20) ctx.fillRect(W/2-1, y, 2, 10);
+      ctx.globalAlpha = 1;
+      // scores
+      ctx.fillStyle = "#fff"; ctx.font = "bold 24px monospace"; ctx.textAlign = "center";
+      ctx.fillText(`${state.score1 ?? 0}`, W*0.25, 40);
+      ctx.fillText(`${state.score2 ?? 0}`, W*0.75, 40);
+      // paddles
+      const padH = 70, padW = 10;
+      ctx.fillRect(10, Math.max(0, Math.min(H-padH, state.p1 || 0)), padW, padH);
+      ctx.fillRect(W-20, Math.max(0, Math.min(H-padH, state.p2 || 0)), padW, padH);
+      // ball
+      ctx.beginPath(); ctx.arc(state.ball?.x || W/2, state.ball?.y || H/2, 6, 0, Math.PI*2); ctx.fill();
+    }
+
+    function maybeSendInput() {
+      if (!ws || ws.readyState !== ws.OPEN || !myPaddle) return;
+      let want: 'up' | 'down' | 'stop' = 'stop';
+      if (pressedUp && !pressedDown) want = 'up';
+      else if (pressedDown && !pressedUp) want = 'down';
+      if (want !== lastSent) {
+        ws.send(JSON.stringify({ type: "game.paddle_move", data: { gameId, direction: want }, requestId: Date.now().toString() }));
+        lastSent = want;
+      }
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') { pressedUp = true; maybeSendInput(); }
+      if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') { pressedDown = true; maybeSendInput(); }
+    }
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') { pressedUp = false; maybeSendInput(); }
+      if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') { pressedDown = false; maybeSendInput(); }
+    }
+
+    async function myUserId(): Promise<string | null> {
+      try {
+        const r = await fetch('/api/users/me', { headers: { Authorization: `Bearer ${token}` } });
+        if (!r.ok) return null;
+        const js = await r.json(); return js?.user?.id ? String(js.user.id) : null;
+      } catch { return null; }
+    }
+
+    function connect() {
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+    // très important : attacher cette socket à la room
+        ws!.send(JSON.stringify({
+          type: 'game.attach',
+          data: { gameId },
+          requestId: Date.now().toString()
+        }));
+      };
+
+      ws.onmessage = async (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          switch (msg.type) {
+            case 'game_started': {
+              const me = await myUserId();
+              const players = msg.data?.players || [];
+              const left = players.find((p: any) => p.paddle === 'left');
+              const right = players.find((p: any) => p.paddle === 'right');
+              if (left?.username) leftName = left.username;
+              if (right?.username) rightName = right.username;
+              setNames();
+              if (me) {
+                const mine = players.find((p: any) => String(p.id) === me);
+                if (mine) myPaddle = mine.paddle;
+              }
+              break;
+            }
+            case 'game_state': {
+              const st = msg.data?.gameState || msg.data?.state || msg.data;
+              if (st) draw(st);
+              break;
+            }
+            case 'game_ended': {
+              alert(`Game ended. Winner: ${msg.data?.winner ?? 'Unknown'}`);
+              location.hash = "";
+              break;
+            }
+            case 'error': {
+              console.warn('WS error:', msg.data?.message || msg);
+              break;
+            }
+          }
+        } catch (e) {
+          console.error('WS parse error', e);
+        }
+      };
+
+      ws.onopen = () => console.log('[remote] ws open');
+      ws.onerror = (e) => console.warn('[remote] ws error', e);
+      ws.onclose = () => { ws = null; };
+    }
+
+    document.getElementById("backFromRemote")?.addEventListener("click", () => {
+      try { ws?.close(); } catch {}
+      location.hash = '';
+    });
+
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keyup", onKeyUp);
+    window.addEventListener("hashchange", () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keyup", onKeyUp);
+      try { ws?.close(); } catch {}
+    }, { once: true });
+
+    connect();
   } else if (route === "#/sign-up") {
     // --- PAGE D'INSCRIPTION ---
     
@@ -1337,7 +1543,7 @@ function render() {
     
     // Gestion du bouton de déconnexion
     document.getElementById('logoutBtn')?.addEventListener('click', async () => {
-    // 1) marquer offline côté backend (si aucune WS n’est ouverte, ça force l’état)
+    // 1) marquer offline côté backend (si aucune WS n'est ouverte, ça force l'état)
     const t = localStorage.getItem('token');
     if (t) {
       await fetch('/api/users/logout', {
@@ -1413,7 +1619,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (t) {
       Presence.connect(t);
     } else {
-      // aucune auth côté backend → nettoie l’UI locale
+      // aucune auth côté backend → nettoie l'UI locale
       localStorage.removeItem('currentUsername');
     }
 

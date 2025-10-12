@@ -234,6 +234,27 @@ export class GameRoomInstance {
     console.log(`[Backend] Game ${this.gameId} resumed`);
     return true;
   }
+  
+  public attachSocket(userId: string, ws: WebSocket): boolean {
+    if (!this.remoteMode) return false;
+    if (!this.players.has(userId)) return false;
+
+    // (Ré)attacher la socket de ce joueur
+    this.wsConnections.set(userId, ws);
+
+    // envoyer un snapshot immédiat pour dessiner le canvas sans attendre le tick suivant
+    const snapshot = {
+      type: 'game_state',
+      gameId: this.gameId,
+      data: { gameState: this.engine.getGameState() },
+      timestamp: Date.now(),
+    };
+    try {
+      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(snapshot));
+    } catch {}
+    return true;
+  }
+
 
   // Getters
   public getGameId(): string { return this.gameId; }

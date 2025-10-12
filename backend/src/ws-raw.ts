@@ -362,6 +362,49 @@ ws.on("message", async (buf: Buffer) => {
       }
 
       // ───────────── Remote: créer une room ─────────────
+      case "game.attach": {
+        if (!ws.ctx?.userId) {
+          safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
+          break;
+        }
+        try {
+          const { gameId } = msg.data || {};
+          if (!gameId || typeof gameId !== "string") {
+            safeSend({ type: "error", data: { message: "gameId_required" }, requestId });
+            break;
+          }
+
+          const { roomManager } = await import('./index.js'); // <<< avec .js
+          const room = roomManager.getRoom(gameId);
+
+          if (!room) {
+            safeSend({ type: "error", data: { message: "game_not_found" }, requestId });
+            break;
+          }
+          if (!room.isRemote()) {
+            safeSend({ type: "error", data: { message: "not_a_remote_game" }, requestId });
+            break;
+          }
+          if (!room.hasPlayer(String(ws.ctx.userId))) {
+            safeSend({ type: "error", data: { message: "not_in_this_game" }, requestId });
+            break;
+          }
+
+          const ok = room.attachSocket(String(ws.ctx.userId), ws);
+          if (!ok) {
+            safeSend({ type: "error", data: { message: "attach_failed" }, requestId });
+            break;
+          }
+
+          // petit ack facultatif
+          safeSend({ type: "ok", data: { attached: true, gameId }, requestId });
+        } catch (err) {
+          app.log.error({ err }, "Failed to attach socket");
+          safeSend({ type: "error", data: { message: "server_error" }, requestId });
+        }
+        break;
+      }
+
       case "game.create_remote": {
         if (!ws.ctx?.userId) {
           safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
