@@ -200,12 +200,21 @@ export class GameRoomInstance {
   }
 
   private broadcastGameState(): void {
+    const gameState = this.engine.getGameState();
+    
+    // 🔥 Log pour debug
+    console.log(`[Room ${this.gameId}] Broadcasting state, ball at:`, gameState.ball);
+    
     const message: GameMessage = {
       type: 'game_state',
       gameId: this.gameId,
-      data: { gameState: this.engine.getGameState(), players: Array.from(this.players.values()) },
+      data: { 
+        gameState: gameState,
+        players: Array.from(this.players.values())
+      },
       timestamp: Date.now(),
     };
+    
     this.broadcastToClients(message);
   }
 
@@ -252,14 +261,16 @@ export class GameRoomInstance {
       },
       timestamp: Date.now(),
     };
+    
     try {
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify(snapshot));
-        console.log(`[Backend] Sent initial game state to player ${userId}`);
+        console.log(`[Backend] ✅ Sent initial state to player ${userId}`);
       }
     } catch (error) {
-      console.error(`[Backend] Failed to send initial state to player ${userId}:`, error);
+      console.error(`[Backend] ❌ Failed to send initial state: ${userId}:`, error);
     }
+    
     return true;
   }
 

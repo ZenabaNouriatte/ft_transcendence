@@ -1121,20 +1121,42 @@ function render() {
 
           case 'game.joined': {
             const gid = msg.data?.gameId || msg.gameId || currentGameId || '';
-            if (!gid) { alert('Join ok but missing gameId'); break; }
+            if (!gid) { 
+              alert('Join ok but missing gameId'); 
+              break; 
+            }
+            
             localStorage.setItem('remoteGameId', gid);
             localStorage.setItem('currentGameMode', 'remote');
-            location.hash = '#/game-remote';
+            
+            // ✅ Fermer la WS actuelle AVANT de changer de page
+            try { 
+              if (ws) ws.close(1000, 'switching_to_game'); 
+            } catch {}
+            
+            // ✅ Petit délai pour éviter la boucle
+            setTimeout(() => {
+              location.hash = '#/game-remote';
+            }, 100);
             break;
           }
 
           case 'game_started': {
-            // l'hôte reçoit ceci quand le 2e joueur arrive et que la partie démarre
             const gid = msg.data?.gameId || msg.gameId || currentGameId || '';
             if (!currentGameId) currentGameId = gid;
+            
             localStorage.setItem('remoteGameId', gid);
             localStorage.setItem('currentGameMode', 'remote');
-            location.hash = '#/game-remote';
+            
+            // ✅ Fermer la WS actuelle AVANT de changer de page
+            try { 
+              if (ws) ws.close(1000, 'switching_to_game'); 
+            } catch {}
+            
+            // ✅ Petit délai pour éviter la boucle
+            setTimeout(() => {
+              location.hash = '#/game-remote';
+            }, 100);
             break;
           }
 
@@ -1244,6 +1266,19 @@ function render() {
 
   // Connecte la WS immédiatement
   connectWebSocket();
+
+  // ✅ AJOUTER CE CLEANUP
+  window.addEventListener('hashchange', () => {
+    if (location.hash !== '#/remote') {
+      console.log('[Remote] Leaving lobby, closing WS');
+      try { 
+        if (ws) {
+          ws.close(1000, 'leaving_lobby');
+          ws = null;
+        }
+      } catch {}
+    }
+  }, { once: true });
   } else if (route === "#/game-remote") {
     const canvas = document.getElementById("remoteCanvas") as HTMLCanvasElement;
     const ctx = canvas.getContext("2d")!;
@@ -1274,24 +1309,42 @@ function render() {
     setNames();
 
     function draw(state: any) {
-      W = state.width || 800; H = state.height || 400;
-      if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
-      ctx.clearRect(0, 0, W, H);
-      // filet
-      ctx.globalAlpha = 0.2; ctx.fillStyle = "#fff";
-      for (let y=0; y<H; y+=20) ctx.fillRect(W/2-1, y, 2, 10);
-      ctx.globalAlpha = 1;
-      // scores
-      ctx.fillStyle = "#fff"; ctx.font = "bold 24px monospace"; ctx.textAlign = "center";
-      ctx.fillText(`${state.score1 ?? 0}`, W*0.25, 40);
-      ctx.fillText(`${state.score2 ?? 0}`, W*0.75, 40);
-      // paddles
-      const padH = 70, padW = 10;
-      ctx.fillRect(10, Math.max(0, Math.min(H-padH, state.p1 || 0)), padW, padH);
-      ctx.fillRect(W-20, Math.max(0, Math.min(H-padH, state.p2 || 0)), padW, padH);
-      // ball
-      ctx.beginPath(); ctx.arc(state.ball?.x || W/2, state.ball?.y || H/2, 6, 0, Math.PI*2); ctx.fill();
-    }
+        if (!state) {
+          console.warn('[remote] ⚠️ No state to draw');
+          return;
+        }
+        
+        console.log('[remote] 🎨 Drawing ball at:', state.ball);
+        
+        W = state.width || 800; 
+        H = state.height || 400;
+        
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, W, H);
+        
+        // Filet
+        ctx.globalAlpha = 0.2; 
+        ctx.fillStyle = "#fff";
+        for (let y=0; y<H; y+=20) ctx.fillRect(W/2-1, y, 2, 10);
+        ctx.globalAlpha = 1;
+        
+        // Scores
+        ctx.fillStyle = "#fff"; 
+        ctx.font = "bold 24px monospace"; 
+        ctx.textAlign = "center";
+        ctx.fillText(`${state.score1 ?? 0}`, W*0.25, 40);
+        ctx.fillText(`${state.score2 ?? 0}`, W*0.75, 40);
+        
+        // Paddles
+        const padH = 100, padW = 15;
+        ctx.fillRect(10, Math.max(0, Math.min(H-padH, state.p1 || 0)), padW, padH);
+        ctx.fillRect(W-25, Math.max(0, Math.min(H-padH, state.p2 || 0)), padW, padH);
+        
+        // Balle
+        ctx.beginPath(); 
+        ctx.arc(state.ball?.x || W/2, state.ball?.y || H/2, 10, 0, Math.PI*2); 
+        ctx.fill();
+      }
 
     function maybeSendInput() {
       if (!ws || ws.readyState !== ws.OPEN || !myPaddle) return;
@@ -1325,93 +1378,140 @@ function render() {
       ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
-        console.log('[remote] WebSocket connected, attaching to game...');
-        // Attacher cette socket à la room IMMÉDIATEMENT
+        console.log('[remote] ✅ WS open, sending attach...');
         ws!.send(JSON.stringify({
           type: 'game.attach',
           data: { gameId },
           requestId: Date.now().toString()
         }));
-  
-      // Également s'abonner aux mises à jour du jeu
-      setTimeout(() => {
-        if (ws?.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'game.paddle_move', // Ce message déclenche l'envoi de l'état
-            data: { gameId, direction: 'stop' },
-            requestId: Date.now().toString()
-          }));
-        }
-      }, 100);
-    };
-
-      ws.onmessage = async (ev) => {
-        try {
-          const msg = JSON.parse(ev.data);
-          switch (msg.type) {
-            case 'game_started': {
-              const me = await myUserId();
-              const players = msg.data?.players || [];
-              const left = players.find((p: any) => p.paddle === 'left');
-              const right = players.find((p: any) => p.paddle === 'right');
-              if (left?.username) leftName = left.username;
-              if (right?.username) rightName = right.username;
-              setNames();
-              if (me) {
-                const mine = players.find((p: any) => String(p.id) === me);
-                if (mine) myPaddle = mine.paddle;
-              }
-              break;
-            }
-            case 'game_state': {
-              console.log('[remote] Received game state:', msg);
-              const st = msg.data?.gameState || msg.data?.state || msg.data;
-              if (st) {
-                draw(st);
-              } else {
-                console.warn('[remote] No game state in message:', msg);
-              }
-              break;
-            }
-            case 'game_ended': {
-              alert(`Game ended. Winner: ${msg.data?.winner ?? 'Unknown'}`);
-              location.hash = "";
-              break;
-            }
-            case 'error': {
-              console.warn('WS error:', msg.data?.message || msg);
-              break;
-            }
-          }
-        } catch (e) {
-          console.error('WS parse error', e);
-        }
       };
 
-      ws.onopen = () => console.log('[remote] ws open');
-      ws.onerror = (e) => console.warn('[remote] ws error', e);
-      ws.onclose = () => { ws = null; };
-    }
+    ws.onmessage = async (ev) => {
+      try {
+        // 🔥 PROTECTION : Vérifier que c'est bien du JSON
+        let msg;
+        
+        try {
+          const rawData = typeof ev.data === 'string' ? ev.data : ev.data.toString();
+          console.log('[remote] 📦 Raw data received (first 200 chars):', rawData.substring(0, 200));
+          msg = JSON.parse(rawData);
+        } catch (parseErr) {
+          console.error('[remote] ❌ JSON parse failed:', parseErr);
+          console.error('[remote] 📦 Raw data was:', ev.data);
+          return; // ← IGNORER ce message et continuer
+        }
+        
+        console.log('[remote] 📩 Parsed message:', msg.type);
+        
+        switch (msg.type) {
+          case 'game_started': {
+            const me = await myUserId();
+            const players = msg.data?.players || [];
+            const left = players.find((p: any) => p.paddle === 'left');
+            const right = players.find((p: any) => p.paddle === 'right');
+            
+            if (left?.username) leftName = left.username;
+            if (right?.username) rightName = right.username;
+            setNames();
+            
+            if (me) {
+              const mine = players.find((p: any) => String(p.id) === me);
+              if (mine) myPaddle = mine.paddle;
+            }
+            break;
+          }
+          
+          case 'game_state': {
+            // 🔥 Essayer plusieurs chemins pour trouver l'état
+            let st = null;
+            
+            if (msg.data?.gameState) {
+              st = msg.data.gameState;
+            } else if (msg.data?.state) {
+              st = msg.data.state;
+            } else if (msg.gameState) {
+              st = msg.gameState;
+            } else if (msg.data && msg.data.ball) {
+              st = msg.data;
+            }
+            
+            if (st && st.ball) {
+              console.log('[remote] 🎮 Drawing ball at:', st.ball);
+              draw(st);
+            } else {
+              console.warn('[remote] ⚠️ No gameState found in:', msg);
+            }
+            break;
+          }
+          
+          case 'game_ended': {
+            alert(`Game ended. Winner: ${msg.data?.winner ?? 'Unknown'}`);
+            location.hash = "";
+            break;
+          }
+          
+          case 'ok': {
+            console.log('[remote] ✅ OK:', msg.data);
+            break;
+          }
+          
+          case 'error': {
+            console.warn('[remote] ❌ Error:', msg.data?.message);
+            break;
+          }
+          
+          case 'player_joined':
+          case 'game_created':
+          case 'game.joined':
+          case 'ack': {
+            // Messages informatifs, on les ignore
+            console.log('[remote] ℹ️ Info:', msg.type);
+            break;
+          }
+          
+          default: {
+            console.log('[remote] ❓ Unknown message type:', msg.type);
+            break;
+          }
+        }
+      } catch (e) {
+        console.error('[remote] 💥 Handler error:', e);
+      }
+    };
+    ws.onerror = (e) => console.error('[remote] ❌ WS error', e);
+  
+    ws.onclose = (event) => { 
+      console.log('[remote] 🔌 WS closed:', event.code, event.reason);
+      ws = null;
+      
+      // 🔥 RECONNEXION AUTOMATIQUE
+      if (event.code !== 1000) { // Pas une fermeture normale
+        setTimeout(() => {
+          console.log('[remote] 🔄 Reconnecting...');
+          connect();
+        }, 2000);
+      }
+    };
+  }
+
 
     document.getElementById("backFromRemote")?.addEventListener("click", () => {
-      try { ws?.close(); } catch {}
+      try { ws?.close(1000, 'user_exit'); } catch {}
       location.hash = '';
     });
 
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
+    
     window.addEventListener("hashchange", () => {
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);
-      try { ws?.close(); } catch {}
+      try { ws?.close(1000, 'page_change'); } catch {}
     }, { once: true });
 
     connect();
-    console.log('[remote] Starting remote game with:', {
-      gameId,
-      token: token ? 'present' : 'missing',
-      wsUrl
-    });
+    
+    console.log('[remote] 🚀 Initializing remote game:', { gameId, token: !!token });
   } else if (route === "#/sign-up") {
     // --- PAGE D'INSCRIPTION ---
     

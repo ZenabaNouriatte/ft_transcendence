@@ -218,7 +218,13 @@ export function registerRawWs(app: FastifyInstance) {
       }
     };
 
-    setTimeout(() => safeSend("hello: connected"), 100);
+    setTimeout(() => {
+      if ((ws as any)._channel === "game-remote") {
+        safeSend({ type: "ok", data: { hello: "connected" } });
+      } else {
+        safeSend("hello: connected");
+      }
+    }, 100);
 
     // 2.e) Error/Close handlers
     ws.on("close", (code: number, reason: Buffer) => {
@@ -317,6 +323,7 @@ ws.on("message", async (buf: Buffer) => {
       "game.join_remote",
       "game.list_waiting",
       "game.paddle_move",
+      "game.attach",
     ] as const;
 
     if (!ALLOWED_TYPES.includes(type as any)) {
@@ -362,60 +369,92 @@ ws.on("message", async (buf: Buffer) => {
       }
 
       // ───────────── Remote: créer une room ─────────────
-    case "game.attach": {
-      if (!ws.ctx?.userId) {
-        safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
+      case "game.attach": {
+        if (!ws.ctx?.userId) {
+          safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
+          break;
+        }
+        try {
+          const { gameId } = msg.data || {};
+          if (!gameId || typeof gameId !== "string") {
+            safeSend({ type: "error", data: { message: "gameId_required" }, requestId });
+            break;
+          }
+
+          const { roomManager } = await import('./index.js');
+          const room = roomManager.getRoom(gameId);
+
+          if (!room) {
+            safeSend({ type: "error", data: { message: "game_not_found" }, requestId });
+            break;
+          }
+          if (!room.isRemote()) {
+            safeSend({ type: "error", data: { message: "not_a_remote_game" }, requestId });
+            break;
+          }
+          if (!room.hasPlayer(String(ws.ctx.userId))) {
+            safeSend({ type: "error", data: { message: "not_in_this_game" }, requestId });
+            break;
+          }
+
+          const ok = room.attachSocket(String(ws.ctx.userId), ws);
+          if (!ok) {
+            safeSend({ type: "error", data: { message: "attach_failed" }, requestId });
+            break;
+          }
+
+          // Envoyer immédiatement l'état actuel du jeu
+          const gameState = room.getGameState();
+          const players = room.getPlayers();
+          console.log(`[WS] Sending state to user ${ws.ctx.userId}`);
+          console.log(`[WS] GameState:`, JSON.stringify(gameState, null, 2));
+
+          
+          safeSend({ 
+            type: "game_state",
+            gameId: gameId,
+            data: { 
+              gameState: gameState,
+              players: players
+            },
+            timestamp: Date.now(),
+            requestId 
+          });
+          
+          safeSend({ 
+            type: "ok", 
+            data: { attached: true, gameId}, 
+            requestId 
+          });
+          
+        } catch (err) {
+          app.log.error({ err }, "Failed to attach socket");
+          safeSend({ type: "error", data: { message: "server_error" }, requestId });
+        }
         break;
       }
-      try {
-        const { gameId } = msg.data || {};
-        if (!gameId || typeof gameId !== "string") {
-          safeSend({ type: "error", data: { message: "gameId_required" }, requestId });
-          break;
-        }
 
-        const { roomManager } = await import('./index.js');
-        const room = roomManager.getRoom(gameId);
+      case "game_state": {
+        // [REPLACE] — parsing robuste et normalisé
+        const payload = msg.data || msg; // parfois l'état est directement dans data
+        const st = payload.gameState ?? payload.state ?? payload;
+        if (!st) { console.warn("[remote] empty state payload", msg); break; }
 
-        if (!room) {
-          safeSend({ type: "error", data: { message: "game_not_found" }, requestId });
-          break;
-        }
-        if (!room.isRemote()) {
-          safeSend({ type: "error", data: { message: "not_a_remote_game" }, requestId });
-          break;
-        }
-        if (!room.hasPlayer(String(ws.ctx.userId))) {
-          safeSend({ type: "error", data: { message: "not_in_this_game" }, requestId });
-          break;
-        }
+        const norm = {
+          width:  Number(st.width)  || 800,
+          height: Number(st.height) || 400,
+          score1: Number(st.score1) || 0,
+          score2: Number(st.score2) || 0,
+          p1:     Number(st.p1 ?? st.leftPaddle?.y ?? 0),
+          p2:     Number(st.p2 ?? st.rightPaddle?.y ?? 0),
+          ball:   { x: Number(st.ball?.x ?? st.ballX ?? 400),
+                    y: Number(st.ball?.y ?? st.ballY ?? 200) },
+        };
 
-        const ok = room.attachSocket(String(ws.ctx.userId), ws);
-        if (!ok) {
-          safeSend({ type: "error", data: { message: "attach_failed" }, requestId });
-          break;
-        }
-
-        // Envoyer immédiatement l'état actuel du jeu
-        const gameState = room.getGameState();
-        const players = room.getPlayers();
-        
-        safeSend({ 
-          type: "game_state", 
-          data: { 
-            gameState,
-            players: Array.from(players.values())
-          }, 
-          requestId 
-        });
-        
-        safeSend({ type: "ok", data: { attached: true, gameId }, requestId });
-      } catch (err) {
-        app.log.error({ err }, "Failed to attach socket");
-        safeSend({ type: "error", data: { message: "server_error" }, requestId });
+        // lastGameState = norm;
+        // draw(norm);
+        // break;
       }
-      break;
-    }
 
       case "game.create_remote": {
         if (!ws.ctx?.userId) {
