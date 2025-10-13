@@ -275,6 +275,7 @@ ws.on("message", async (buf: Buffer) => {
     return;
   }
 
+  // Rate limiting
   if (ws.ctx) {
     const t = now();
     const r = ws.ctx.rate;
@@ -292,17 +293,16 @@ ws.on("message", async (buf: Buffer) => {
 
   let requestId: string | undefined;
   let type = "unknown";
-  let msg: any;
 
   try {
     const raw = buf.toString("utf8");
-    msg = JSON.parse(raw);
+    const msg = JSON.parse(raw);
 
     if (!msg || typeof msg !== "object" || Array.isArray(msg)) {
       throw new Error("Invalid message structure");
     }
 
-    if (Object.prototype.hasOwnProperty.call(msg, "requestId") && msg.requestId != null) {
+    if (msg.requestId != null) {
       const rid = String(msg.requestId);
       if (rid.length > 100) throw new Error("requestId too long");
       requestId = rid;
@@ -316,8 +316,6 @@ ws.on("message", async (buf: Buffer) => {
       "ws.ping",
       "chat.message",
       "game.input",
-      "game.pause",
-      "game.resume",
       "game.create_remote",
       "game.join_remote",
       "game.list_waiting",
@@ -348,133 +346,40 @@ ws.on("message", async (buf: Buffer) => {
           safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
           break;
         }
-        if (!msg.data || typeof msg.data !== "object") {
-          safeSend({ type: "error", data: { message: "invalid_message_data" }, requestId });
-          break;
-        }
-        const messageContent = sanitizeString(msg.data.message, 500);
-        if (!messageContent.length) {
-          safeSend({ type: "error", data: { message: "empty_message" }, requestId });
-          break;
-        }
-        // … traitement chat (omissis)
+        // ... votre logique chat existante
         break;
       }
 
       case "game.input": {
-        // (si tu gardes ce type pour le local)
-        // ici tu ne modifies rien, ou tu routes vers ta logique locale existante
+        // Logique locale si besoin
         break;
       }
 
-      // ───────────── Remote: créer une room ─────────────
-      case "game.attach": {
-        if (!ws.ctx?.userId) {
-          safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
-          break;
-        }
-        try {
-          const { gameId } = msg.data || {};
-          if (!gameId || typeof gameId !== "string") {
-            safeSend({ type: "error", data: { message: "gameId_required" }, requestId });
-            break;
-          }
-
-          const { roomManager } = await import('./index.js');
-          const room = roomManager.getRoom(gameId);
-
-          if (!room) {
-            safeSend({ type: "error", data: { message: "game_not_found" }, requestId });
-            break;
-          }
-          if (!room.isRemote()) {
-            safeSend({ type: "error", data: { message: "not_a_remote_game" }, requestId });
-            break;
-          }
-          if (!room.hasPlayer(String(ws.ctx.userId))) {
-            safeSend({ type: "error", data: { message: "not_in_this_game" }, requestId });
-            break;
-          }
-
-          const ok = room.attachSocket(String(ws.ctx.userId), ws);
-          if (!ok) {
-            safeSend({ type: "error", data: { message: "attach_failed" }, requestId });
-            break;
-          }
-
-          // Envoyer immédiatement l'état actuel du jeu
-          const gameState = room.getGameState();
-          const players = room.getPlayers();
-          console.log(`[WS] Sending state to user ${ws.ctx.userId}`);
-          console.log(`[WS] GameState:`, JSON.stringify(gameState, null, 2));
-
-          
-          safeSend({ 
-            type: "game_state",
-            gameId: gameId,
-            data: { 
-              gameState: gameState,
-              players: players
-            },
-            timestamp: Date.now(),
-            requestId 
-          });
-          
-          safeSend({ 
-            type: "ok", 
-            data: { attached: true, gameId}, 
-            requestId 
-          });
-          
-        } catch (err) {
-          app.log.error({ err }, "Failed to attach socket");
-          safeSend({ type: "error", data: { message: "server_error" }, requestId });
-        }
-        break;
-      }
-
-      case "game_state": {
-        // [REPLACE] — parsing robuste et normalisé
-        const payload = msg.data || msg; // parfois l'état est directement dans data
-        const st = payload.gameState ?? payload.state ?? payload;
-        if (!st) { console.warn("[remote] empty state payload", msg); break; }
-
-        const norm = {
-          width:  Number(st.width)  || 800,
-          height: Number(st.height) || 400,
-          score1: Number(st.score1) || 0,
-          score2: Number(st.score2) || 0,
-          p1:     Number(st.p1 ?? st.leftPaddle?.y ?? 0),
-          p2:     Number(st.p2 ?? st.rightPaddle?.y ?? 0),
-          ball:   { x: Number(st.ball?.x ?? st.ballX ?? 400),
-                    y: Number(st.ball?.y ?? st.ballY ?? 200) },
-        };
-
-        // lastGameState = norm;
-        // draw(norm);
-        // break;
-      }
-
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🎮 REMOTE GAME - CRÉER UNE ROOM
+      // ═══════════════════════════════════════════════════════════════════════
       case "game.create_remote": {
         if (!ws.ctx?.userId) {
           safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
           break;
         }
+        
         const { username } = msg.data || {};
         if (!username || typeof username !== "string") {
           safeSend({ type: "error", data: { message: "username_required" }, requestId });
           break;
         }
 
-        // ⚠️ IMPORTANT: utiliser './index' (pas .js) en TS, TS résoudra à .js au build
         const { roomManager } = await import('./index.js');
         const gameId = roomManager.createRemoteRoom(ws.ctx.userId, username);
         const room = roomManager.getRoom(gameId);
+        
         if (!room) {
           safeSend({ type: "error", data: { message: "failed_to_create_room" }, requestId });
           break;
         }
-        // attacher la WS du créateur
+
+        // ✅ Attacher la WS du host IMMÉDIATEMENT
         room.addPlayer(String(ws.ctx.userId), username, ws);
 
         safeSend({
@@ -482,22 +387,29 @@ ws.on("message", async (buf: Buffer) => {
           data: { gameId, status: "waiting", message: "Game created. Waiting for opponent..." },
           requestId,
         });
+        
+        console.log(`[WS] Host ${username} created room ${gameId}`);
         break;
       }
 
-      // ───────────── Remote: rejoindre une room ─────────────
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🎮 REMOTE GAME - REJOINDRE UNE ROOM
+      // ═══════════════════════════════════════════════════════════════════════
       case "game.join_remote": {
         if (!ws.ctx?.userId) {
           safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
           break;
         }
+        
         const { gameId, username } = msg.data || {};
         if (!gameId || typeof gameId !== "string" || !username || typeof username !== "string") {
           safeSend({ type: "error", data: { message: "gameId_and_username_required" }, requestId });
           break;
         }
+
         const { roomManager } = await import('./index.js');
         const room = roomManager.getRoom(gameId);
+        
         if (!room) {
           safeSend({ type: "error", data: { message: "game_not_found" }, requestId });
           break;
@@ -506,144 +418,138 @@ ws.on("message", async (buf: Buffer) => {
           safeSend({ type: "error", data: { message: "not_a_remote_game" }, requestId });
           break;
         }
+
+        // ✅ Ajouter le joueur 2 avec sa WS
         const joined = room.addPlayer(String(ws.ctx.userId), username, ws);
+        
         if (!joined) {
           safeSend({ type: "error", data: { message: "game_full" }, requestId });
           break;
         }
-        safeSend({ type: "game.joined", data: { gameId, status: room.getStatus(), players: room.getPlayers() }, requestId });
+
+        // ✅ Le jeu démarre automatiquement dans addPlayer() si 2 joueurs
+        // → game_started est envoyé via broadcastToClients()
+        
+        safeSend({ 
+          type: "game.joined", 
+          data: { 
+            gameId, 
+            status: room.getStatus(), 
+            players: room.getPlayers() 
+          }, 
+          requestId 
+        });
+        
+        console.log(`[WS] Player ${username} joined room ${gameId}`);
         break;
       }
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🎮 REMOTE GAME - ATTACHER LA WEBSOCKET (après redirection)
+      // ═══════════════════════════════════════════════════════════════════════
       case "game.attach": {
         if (!ws.ctx?.userId) {
           safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
           break;
         }
-        try {
-          const { gameId } = msg.data || {};
-          if (!gameId || typeof gameId !== "string") {
-            safeSend({ type: "error", data: { message: "gameId_required" }, requestId });
-            break;
-          }
-
-          const { roomManager } = await import('./index.js');
-          const room = roomManager.getRoom(gameId);
-
-          if (!room) {
-            safeSend({ type: "error", data: { message: "game_not_found" }, requestId });
-            break;
-          }
-          if (!room.isRemote()) {
-            safeSend({ type: "error", data: { message: "not_a_remote_game" }, requestId });
-            break;
-          }
-          if (!room.hasPlayer(String(ws.ctx.userId))) {
-            safeSend({ type: "error", data: { message: "not_in_this_game" }, requestId });
-            break;
-          }
-
-          const ok = room.attachSocket(String(ws.ctx.userId), ws);
-          if (!ok) {
-            safeSend({ type: "error", data: { message: "attach_failed" }, requestId });
-            break;
-          }
-
-          // Envoyer immédiatement l'état actuel du jeu
-          const gameState = room.getGameState();
-          safeSend({ 
-            type: "game_state",
-            gameId: gameId,
-            data: { gameState },
-            timestamp: Date.now(),
-            requestId 
-          });
-          
-          safeSend({ 
-            type: "ok", 
-            data: { attached: true, gameId}, 
-            requestId 
-          });
-          
-        } catch (err) {
-          app.log.error({ err }, "Failed to attach socket");
-          safeSend({ type: "error", data: { message: "server_error" }, requestId });
-        }
-        break;
-      }
-
-      case "game.paddle_move": {
-        if (!ws.ctx?.userId) {
-          safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
+        
+        const { gameId } = msg.data || {};
+        if (!gameId || typeof gameId !== "string") {
+          safeSend({ type: "error", data: { message: "gameId_required" }, requestId });
           break;
         }
-        const { gameId, direction } = msg.data || {};
-        if (!gameId || typeof gameId !== "string" || typeof direction !== "string") {
-          safeSend({ type: "error", data: { message: "invalid_paddle_data" }, requestId });
-          break;
-        }
-        const VALID_DIRECTIONS = ["up", "down", "stop"];
-        if (!VALID_DIRECTIONS.includes(direction)) {
-          safeSend({ type: "error", data: { message: "invalid_direction" }, requestId });
-          break;
-        }
+
         const { roomManager } = await import('./index.js');
         const room = roomManager.getRoom(gameId);
+
         if (!room) {
           safeSend({ type: "error", data: { message: "game_not_found" }, requestId });
           break;
         }
-        const player = room.getPlayer(String(ws.ctx.userId));
-        if (!player) {
+        if (!room.isRemote()) {
+          safeSend({ type: "error", data: { message: "not_a_remote_game" }, requestId });
+          break;
+        }
+        if (!room.hasPlayer(String(ws.ctx.userId))) {
           safeSend({ type: "error", data: { message: "not_in_this_game" }, requestId });
           break;
         }
-        room.movePaddle(player.paddle, direction as any);
-        // pas de reply: l'état part à 60 FPS
+
+        // ✅ Attacher la socket (envoie l'état initial automatiquement)
+        const ok = room.attachSocket(String(ws.ctx.userId), ws);
+        
+        if (!ok) {
+          safeSend({ type: "error", data: { message: "attach_failed" }, requestId });
+          break;
+        }
+
+        safeSend({ 
+          type: "ok", 
+          data: { attached: true, gameId }, 
+          requestId 
+        });
+        
+        console.log(`[WS] User ${ws.ctx.userId} attached to game ${gameId}`);
         break;
       }
 
-      // ───────────── Remote: lister les rooms en attente ─────────────
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🎮 REMOTE GAME - LISTER LES ROOMS EN ATTENTE
+      // ═══════════════════════════════════════════════════════════════════════
       case "game.list_waiting": {
         if (!ws.ctx?.userId) {
           safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
           break;
         }
+        
         const { roomManager } = await import('./index.js');
         const rooms = roomManager.listWaitingRooms();
-        safeSend({ type: "game.waiting_list", data: { rooms }, requestId });
+        
+        safeSend({ 
+          type: "game.waiting_list", 
+          data: { rooms }, 
+          requestId 
+        });
         break;
       }
 
-      // ───────────── Remote: mouvement de paddle ─────────────
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🎮 REMOTE GAME - MOUVEMENT DE PADDLE
+      // ═══════════════════════════════════════════════════════════════════════
       case "game.paddle_move": {
         if (!ws.ctx?.userId) {
           safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
           break;
         }
+        
         const { gameId, direction } = msg.data || {};
         if (!gameId || typeof gameId !== "string" || typeof direction !== "string") {
           safeSend({ type: "error", data: { message: "invalid_paddle_data" }, requestId });
           break;
         }
+
         const VALID_DIRECTIONS = ["up", "down", "stop"];
         if (!VALID_DIRECTIONS.includes(direction)) {
           safeSend({ type: "error", data: { message: "invalid_direction" }, requestId });
           break;
         }
+
         const { roomManager } = await import('./index.js');
         const room = roomManager.getRoom(gameId);
+        
         if (!room) {
           safeSend({ type: "error", data: { message: "game_not_found" }, requestId });
           break;
         }
+
         const player = room.getPlayer(String(ws.ctx.userId));
         if (!player) {
           safeSend({ type: "error", data: { message: "not_in_this_game" }, requestId });
           break;
         }
+
         room.movePaddle(player.paddle, direction as any);
-        // pas de reply: l’état part à 60 FPS
+        // Pas de réponse : l'état est broadcasté à 60 FPS
         break;
       }
 
@@ -652,9 +558,11 @@ ws.on("message", async (buf: Buffer) => {
       }
     }
 
+    // Acknowledge optionnel
     if (requestId) {
       safeSend({ type: "ack", requestId, timestamp: Date.now() });
     }
+
   } catch (parseError) {
     try { wsMessagesTotal.inc({ type: "invalid" }); } catch {}
     const msg = parseError instanceof Error ? parseError.message : "parse_error";
