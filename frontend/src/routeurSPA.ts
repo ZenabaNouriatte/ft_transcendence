@@ -1280,128 +1280,133 @@ function render() {
     }
   }, { once: true });
   } else if (route === "#/game-remote") {
-    const canvas = document.getElementById("remoteCanvas") as HTMLCanvasElement;
-    const ctx = canvas.getContext("2d")!;
-    const token = sessionStorage.getItem('token') || localStorage.getItem('token');
-    const gameId = localStorage.getItem('remoteGameId');
-    const host = location.hostname;
-    const wsUrl = `wss://${host}:8443/ws?channel=game-remote&token=${encodeURIComponent(token || "")}`;
+  const canvas = document.getElementById("remoteCanvas") as HTMLCanvasElement;
+  const ctx = canvas.getContext("2d")!;
+  const token = sessionStorage.getItem('token') || localStorage.getItem('token');
+  const gameId = localStorage.getItem('remoteGameId');
+  const host = location.hostname;
+  const wsUrl = `wss://${host}:8443/ws?channel=game-remote&token=${encodeURIComponent(token || "")}`;
 
-    if (!token || !gameId) {
-      alert("Missing token or gameId. Go back to Remote lobby.");
-      location.hash = "#/remote";
-      return;
+  if (!token || !gameId) {
+    alert("Missing token or gameId. Go back to Remote lobby.");
+    location.hash = "#/remote";
+    return;
+  }
+
+  let W = 800, H = 400;
+  canvas.width = W; canvas.height = H;
+
+  let ws: WebSocket | null = null;
+  let myPaddle: 'left' | 'right' | null = null;
+  let leftName = 'Left', rightName = 'Right';
+  let pressedUp = false, pressedDown = false;
+  let lastSent: 'up' | 'down' | 'stop' = 'stop';
+
+  const setNames = () => {
+    const l = document.getElementById('pLeftName'); if (l) l.textContent = leftName;
+    const r = document.getElementById('pRightName'); if (r) r.textContent = rightName;
+  };
+  setNames();
+
+  function draw(state: any) {
+    if (!state) return;
+    
+    W = state.width || 800; 
+    H = state.height || 400;
+    
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    
+    // Filet central
+    ctx.globalAlpha = 0.2; 
+    ctx.fillStyle = "#fff";
+    for (let y=0; y<H; y+=20) ctx.fillRect(W/2-1, y, 2, 10);
+    ctx.globalAlpha = 1;
+    
+    // Scores
+    ctx.fillStyle = "#fff"; 
+    ctx.font = "bold 24px monospace"; 
+    ctx.textAlign = "center";
+    ctx.fillText(`${state.score1 ?? 0}`, W*0.25, 40);
+    ctx.fillText(`${state.score2 ?? 0}`, W*0.75, 40);
+    
+    // Paddles
+    const padH = 100, padW = 15;
+    ctx.fillRect(10, Math.max(0, Math.min(H-padH, state.p1 || 0)), padW, padH);
+    ctx.fillRect(W-25, Math.max(0, Math.min(H-padH, state.p2 || 0)), padW, padH);
+    
+    // Balle
+    ctx.beginPath(); 
+    ctx.arc(state.ball?.x || W/2, state.ball?.y || H/2, 10, 0, Math.PI*2); 
+    ctx.fill();
+  }
+
+  function maybeSendInput() {
+    if (!ws || ws.readyState !== ws.OPEN || !myPaddle) return;
+    let want: 'up' | 'down' | 'stop' = 'stop';
+    if (pressedUp && !pressedDown) want = 'up';
+    else if (pressedDown && !pressedUp) want = 'down';
+    if (want !== lastSent) {
+      ws.send(JSON.stringify({ 
+        type: "game.paddle_move", 
+        data: { gameId, direction: want }, 
+        requestId: Date.now().toString() 
+      }));
+      lastSent = want;
     }
+  }
 
-    let W = 800, H = 400;
-    canvas.width = W; canvas.height = H;
+  function onKeyDown(e: KeyboardEvent) {
+    if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') { 
+      pressedUp = true; 
+      maybeSendInput(); 
+    }
+    if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') { 
+      pressedDown = true; 
+      maybeSendInput(); 
+    }
+  }
+  
+  function onKeyUp(e: KeyboardEvent) {
+    if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') { 
+      pressedUp = false; 
+      maybeSendInput(); 
+    }
+    if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') { 
+      pressedDown = false; 
+      maybeSendInput(); 
+    }
+  }
 
-    let ws: WebSocket | null = null;
-    let myPaddle: 'left' | 'right' | null = null;
-    let leftName = 'Left', rightName = 'Right';
-    let pressedUp = false, pressedDown = false;
-    let lastSent: 'up' | 'down' | 'stop' = 'stop';
+  async function myUserId(): Promise<string | null> {
+    try {
+      const r = await fetch('/api/users/me', { 
+        headers: { Authorization: `Bearer ${token}` } 
+      });
+      if (!r.ok) return null;
+      const js = await r.json(); 
+      return js?.user?.id ? String(js.user.id) : null;
+    } catch { 
+      return null; 
+    }
+  }
 
-    const setNames = () => {
-      const l = document.getElementById('pLeftName'); if (l) l.textContent = leftName;
-      const r = document.getElementById('pRightName'); if (r) r.textContent = rightName;
+  function connect() {
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log('[remote] ✅ WS open, sending attach...');
+      ws!.send(JSON.stringify({
+        type: 'game.attach',
+        data: { gameId },
+        requestId: Date.now().toString()
+      }));
     };
-    setNames();
-
-    function draw(state: any) {
-        if (!state) {
-          console.warn('[remote] ⚠️ No state to draw');
-          return;
-        }
-        
-        console.log('[remote] 🎨 Drawing ball at:', state.ball);
-        
-        W = state.width || 800; 
-        H = state.height || 400;
-        
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, W, H);
-        
-        // Filet
-        ctx.globalAlpha = 0.2; 
-        ctx.fillStyle = "#fff";
-        for (let y=0; y<H; y+=20) ctx.fillRect(W/2-1, y, 2, 10);
-        ctx.globalAlpha = 1;
-        
-        // Scores
-        ctx.fillStyle = "#fff"; 
-        ctx.font = "bold 24px monospace"; 
-        ctx.textAlign = "center";
-        ctx.fillText(`${state.score1 ?? 0}`, W*0.25, 40);
-        ctx.fillText(`${state.score2 ?? 0}`, W*0.75, 40);
-        
-        // Paddles
-        const padH = 100, padW = 15;
-        ctx.fillRect(10, Math.max(0, Math.min(H-padH, state.p1 || 0)), padW, padH);
-        ctx.fillRect(W-25, Math.max(0, Math.min(H-padH, state.p2 || 0)), padW, padH);
-        
-        // Balle
-        ctx.beginPath(); 
-        ctx.arc(state.ball?.x || W/2, state.ball?.y || H/2, 10, 0, Math.PI*2); 
-        ctx.fill();
-      }
-
-    function maybeSendInput() {
-      if (!ws || ws.readyState !== ws.OPEN || !myPaddle) return;
-      let want: 'up' | 'down' | 'stop' = 'stop';
-      if (pressedUp && !pressedDown) want = 'up';
-      else if (pressedDown && !pressedUp) want = 'down';
-      if (want !== lastSent) {
-        ws.send(JSON.stringify({ type: "game.paddle_move", data: { gameId, direction: want }, requestId: Date.now().toString() }));
-        lastSent = want;
-      }
-    }
-
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') { pressedUp = true; maybeSendInput(); }
-      if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') { pressedDown = true; maybeSendInput(); }
-    }
-    function onKeyUp(e: KeyboardEvent) {
-      if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') { pressedUp = false; maybeSendInput(); }
-      if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') { pressedDown = false; maybeSendInput(); }
-    }
-
-    async function myUserId(): Promise<string | null> {
-      try {
-        const r = await fetch('/api/users/me', { headers: { Authorization: `Bearer ${token}` } });
-        if (!r.ok) return null;
-        const js = await r.json(); return js?.user?.id ? String(js.user.id) : null;
-      } catch { return null; }
-    }
-
-    function connect() {
-      ws = new WebSocket(wsUrl);
-
-      ws.onopen = () => {
-        console.log('[remote] ✅ WS open, sending attach...');
-        ws!.send(JSON.stringify({
-          type: 'game.attach',
-          data: { gameId },
-          requestId: Date.now().toString()
-        }));
-      };
 
     ws.onmessage = async (ev) => {
       try {
-        // 🔥 PROTECTION : Vérifier que c'est bien du JSON
-        let msg;
-        
-        try {
-          const rawData = typeof ev.data === 'string' ? ev.data : ev.data.toString();
-          console.log('[remote] 📦 Raw data received (first 200 chars):', rawData.substring(0, 200));
-          msg = JSON.parse(rawData);
-        } catch (parseErr) {
-          console.error('[remote] ❌ JSON parse failed:', parseErr);
-          console.error('[remote] 📦 Raw data was:', ev.data);
-          return; // ← IGNORER ce message et continuer
-        }
-        
-        console.log('[remote] 📩 Parsed message:', msg.type);
+        const msg = JSON.parse(ev.data);
+        console.log('[remote] 📩 Received:', msg.type);
         
         switch (msg.type) {
           case 'game_started': {
@@ -1422,24 +1427,9 @@ function render() {
           }
           
           case 'game_state': {
-            // 🔥 Essayer plusieurs chemins pour trouver l'état
-            let st = null;
-            
-            if (msg.data?.gameState) {
-              st = msg.data.gameState;
-            } else if (msg.data?.state) {
-              st = msg.data.state;
-            } else if (msg.gameState) {
-              st = msg.gameState;
-            } else if (msg.data && msg.data.ball) {
-              st = msg.data;
-            }
-            
-            if (st && st.ball) {
-              console.log('[remote] 🎮 Drawing ball at:', st.ball);
+            const st = msg.data?.gameState || msg.gameState || msg.data;
+            if (st?.ball) {
               draw(st);
-            } else {
-              console.warn('[remote] ⚠️ No gameState found in:', msg);
             }
             break;
           }
@@ -1451,26 +1441,13 @@ function render() {
           }
           
           case 'ok': {
-            console.log('[remote] ✅ OK:', msg.data);
+            console.log('[remote] ✅ Attached to game');
             break;
           }
           
           case 'error': {
             console.warn('[remote] ❌ Error:', msg.data?.message);
-            break;
-          }
-          
-          case 'player_joined':
-          case 'game_created':
-          case 'game.joined':
-          case 'ack': {
-            // Messages informatifs, on les ignore
-            console.log('[remote] ℹ️ Info:', msg.type);
-            break;
-          }
-          
-          default: {
-            console.log('[remote] ❓ Unknown message type:', msg.type);
+            alert('Error: ' + msg.data?.message);
             break;
           }
         }
@@ -1478,41 +1455,30 @@ function render() {
         console.error('[remote] 💥 Handler error:', e);
       }
     };
+
     ws.onerror = (e) => console.error('[remote] ❌ WS error', e);
-  
-    ws.onclose = (event) => { 
-      console.log('[remote] 🔌 WS closed:', event.code, event.reason);
+    ws.onclose = () => { 
+      console.log('[remote] 🔌 WS closed');
       ws = null;
-      
-      // 🔥 RECONNEXION AUTOMATIQUE
-      if (event.code !== 1000) { // Pas une fermeture normale
-        setTimeout(() => {
-          console.log('[remote] 🔄 Reconnecting...');
-          connect();
-        }, 2000);
-      }
     };
   }
 
+  document.getElementById("backFromRemote")?.addEventListener("click", () => {
+    try { ws?.close(1000, 'user_exit'); } catch {}
+    location.hash = '';
+  });
 
-    document.getElementById("backFromRemote")?.addEventListener("click", () => {
-      try { ws?.close(1000, 'user_exit'); } catch {}
-      location.hash = '';
-    });
+  document.addEventListener("keydown", onKeyDown);
+  document.addEventListener("keyup", onKeyUp);
+  
+  window.addEventListener("hashchange", () => {
+    document.removeEventListener("keydown", onKeyDown);
+    document.removeEventListener("keyup", onKeyUp);
+    try { ws?.close(1000, 'page_change'); } catch {}
+  }, { once: true });
 
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("keyup", onKeyUp);
-    
-    window.addEventListener("hashchange", () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("keyup", onKeyUp);
-      try { ws?.close(1000, 'page_change'); } catch {}
-    }, { once: true });
-
-    connect();
-    
-    console.log('[remote] 🚀 Initializing remote game:', { gameId, token: !!token });
-  } else if (route === "#/sign-up") {
+  connect();
+} else if (route === "#/sign-up") {
     // --- PAGE D'INSCRIPTION ---
     
     // Gestion du formulaire d'inscription

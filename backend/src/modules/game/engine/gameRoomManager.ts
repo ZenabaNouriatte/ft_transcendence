@@ -244,6 +244,8 @@ export class GameRoomInstance {
     return true;
   }
   
+// APRÈS la méthode resumeGame() (ligne ~vers 170) :
+
   public attachSocket(userId: string, ws: WebSocket): boolean {
     if (!this.remoteMode) return false;
     if (!this.players.has(userId)) return false;
@@ -268,7 +270,7 @@ export class GameRoomInstance {
         console.log(`[Backend] ✅ Sent initial state to player ${userId}`);
       }
     } catch (error) {
-      console.error(`[Backend] ❌ Failed to send initial state: ${userId}:`, error);
+      console.error(`[Backend] ❌ Failed to send initial state to ${userId}:`, error);
     }
     
     return true;

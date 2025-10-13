@@ -268,7 +268,6 @@ export function registerRawWs(app: FastifyInstance) {
     // ─────────────────────────────────────────────────────────────────────────
     // 2.f) Message handler
     // ─────────────────────────────────────────────────────────────────────────
-    // Remplacer ENTIEREMENT le handler message actuel :
 ws.on("message", async (buf: Buffer) => {
   const size = Buffer.isBuffer(buf) ? buf.length : Buffer.byteLength(String(buf));
   if (size > MAX_MSG_BYTES) {
@@ -513,6 +512,94 @@ ws.on("message", async (buf: Buffer) => {
           break;
         }
         safeSend({ type: "game.joined", data: { gameId, status: room.getStatus(), players: room.getPlayers() }, requestId });
+        break;
+      }
+
+      case "game.attach": {
+        if (!ws.ctx?.userId) {
+          safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
+          break;
+        }
+        try {
+          const { gameId } = msg.data || {};
+          if (!gameId || typeof gameId !== "string") {
+            safeSend({ type: "error", data: { message: "gameId_required" }, requestId });
+            break;
+          }
+
+          const { roomManager } = await import('./index.js');
+          const room = roomManager.getRoom(gameId);
+
+          if (!room) {
+            safeSend({ type: "error", data: { message: "game_not_found" }, requestId });
+            break;
+          }
+          if (!room.isRemote()) {
+            safeSend({ type: "error", data: { message: "not_a_remote_game" }, requestId });
+            break;
+          }
+          if (!room.hasPlayer(String(ws.ctx.userId))) {
+            safeSend({ type: "error", data: { message: "not_in_this_game" }, requestId });
+            break;
+          }
+
+          const ok = room.attachSocket(String(ws.ctx.userId), ws);
+          if (!ok) {
+            safeSend({ type: "error", data: { message: "attach_failed" }, requestId });
+            break;
+          }
+
+          // Envoyer immédiatement l'état actuel du jeu
+          const gameState = room.getGameState();
+          safeSend({ 
+            type: "game_state",
+            gameId: gameId,
+            data: { gameState },
+            timestamp: Date.now(),
+            requestId 
+          });
+          
+          safeSend({ 
+            type: "ok", 
+            data: { attached: true, gameId}, 
+            requestId 
+          });
+          
+        } catch (err) {
+          app.log.error({ err }, "Failed to attach socket");
+          safeSend({ type: "error", data: { message: "server_error" }, requestId });
+        }
+        break;
+      }
+
+      case "game.paddle_move": {
+        if (!ws.ctx?.userId) {
+          safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
+          break;
+        }
+        const { gameId, direction } = msg.data || {};
+        if (!gameId || typeof gameId !== "string" || typeof direction !== "string") {
+          safeSend({ type: "error", data: { message: "invalid_paddle_data" }, requestId });
+          break;
+        }
+        const VALID_DIRECTIONS = ["up", "down", "stop"];
+        if (!VALID_DIRECTIONS.includes(direction)) {
+          safeSend({ type: "error", data: { message: "invalid_direction" }, requestId });
+          break;
+        }
+        const { roomManager } = await import('./index.js');
+        const room = roomManager.getRoom(gameId);
+        if (!room) {
+          safeSend({ type: "error", data: { message: "game_not_found" }, requestId });
+          break;
+        }
+        const player = room.getPlayer(String(ws.ctx.userId));
+        if (!player) {
+          safeSend({ type: "error", data: { message: "not_in_this_game" }, requestId });
+          break;
+        }
+        room.movePaddle(player.paddle, direction as any);
+        // pas de reply: l'état part à 60 FPS
         break;
       }
 
