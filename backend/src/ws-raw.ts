@@ -9,7 +9,8 @@ import {
   wsRateLimitedTotal 
 } from "./common/metrics.js";
 import { UserService } from "./services/index.js";
-import { gameRoomManager } from "./index.js";
+import { gameRoomManager } from "./modules/game/engine/roomManagerSingleton.js";
+
 
 
 // Fonction de sanitization si le module n'existe pas
@@ -223,7 +224,7 @@ export function registerRawWs(app: FastifyInstance) {
 
     setTimeout(() => {
       if ((ws as any)._channel === "game-remote") {
-        safeSend({ type: "ok", data: { hello: "connected" } });
+        safeSend({ type: "hello", data: { hello: "connected" } });
       } else {
         safeSend("hello: connected");
       }
@@ -377,9 +378,8 @@ ws.on("message", async (buf: Buffer) => {
           break;
         }
 
-        import { gameRoomManager } from "./modules/game/http.js";
-        const gameId = roomManager.createRemoteRoom(ws.ctx.userId, username);
-        const room = roomManager.getRoom(gameId);
+        const gameId = gameRoomManager.createRemoteRoom(ws.ctx.userId, username);
+        const room = gameRoomManager.getRoom(gameId);
         
         if (!room) {
           safeSend({ type: "error", data: { message: "failed_to_create_room" }, requestId });
@@ -422,8 +422,7 @@ ws.on("message", async (buf: Buffer) => {
           break;
         }
 
-        import { gameRoomManager } from "./modules/game/http.js";
-        const room = roomManager.getRoom(gameId);
+        const room = gameRoomManager.getRoom(gameId);
         
         if (!room) {
           safeSend({ type: "error", data: { message: "game_not_found" }, requestId });
@@ -468,8 +467,7 @@ ws.on("message", async (buf: Buffer) => {
           break;
         }
 
-        import { gameRoomManager } from "./modules/game/http.js";
-        const room = roomManager.getRoom(gameId);
+        const room = gameRoomManager.getRoom(gameId);
 
         if (!room) {
           safeSend({ type: "error", data: { message: "game_not_found" }, requestId });
@@ -486,6 +484,25 @@ ws.on("message", async (buf: Buffer) => {
 
         // ✅ Attacher la socket (envoie l'état initial automatiquement)
         const ok = room.attachSocket(String(ws.ctx.userId), ws);
+        // Après const ok = room.attachSocket(...)
+
+        const players = Array.from(room.getPlayers().values()).map(p => ({
+          id: p.id,
+          username: p.username,
+          paddle: p.paddle,
+        }));
+        safeSend({
+          type: "ok",
+          data: { 
+            attached: true, 
+            gameId,
+            room: { status: room.getStatus(), playerCount: room.getPlayerCount(), players }
+          },
+          requestId
+        });
+        console.log(`[WS] attach -> game=${gameId} status=${room.getStatus()} players=${players.length}`);
+        players.forEach(p => console.log(`   - ${p.username} (${p.id}) paddle=${p.paddle}`));
+
         
         if (!ok) {
           safeSend({ type: "error", data: { message: "attach_failed" }, requestId });
@@ -511,8 +528,7 @@ ws.on("message", async (buf: Buffer) => {
           break;
         }
         
-        import { gameRoomManager } from "./modules/game/http.js";
-        const rooms = roomManager.listWaitingRooms();
+        const rooms = gameRoomManager.listWaitingRooms();
         
         safeSend({ 
           type: "game.waiting_list", 
@@ -543,8 +559,7 @@ ws.on("message", async (buf: Buffer) => {
           break;
         }
 
-        import { gameRoomManager } from "./modules/game/http.js";
-        const room = roomManager.getRoom(gameId);
+        const room = gameRoomManager.getRoom(gameId);
         
         if (!room) {
           safeSend({ type: "error", data: { message: "game_not_found" }, requestId });

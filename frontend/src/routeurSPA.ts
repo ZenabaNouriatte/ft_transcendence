@@ -1426,7 +1426,20 @@ function render() {
           }
           
           case 'ok': {
-            console.log('[remote] ✅ Attached to game');
+            if (msg.data?.attached) {
+              console.log('[remote] ✅ Attached to game', msg.data);
+              // Optional: show names from snapshot if you added it on server
+              if (msg.data?.room?.players) {
+                const p = msg.data.room.players;
+                const left  = p.find((x:any) => x.paddle === 'left');
+                const right = p.find((x:any) => x.paddle === 'right');
+                if (left?.username)  leftName  = left.username;
+                if (right?.username) rightName = right.username;
+                setNames();
+              }
+            } else {
+              console.log('[remote] 👋 hello', msg.data);
+            }
             break;
           }
           
