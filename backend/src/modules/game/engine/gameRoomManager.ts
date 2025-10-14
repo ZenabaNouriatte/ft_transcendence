@@ -16,12 +16,12 @@ export class GameRoomManager {
     console.log('🎮 GameRoomManager initialized (60 FPS)');
   }
 
-  // Créer une room REMOTE (attend 2 connexions WS)
   public createRemoteRoom(hostUserId: number, hostUsername: string): string {
     const gameId = `remote_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const room = new GameRoomInstance(gameId, true);
-    // le host n’a pas encore sa WS au moment de la création → addPlayer sans ws
+    
     room.addPlayer(String(hostUserId), hostUsername);
+    
     this.rooms.set(gameId, room);
     console.log(`[Backend] Created REMOTE room ${gameId} (host: ${hostUsername})`);
     return gameId;
@@ -123,30 +123,60 @@ export class GameRoomInstance {
 
   // Ajouter un joueur (+ éventuellement sa WS)
   public addPlayer(userId: string, username: string, ws?: WebSocket): boolean {
-    if (this.players.size >= 2) {
-      console.log(`[Backend] Room ${this.gameId} full`);
-      return false;
-    }
-    const paddle = this.players.size === 0 ? 'left' : 'right';
-    const player: Player = { id: userId, username, paddle, connected: true };
-    this.players.set(userId, player);
-
+  // ✅ Si le joueur existe déjà (reconnexion/attach), juste mettre à jour la WS
+  if (this.players.has(userId)) {
+    console.log(`[Backend] Player ${username} already in room, updating connection`);
     if (this.remoteMode && ws) {
       this.wsConnections.set(userId, ws);
-      console.log(`[Backend] Player ${username} connected via WS (paddle: ${paddle})`);
+      console.log(`[Backend] Player ${username} WS updated`);
     }
+    
+    // ✅ Vérifier si on peut démarrer maintenant
+    if (this.players.size === 2 && this.status === 'waiting') {
+      this.startGame();
+    }
+    return true;
+  }
 
-    console.log(`👤 Player ${username} joined ${this.gameId} (${paddle} paddle)`);
-    if (this.players.size === 2) this.startGame();
-    // Notify clients waiting room state (optional)
+  // ✅ Nouveau joueur
+  if (this.players.size >= 2) {
+    console.log(`[Backend] Room ${this.gameId} full`);
+    return false;
+  }
+  
+  const paddle = this.players.size === 0 ? 'left' : 'right';
+  const player: Player = { id: userId, username, paddle, connected: true };
+  this.players.set(userId, player);
+
+  if (this.remoteMode && ws) {
+    this.wsConnections.set(userId, ws);
+    console.log(`[Backend] Player ${username} connected via WS (paddle: ${paddle})`);
+  }
+
+  console.log(`👤 Player ${username} joined ${this.gameId} (${paddle} paddle) - Total: ${this.players.size}`);
+  
+  // ✅ Démarrer si 2 joueurs ET les 2 ont une WS
+  if (this.players.size === 2) {
+    const hasAllConnections = Array.from(this.players.keys()).every(id => this.wsConnections.has(id));
+    
+    if (hasAllConnections) {
+      console.log(`[Backend] 🎮 Both players connected with WS, starting game ${this.gameId}`);
+      this.startGame();
+    } else {
+      console.log(`[Backend] ⏳ Waiting for all players to connect their WS...`);
+    }
+  } else {
+    // Notifier du player_joined
     this.broadcastToClients({
       type: 'player_joined',
       gameId: this.gameId,
       data: { player },
       timestamp: Date.now(),
     });
-    return true;
   }
+  
+  return true;
+}
 
   public removePlayer(userId: string): void {
     const player = this.players.get(userId);
@@ -253,7 +283,7 @@ export class GameRoomInstance {
     // (Ré)attacher la socket de ce joueur
     this.wsConnections.set(userId, ws);
 
-    // envoyer un snapshot COMPLET immédiat pour dessiner le canvas sans attendre le tick suivant
+    // ✅ Envoyer snapshot initial
     const snapshot = {
       type: 'game_state',
       gameId: this.gameId,
@@ -272,10 +302,18 @@ export class GameRoomInstance {
     } catch (error) {
       console.error(`[Backend] ❌ Failed to send initial state to ${userId}:`, error);
     }
+
+    if (this.status === 'waiting' && this.players.size === 2) {
+      const hasAllConnections = Array.from(this.players.keys()).every(id => this.wsConnections.has(id));
+      
+      if (hasAllConnections) {
+        console.log(`[Backend] 🎮 All players attached, starting game ${this.gameId}`);
+        this.startGame();
+      }
+    }
     
     return true;
   }
-
 
   // Getters
   public getGameId(): string { return this.gameId; }

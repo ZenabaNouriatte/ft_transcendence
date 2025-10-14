@@ -10,6 +10,7 @@ import xss from 'xss';
 import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
 
 
+
 import { registerRawWs } from "./ws-raw.js";
 import { initDb } from "./database/index.js";
 import {
@@ -20,7 +21,8 @@ import {
   FriendshipService,
 } from "./services/index.js";
 import { registerHttpTimingHooks, sendMetrics } from "./common/metrics.js";
-
+//import { setupWebSocketUpgrade } from "./ws-raw.js";
+import { gameRoomManager } from "./modules/game/http.js";
 
 const JWT_SECRET: Secret = process.env.JWT_SECRET || "dev-secret";
 const SIGN_OPTS: SignOptions = { expiresIn: "24h", algorithm: "HS256" };

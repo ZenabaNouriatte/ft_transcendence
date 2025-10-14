@@ -1111,49 +1111,44 @@ function render() {
 
         switch (msg.type) {
           case 'game.created': {
+            // ✅ HOST : Rester sur #/remote en attente
             currentGameId = msg.data?.gameId || msg.gameId || null;
             if (currentGameId) {
               byId<HTMLSpanElement>('gameIdDisplay').textContent = currentGameId;
               byId<HTMLDivElement>('waitingMessage').classList.remove('hidden');
+              console.log('[Remote] Game created, waiting for opponent...');
             }
             break;
           }
 
           case 'game.joined': {
+            // ✅ CHALLENGER : Confirmation du join (pas de redirect ici)
+            console.log('[Remote] Successfully joined game');
+            break;
+          }
+
+          case 'game_started': {
+            // ✅ LES DEUX : Rediriger vers le jeu maintenant
             const gid = msg.data?.gameId || msg.gameId || currentGameId || '';
-            if (!gid) { 
-              alert('Join ok but missing gameId'); 
-              break; 
+            if (!gid) {
+              console.error('[Remote] game_started without gameId');
+              break;
             }
             
             localStorage.setItem('remoteGameId', gid);
             localStorage.setItem('currentGameMode', 'remote');
             
-            // ✅ Fermer la WS actuelle AVANT de changer de page
+            console.log('[Remote] Game starting! Redirecting to game...');
+            
+            // Fermer cette WS (une nouvelle sera créée sur #/game-remote)
             try { 
-              if (ws) ws.close(1000, 'switching_to_game'); 
+              if (ws) {
+                ws.close(1000, 'game_starting'); 
+                ws = null;
+              }
             } catch {}
             
-            // ✅ Petit délai pour éviter la boucle
-            setTimeout(() => {
-              location.hash = '#/game-remote';
-            }, 100);
-            break;
-          }
-
-          case 'game_started': {
-            const gid = msg.data?.gameId || msg.gameId || currentGameId || '';
-            if (!currentGameId) currentGameId = gid;
-            
-            localStorage.setItem('remoteGameId', gid);
-            localStorage.setItem('currentGameMode', 'remote');
-            
-            // ✅ Fermer la WS actuelle AVANT de changer de page
-            try { 
-              if (ws) ws.close(1000, 'switching_to_game'); 
-            } catch {}
-            
-            // ✅ Petit délai pour éviter la boucle
+            // Petit délai pour éviter race condition
             setTimeout(() => {
               location.hash = '#/game-remote';
             }, 100);
@@ -1166,32 +1161,22 @@ function render() {
           }
 
           case 'error': {
+            console.error('[Remote] Error:', msg.data?.message);
             alert('Error: ' + (msg.data?.message || 'Unknown error'));
             break;
           }
 
           default:
-            // ignore
+            console.log('[Remote] Unhandled message type:', msg.type);
             break;
         }
       } catch (err) {
         console.error('[Remote] Failed to parse message:', err);
       }
     };
-
-    ws.onerror = (err) => {
-      console.error('[Remote] WebSocket error:', err);
-    };
-
-    ws.onclose = () => {
-      console.log('[Remote] WebSocket closed');
-      ws = null;
-    };
-
     return ws;
-  }
 
-  // Afficher la liste des parties disponibles
+  }  // Afficher la liste des parties disponibles
   function displayGamesList(rooms: Array<{ gameId: string; hostUsername: string; createdAt: number }>) {
     const listEl = byId<HTMLDivElement>('gamesList');
 
@@ -1476,6 +1461,26 @@ function render() {
     document.removeEventListener("keyup", onKeyUp);
     try { ws?.close(1000, 'page_change'); } catch {}
   }, { once: true });
+
+  // ✅ CLEANUP : Fermer WS quand on quitte la page
+  const cleanupHandler = () => {
+    if (location.hash !== '#/game-remote') {
+      console.log('[Remote Game] Leaving page, cleaning up...');
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keyup", onKeyUp);
+      try { 
+        if (ws) {
+          ws.close(1000, 'leaving_game'); 
+          ws = null;
+        }
+      } catch {}
+    }
+  };
+  
+  window.addEventListener("hashchange", cleanupHandler, { once: true });
+  window.addEventListener("beforeunload", () => {
+    try { ws?.close(1000, 'page_close'); } catch {}
+  });
 
   connect();
 } else if (route === "#/sign-up") {

@@ -9,6 +9,7 @@ import {
   wsRateLimitedTotal 
 } from "./common/metrics.js";
 import { UserService } from "./services/index.js";
+import { gameRoomManager } from "./index.js";
 
 
 // Fonction de sanitization si le module n'existe pas
@@ -80,6 +81,8 @@ const updateGauge = (wss: WebSocketServer) => {
 
 export function registerRawWs(app: FastifyInstance) {
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
+  console.log("[WS] Boot game-remote handler v=DEV-2025-10-14-1");
+
 
   // ────────────────────────────────────────────────────────────────────────────
   // 1) Keepalive optimisé
@@ -310,6 +313,9 @@ ws.on("message", async (buf: Buffer) => {
 
     if (typeof msg.type !== "string") throw new Error("Missing or invalid message type");
     type = msg.type.trim();
+    const channel = (ws as any)._channel || (ws as any).ctx?.channel;
+    console.log(`[WS] IN channel=${channel} type=${type} user=${(ws as any).ctx?.userId}`);
+
     if (type.length > 50) throw new Error("Message type too long");
 
     const ALLOWED_TYPES = [
@@ -359,6 +365,7 @@ ws.on("message", async (buf: Buffer) => {
       // 🎮 REMOTE GAME - CRÉER UNE ROOM
       // ═══════════════════════════════════════════════════════════════════════
       case "game.create_remote": {
+        console.log("[WS] HIT case game.create_remote");
         if (!ws.ctx?.userId) {
           safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
           break;
@@ -370,7 +377,7 @@ ws.on("message", async (buf: Buffer) => {
           break;
         }
 
-        const { roomManager } = await import('./index.js');
+        import { gameRoomManager } from "./modules/game/http.js";
         const gameId = roomManager.createRemoteRoom(ws.ctx.userId, username);
         const room = roomManager.getRoom(gameId);
         
@@ -379,8 +386,15 @@ ws.on("message", async (buf: Buffer) => {
           break;
         }
 
-        // ✅ Attacher la WS du host IMMÉDIATEMENT
-        room.addPlayer(String(ws.ctx.userId), username, ws);
+        const attached = room.attachSocket(String(ws.ctx.userId), ws);
+        console.log(`[WS] 🎮 Host ${username} created room ${gameId}`);
+        console.log(`[WS]    - Socket attached: ${attached}`);
+        console.log(`[WS]    - Players count: ${room.getPlayerCount()}`);
+        console.log(`[WS]    - Room status: ${room.getStatus()}`); 
+        if (!attached) {
+          safeSend({ type: "error", data: { message: "failed_to_attach_socket" }, requestId });
+          break;
+        }
 
         safeSend({
           type: "game.created",
@@ -388,13 +402,14 @@ ws.on("message", async (buf: Buffer) => {
           requestId,
         });
         
-        console.log(`[WS] Host ${username} created room ${gameId}`);
+        console.log(`[WS] Host ${username} created room ${gameId} and socket attached`);
         break;
       }
 
       // ═══════════════════════════════════════════════════════════════════════
       // 🎮 REMOTE GAME - REJOINDRE UNE ROOM
       // ═══════════════════════════════════════════════════════════════════════
+      // Ligne ~320 : REMPLACE tout le case "game.join_remote"
       case "game.join_remote": {
         if (!ws.ctx?.userId) {
           safeSend({ type: "error", data: { message: "authentication_required" }, requestId });
@@ -407,7 +422,7 @@ ws.on("message", async (buf: Buffer) => {
           break;
         }
 
-        const { roomManager } = await import('./index.js');
+        import { gameRoomManager } from "./modules/game/http.js";
         const room = roomManager.getRoom(gameId);
         
         if (!room) {
@@ -418,18 +433,12 @@ ws.on("message", async (buf: Buffer) => {
           safeSend({ type: "error", data: { message: "not_a_remote_game" }, requestId });
           break;
         }
-
-        // ✅ Ajouter le joueur 2 avec sa WS
         const joined = room.addPlayer(String(ws.ctx.userId), username, ws);
         
         if (!joined) {
           safeSend({ type: "error", data: { message: "game_full" }, requestId });
           break;
         }
-
-        // ✅ Le jeu démarre automatiquement dans addPlayer() si 2 joueurs
-        // → game_started est envoyé via broadcastToClients()
-        
         safeSend({ 
           type: "game.joined", 
           data: { 
@@ -459,7 +468,7 @@ ws.on("message", async (buf: Buffer) => {
           break;
         }
 
-        const { roomManager } = await import('./index.js');
+        import { gameRoomManager } from "./modules/game/http.js";
         const room = roomManager.getRoom(gameId);
 
         if (!room) {
@@ -502,7 +511,7 @@ ws.on("message", async (buf: Buffer) => {
           break;
         }
         
-        const { roomManager } = await import('./index.js');
+        import { gameRoomManager } from "./modules/game/http.js";
         const rooms = roomManager.listWaitingRooms();
         
         safeSend({ 
@@ -534,7 +543,7 @@ ws.on("message", async (buf: Buffer) => {
           break;
         }
 
-        const { roomManager } = await import('./index.js');
+        import { gameRoomManager } from "./modules/game/http.js";
         const room = roomManager.getRoom(gameId);
         
         if (!room) {
