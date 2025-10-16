@@ -1,7 +1,7 @@
 // ROUTEUR SPA (SINGLE PAGE APPLICATION)
 
  // Ce fichier gère toute la navigation et l'interface utilisateur de l'application.
- // Il implémente un système de routage basé les hash (#) de l'URL pour créer
+ // Il implémente un système de routage basé sur les hash (#) de l'URL pour créer
  // une Single Page Application (SPA) avec plusieurs "pages" :
 
 // Pages disponibles:
@@ -14,9 +14,6 @@
 import { GameClient } from './gameClient.js';
 console.log('[build] routeurSPA loaded @', new Date().toISOString());
 
-function wsUrl(channel: 'chat' | 'game-remote', token: string) {
-  return `wss://${location.host}/ws?channel=${channel}&token=${encodeURIComponent(token)}`;
-}
 
 // ===== Presence WS (singleton) =====
 const Presence = (() => {
@@ -80,7 +77,7 @@ function bootPresenceFromStorage() {
   const t = localStorage.getItem('token');
   console.log('[bootPresence] token in storage =', !!t);
   if (t) Presence.connect(t);
-  // Fermer proprement la WS quand l'onglet se ferme (ne touche pas au token)
+  // Fermer proprement la WS quand l’onglet se ferme (ne touche pas au token)
   window.addEventListener('beforeunload', () => {
     try { Presence.disconnect(); } catch {}
   });
@@ -216,9 +213,6 @@ const routes: Record<string, Route> = {
             <button id="classicBtn" class="retro-btn hover-green">
               <img class="btn-icon" src="/images/classic.png" alt="Classic">CLASSIC
             </button>
-            <button id="remoteBtn" class="retro-btn hover-blue">
-              <img class="btn-icon" src="/images/titre2.png" alt="Remote">REMOTE
-            </button>
             <button id="tournamentBtn" class="retro-btn hover-orange">
               <img class="btn-icon" src="/images/tournament.png" alt="Tournament">TOURNAMENT
             </button>
@@ -300,55 +294,6 @@ const routes: Record<string, Route> = {
       </div>
     </div>
   `,
-  "#/remote": () => {
-    const currentUsername = localStorage.getItem('currentUsername');
-    const isLoggedIn = currentUsername && currentUsername !== 'Guest';
-
-    if (!isLoggedIn) {
-      setTimeout(() => { location.hash = "#/login"; }, 100);
-      return '<div class="flex items-center justify-center min-h-screen"><p class="text-xl">Redirecting to login...</p></div>';
-    }
-
-    return `
-      <div class="flex flex-col items-center">
-        <h1 class="page-title-large page-title-blue">Remote Play</h1>
-        <div class="form-box-blue max-w-2xl">
-          <p class="form-description-blue mb-6">Play against another player on a different computer</p>
-          
-          <!-- Créer une partie -->
-          <div class="mb-6 p-4 bg-blue-50 rounded-lg">
-            <h3 class="text-lg font-bold mb-2 text-blue-800">Host a Game</h3>
-            <p class="text-sm text-gray-600 mb-3">Create a game and wait for an opponent to join</p>
-            <button id="createRemoteBtn" class="retro-btn hover-blue w-full">
-              Create Game & Wait
-            </button>
-            <div id="waitingMessage" class="hidden mt-3 p-3 bg-yellow-100 border border-yellow-300 rounded text-center">
-              <p class="font-bold">⏳ Waiting for opponent...</p>
-              <p class="text-sm text-gray-600">Game ID: <span id="gameIdDisplay" class="font-mono">-</span></p>
-            </div>
-          </div>
-
-          <!-- Rejoindre une partie -->
-          <div class="p-4 bg-green-50 rounded-lg">
-            <h3 class="text-lg font-bold mb-2 text-green-800">Join a Game</h3>
-            <p class="text-sm text-gray-600 mb-3">Select a game from the list below</p>
-            <button id="refreshListBtn" class="retro-btn-small hover-green mb-3">
-              🔄 Refresh List
-            </button>
-            <div id="gamesList" class="space-y-2 min-h-[100px]">
-              <p class="text-gray-500 text-center">Click refresh to load available games</p>
-            </div>
-          </div>
-        </div>
-        
-        <div class="mt-6">
-          <button id="backToMenuRemote" class="retro-btn-small hover-blue">
-            Back to Menu
-          </button>
-        </div>
-      </div>
-    `;
-  },
   // PAGE DE TRANSITION ENTRE MATCHS DE TOURNOI
   "#/tournament-transition": () => `
     <div class="flex flex-col items-center">
@@ -577,29 +522,8 @@ const routes: Record<string, Route> = {
       <div class="bg-white bg-opacity-90 p-8 rounded shadow-lg w-full max-w-md">
         <!-- Profil d'un ami à venir -->
       </div>
-    </div> 
-  `,
-  "#/game-remote": () => `
-  <div class="flex flex-col items-center">
-    <div id="playerNamesRemote" class="mb-6 text-gray-300 flex items-center justify-between" style="width: 800px; position: relative;">
-      <div class="flex flex-col items-center" style="width: 200px;">
-        <span id="pLeftName" class="text-xl font-bold text-white">Left</span>
-        <span class="text-sm text-gray-400">(W/S)</span>
-      </div>
-      <span class="text-lg text-gray-500 font-medium absolute left-1/2 transform -translate-x-1/2">VS</span>
-      <div class="flex flex-col items-center" style="width: 200px;">
-        <span id="pRightName" class="text-xl font-bold text-white">Right</span>
-        <span class="text-sm text-gray-400">(↑/↓)</span>
-      </div>
     </div>
-
-    <canvas id="remoteCanvas" class="mb-4"></canvas>
-
-    <div class="flex gap-4">
-      <button id="backFromRemote" class="retro-btn-small hover-blue">Back to Menu</button>
-    </div>
-  </div>
-`
+  `
 };
 
 // FONCTION PRINCIPALE DE RENDU
@@ -635,11 +559,6 @@ function render() {
     document.getElementById("tournamentBtn")?.addEventListener("click", () => {
       location.hash = "#/tournament";
     });
-
-    document.getElementById("remoteBtn")?.addEventListener("click", () => {
-      location.hash = "#/remote";
-    });
-
     
     // Vérifier si un utilisateur est connecté pour adapter les événements
     const currentUsername = localStorage.getItem('currentUsername');
@@ -834,7 +753,7 @@ function render() {
         });
       });
     }
-
+    
     // Event listeners
     document.getElementById("startTournamentBtn")?.addEventListener("click", startTournament);
     document.getElementById("backToMenuBtn")?.addEventListener("click", () => {
@@ -1071,432 +990,8 @@ function render() {
       localStorage.removeItem('lastMatchResult');
       location.hash = '';
     });
-    } else if (route === "#/remote") {
-  // --- PAGE REMOTE PLAY ---
-  const currentUsername = localStorage.getItem('currentUsername');
-  const token = sessionStorage.getItem('token') || localStorage.getItem('token');
-
-  if (!currentUsername || !token) {
-    location.hash = "#/login";
-    return;
-  }
-
-  let ws: WebSocket | null = null;
-  let currentGameId: string | null = null;
-
-  // DOM helpers
-  function byId<T extends HTMLElement>(id: string): T {
-    const el = document.getElementById(id);
-    if (!el) throw new Error(`Missing #${id}`);
-    return el as T;
-  }
-
-  // Connecter le WebSocket
-  function connectWebSocket(): WebSocket {
-    if (ws && ws.readyState === WebSocket.OPEN) return ws;
-
-    const HOST = location.hostname;
-    const wsUrl = `wss://${HOST}:8443/ws?channel=game-remote&token=${encodeURIComponent(token!)}`;
-
-    ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-      console.log('[Remote] WebSocket connected');
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        console.log('[Remote] Received:', msg);
-
-        switch (msg.type) {
-          case 'game.created': {
-            // ✅ HOST : Rester sur #/remote en attente
-            currentGameId = msg.data?.gameId || msg.gameId || null;
-            if (currentGameId) {
-              byId<HTMLSpanElement>('gameIdDisplay').textContent = currentGameId;
-              byId<HTMLDivElement>('waitingMessage').classList.remove('hidden');
-              console.log('[Remote] Game created, waiting for opponent...');
-            }
-            break;
-          }
-
-          case 'game.joined': {
-            // ✅ CHALLENGER : Confirmation du join (pas de redirect ici)
-            console.log('[Remote] Successfully joined game');
-            break;
-          }
-
-          case 'game_started': {
-            // ✅ LES DEUX : Rediriger vers le jeu maintenant
-            const gid = msg.data?.gameId || msg.gameId || currentGameId || '';
-            if (!gid) {
-              console.error('[Remote] game_started without gameId');
-              break;
-            }
-            
-            localStorage.setItem('remoteGameId', gid);
-            localStorage.setItem('currentGameMode', 'remote');
-            
-            console.log('[Remote] Game starting! Redirecting to game...');
-            
-            // Fermer cette WS (une nouvelle sera créée sur #/game-remote)
-            try { 
-              if (ws) {
-                ws.close(1000, 'game_starting'); 
-                ws = null;
-              }
-            } catch {}
-            
-            // Petit délai pour éviter race condition
-            setTimeout(() => {
-              location.hash = '#/game-remote';
-            }, 100);
-            break;
-          }
-
-          case 'game.waiting_list': {
-            displayGamesList(msg.data?.rooms || []);
-            break;
-          }
-
-          case 'error': {
-            console.error('[Remote] Error:', msg.data?.message);
-            alert('Error: ' + (msg.data?.message || 'Unknown error'));
-            break;
-          }
-
-          default:
-            console.log('[Remote] Unhandled message type:', msg.type);
-            break;
-        }
-      } catch (err) {
-        console.error('[Remote] Failed to parse message:', err);
-      }
-    };
-    return ws;
-
-  }  // Afficher la liste des parties disponibles
-  function displayGamesList(rooms: Array<{ gameId: string; hostUsername: string; createdAt: number }>) {
-    const listEl = byId<HTMLDivElement>('gamesList');
-
-    if (!rooms.length) {
-      listEl.innerHTML = '<p class="text-gray-500 text-center">No games available. Create one!</p>';
-      return;
-    }
-
-    listEl.innerHTML = rooms.map(room => `
-      <div class="flex items-center justify-between p-3 bg-white rounded border border-green-300">
-        <div>
-          <p class="font-bold text-green-800">${room.hostUsername}'s game</p>
-          <p class="text-xs text-gray-500">Created ${new Date(room.createdAt).toLocaleTimeString()}</p>
-        </div>
-        <button class="joinGameBtn retro-btn-small hover-green" data-game-id="${room.gameId}">
-          Join
-        </button>
-      </div>
-    `).join('');
-
-    // Attacher les événements de clic
-    document.querySelectorAll<HTMLButtonElement>('.joinGameBtn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const gid = btn.dataset.gameId!;
-        joinRemoteGame(gid);
-      });
-    });
-  }
-
-  // Créer une partie remote
-  function createRemoteGame() {
-    const sock = connectWebSocket();
-    sock.send(JSON.stringify({
-      type: 'game.create_remote',
-      data: { username: currentUsername },
-      requestId: Date.now().toString()
-    }));
-    byId<HTMLButtonElement>('createRemoteBtn').setAttribute('disabled', 'true');
-  }
-
-  // Rejoindre une partie remote
-  function joinRemoteGame(gameId: string) {
-    const sock = connectWebSocket();
-    sock.send(JSON.stringify({
-      type: 'game.join_remote',
-      data: { gameId, username: currentUsername },
-      requestId: Date.now().toString()
-    }));
-  }
-
-  // Rafraîchir la liste des rooms
-  function refreshList() {
-    const sock = connectWebSocket();
-    sock.send(JSON.stringify({
-      type: 'game.list_waiting',
-      requestId: Date.now().toString()
-    }));
-  }
-
-  // Wire UI
-  const createBtn = document.getElementById('createRemoteBtn');
-  if (createBtn) createBtn.addEventListener('click', createRemoteGame);
-
-  const refreshBtn = document.getElementById('refreshListBtn');
-  if (refreshBtn) refreshBtn.addEventListener('click', refreshList);
-
-  const backBtn = document.getElementById('backToMenuRemote');
-  if (backBtn) backBtn.addEventListener('click', () => {
-    try { ws?.close(); } catch {}
-    location.hash = '';
-  });
-
-  // Connecte la WS immédiatement
-  connectWebSocket();
-
-  // ✅ AJOUTER CE CLEANUP
-  window.addEventListener('hashchange', () => {
-    if (location.hash !== '#/remote') {
-      console.log('[Remote] Leaving lobby, closing WS');
-      try { 
-        if (ws) {
-          ws.close(1000, 'leaving_lobby');
-          ws = null;
-        }
-      } catch {}
-    }
-  }, { once: true });
-  } else if (route === "#/game-remote") {
-  const canvas = document.getElementById("remoteCanvas") as HTMLCanvasElement;
-  const ctx = canvas.getContext("2d")!;
-  const token = sessionStorage.getItem('token') || localStorage.getItem('token');
-  const gameId = localStorage.getItem('remoteGameId');
-  const host = location.hostname;
-  const wsUrl = `wss://${host}:8443/ws?channel=game-remote&token=${encodeURIComponent(token || "")}`;
-
-  if (!token || !gameId) {
-    alert("Missing token or gameId. Go back to Remote lobby.");
-    location.hash = "#/remote";
-    return;
-  }
-
-  let W = 800, H = 400;
-  canvas.width = W; canvas.height = H;
-
-  let ws: WebSocket | null = null;
-  let myPaddle: 'left' | 'right' | null = null;
-  let leftName = 'Left', rightName = 'Right';
-  let pressedUp = false, pressedDown = false;
-  let lastSent: 'up' | 'down' | 'stop' = 'stop';
-
-  const setNames = () => {
-    const l = document.getElementById('pLeftName'); if (l) l.textContent = leftName;
-    const r = document.getElementById('pRightName'); if (r) r.textContent = rightName;
-  };
-  setNames();
-
-  function draw(state: any) {
-    if (!state) return;
     
-    W = state.width || 800; 
-    H = state.height || 400;
-    
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, W, H);
-    
-    // Filet central
-    ctx.globalAlpha = 0.2; 
-    ctx.fillStyle = "#fff";
-    for (let y=0; y<H; y+=20) ctx.fillRect(W/2-1, y, 2, 10);
-    ctx.globalAlpha = 1;
-    
-    // Scores
-    ctx.fillStyle = "#fff"; 
-    ctx.font = "bold 24px monospace"; 
-    ctx.textAlign = "center";
-    ctx.fillText(`${state.score1 ?? 0}`, W*0.25, 40);
-    ctx.fillText(`${state.score2 ?? 0}`, W*0.75, 40);
-    
-    // Paddles
-    const padH = 100, padW = 15;
-    ctx.fillRect(10, Math.max(0, Math.min(H-padH, state.p1 || 0)), padW, padH);
-    ctx.fillRect(W-25, Math.max(0, Math.min(H-padH, state.p2 || 0)), padW, padH);
-    
-    // Balle
-    ctx.beginPath(); 
-    ctx.arc(state.ball?.x || W/2, state.ball?.y || H/2, 10, 0, Math.PI*2); 
-    ctx.fill();
-  }
-
-  function maybeSendInput() {
-    if (!ws || ws.readyState !== ws.OPEN || !myPaddle) return;
-    let want: 'up' | 'down' | 'stop' = 'stop';
-    if (pressedUp && !pressedDown) want = 'up';
-    else if (pressedDown && !pressedUp) want = 'down';
-    if (want !== lastSent) {
-      ws.send(JSON.stringify({ 
-        type: "game.paddle_move", 
-        data: { gameId, direction: want }, 
-        requestId: Date.now().toString() 
-      }));
-      lastSent = want;
-    }
-  }
-
-  function onKeyDown(e: KeyboardEvent) {
-    if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') { 
-      pressedUp = true; 
-      maybeSendInput(); 
-    }
-    if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') { 
-      pressedDown = true; 
-      maybeSendInput(); 
-    }
-  }
-  
-  function onKeyUp(e: KeyboardEvent) {
-    if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') { 
-      pressedUp = false; 
-      maybeSendInput(); 
-    }
-    if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') { 
-      pressedDown = false; 
-      maybeSendInput(); 
-    }
-  }
-
-  async function myUserId(): Promise<string | null> {
-    try {
-      const r = await fetch('/api/users/me', { 
-        headers: { Authorization: `Bearer ${token}` } 
-      });
-      if (!r.ok) return null;
-      const js = await r.json(); 
-      return js?.user?.id ? String(js.user.id) : null;
-    } catch { 
-      return null; 
-    }
-  }
-
-  function connect() {
-    ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-      console.log('[remote] ✅ WS open, sending attach...');
-      ws!.send(JSON.stringify({
-        type: 'game.attach',
-        data: { gameId },
-        requestId: Date.now().toString()
-      }));
-    };
-
-    ws.onmessage = async (ev) => {
-      try {
-        const msg = JSON.parse(ev.data);
-        console.log('[remote] 📩 Received:', msg.type);
-        
-        switch (msg.type) {
-          case 'game_started': {
-            const me = await myUserId();
-            const players = msg.data?.players || [];
-            const left = players.find((p: any) => p.paddle === 'left');
-            const right = players.find((p: any) => p.paddle === 'right');
-            
-            if (left?.username) leftName = left.username;
-            if (right?.username) rightName = right.username;
-            setNames();
-            
-            if (me) {
-              const mine = players.find((p: any) => String(p.id) === me);
-              if (mine) myPaddle = mine.paddle;
-            }
-            break;
-          }
-          
-          case 'game_state': {
-            const st = msg.data?.gameState || msg.gameState || msg.data;
-            if (st?.ball) {
-              draw(st);
-            }
-            break;
-          }
-          
-          case 'game_ended': {
-            alert(`Game ended. Winner: ${msg.data?.winner ?? 'Unknown'}`);
-            location.hash = "";
-            break;
-          }
-          
-          case 'ok': {
-            if (msg.data?.attached) {
-              console.log('[remote] ✅ Attached to game', msg.data);
-              // Optional: show names from snapshot if you added it on server
-              if (msg.data?.room?.players) {
-                const p = msg.data.room.players;
-                const left  = p.find((x:any) => x.paddle === 'left');
-                const right = p.find((x:any) => x.paddle === 'right');
-                if (left?.username)  leftName  = left.username;
-                if (right?.username) rightName = right.username;
-                setNames();
-              }
-            } else {
-              console.log('[remote] 👋 hello', msg.data);
-            }
-            break;
-          }
-          
-          case 'error': {
-            console.warn('[remote] ❌ Error:', msg.data?.message);
-            alert('Error: ' + msg.data?.message);
-            break;
-          }
-        }
-      } catch (e) {
-        console.error('[remote] 💥 Handler error:', e);
-      }
-    };
-
-    ws.onerror = (e) => console.error('[remote] ❌ WS error', e);
-    ws.onclose = () => { 
-      console.log('[remote] 🔌 WS closed');
-      ws = null;
-    };
-  }
-
-  document.getElementById("backFromRemote")?.addEventListener("click", () => {
-    try { ws?.close(1000, 'user_exit'); } catch {}
-    location.hash = '';
-  });
-
-  document.addEventListener("keydown", onKeyDown);
-  document.addEventListener("keyup", onKeyUp);
-  
-  window.addEventListener("hashchange", () => {
-    document.removeEventListener("keydown", onKeyDown);
-    document.removeEventListener("keyup", onKeyUp);
-    try { ws?.close(1000, 'page_change'); } catch {}
-  }, { once: true });
-
-  // ✅ CLEANUP : Fermer WS quand on quitte la page
-  const cleanupHandler = () => {
-    if (location.hash !== '#/game-remote') {
-      console.log('[Remote Game] Leaving page, cleaning up...');
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("keyup", onKeyUp);
-      try { 
-        if (ws) {
-          ws.close(1000, 'leaving_game'); 
-          ws = null;
-        }
-      } catch {}
-    }
-  };
-  
-  window.addEventListener("hashchange", cleanupHandler, { once: true });
-  window.addEventListener("beforeunload", () => {
-    try { ws?.close(1000, 'page_close'); } catch {}
-  });
-
-  connect();
-} else if (route === "#/sign-up") {
+  } else if (route === "#/sign-up") {
     // --- PAGE D'INSCRIPTION ---
     
     // Gestion du formulaire d'inscription
@@ -1529,7 +1024,6 @@ function render() {
           // Stocke le JWT et ouvre le WS de présence
           if (data.token) {
             localStorage.setItem('token', data.token);
-            sessionStorage.setItem('token', data.token);
             Presence.connect(data.token);
           } else {
             console.warn('No token returned on register:', data);
@@ -1584,7 +1078,6 @@ function render() {
           console.log('Login successful:', data);
           if (data.token) {
             localStorage.setItem('token', data.token);
-            sessionStorage.setItem('token', data.token);
             Presence.connect(data.token);
           } else {
             console.warn('No token returned on login:', data);
@@ -1649,7 +1142,7 @@ function render() {
     
     // Gestion du bouton de déconnexion
     document.getElementById('logoutBtn')?.addEventListener('click', async () => {
-    // 1) marquer offline côté backend (si aucune WS n'est ouverte, ça force l'état)
+    // 1) marquer offline côté backend (si aucune WS n’est ouverte, ça force l’état)
     const t = localStorage.getItem('token');
     if (t) {
       await fetch('/api/users/logout', {
@@ -1725,7 +1218,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (t) {
       Presence.connect(t);
     } else {
-      // aucune auth côté backend → nettoie l'UI locale
+      // aucune auth côté backend → nettoie l’UI locale
       localStorage.removeItem('currentUsername');
     }
 

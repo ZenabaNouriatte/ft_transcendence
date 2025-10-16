@@ -16,26 +16,6 @@ export interface GameState {
   score1: number;     // Score joueur 1
   score2: number;     // Score joueur 2
 }
-export type GameMessageType = 
-  | 'error'
-  | 'paddle_move' 
-  | 'game_state'
-  | 'player_joined'
-  | 'player_left'
-  | 'game_ended'
-  | 'game_started'  // ← AJOUTER
-  | 'game_created'   // ← AJOUTER
-  | 'game_joined'    // ← AJOUTER
-  | 'waiting_list';  // ← AJOUTER
-
-
-export interface GameMessage {
-  type: GameMessageType;
-  gameId: string;
-  data: any;
-  timestamp: number;
-  requestId?: string;
-}
 
 export interface Player {
   id: string;  // Changé de number à string pour les IDs WebSocket
@@ -63,9 +43,9 @@ export interface PlayerAction {
   timestamp: number;
 }
 
-// export interface GameMessage {
-//   type: 'game_state' | 'player_joined' | 'player_left' | 'game_ended' | 'paddle_move' | 'error';
-//   gameId: string;
-//   data: any;
-//   timestamp: number;
-// }
+export interface GameMessage {
+  type: 'game_state' | 'player_joined' | 'player_left' | 'game_ended' | 'paddle_move' | 'error';
+  gameId: string;
+  data: any;
+  timestamp: number;
+}

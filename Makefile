@@ -2,30 +2,28 @@
 
 PUBLIC_HOST := $(shell ./scripts/public_host.sh)
 FRONT_ORIGINS := https://$(PUBLIC_HOST):8443,https://localhost:8443
-PROJECT := ft_transcendence
-DC := COMPOSE_PROJECT_NAME=$(PROJECT) PUBLIC_HOST="$(PUBLIC_HOST)" FRONT_ORIGINS="$(FRONT_ORIGINS)" docker compose
 
 up:
-	$(DC) up -d --build
+	PUBLIC_HOST="$(PUBLIC_HOST)" FRONT_ORIGINS="$(FRONT_ORIGINS)" docker compose up -d --build
 	./scripts/elk-init.sh
-	$(DC) restart kibana
+	docker compose restart kibana
 
 down:
-	$(DC) down
+	docker compose down
 
 re: down up
 
 logs:
-	$(DC) logs -f
+	docker compose logs -f
 
 ps:
-	$(DC) ps
+	docker compose ps
 
 clean:
-	$(DC) down -v
+	PUBLIC_HOST="$(PUBLIC_HOST)" FRONT_ORIGINS="$(FRONT_ORIGINS)" docker compose down -v
 
 build:
-	$(DC) build --no-cache --pull
+	docker compose build --no-cache --pull
 
 restart: clean build up
 

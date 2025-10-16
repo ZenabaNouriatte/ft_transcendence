@@ -1,7 +1,9 @@
 // backend/src/modules/game/http.ts
 import type { FastifyPluginAsync } from "fastify";
-import { gameRoomManager } from "./engine/roomManagerSingleton.js";
+import { GameRoomManager } from "./engine/gameRoomManager.js";
 
+// Instance globale du gestionnaire de salles
+const gameRoomManager = new GameRoomManager();
 
 const gamePlugin: FastifyPluginAsync = async (app) => {
   app.get("/ping", async () => ({ ok: true, service: "game" }));
