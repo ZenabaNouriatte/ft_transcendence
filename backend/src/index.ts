@@ -5,13 +5,17 @@ import helmet from "@fastify/helmet";
 import cors from "@fastify/cors";
 import underPressure from "@fastify/under-pressure";
 import rateLimit from "@fastify/rate-limit";
+import multipart from "@fastify/multipart";
+import fastifyStatic from "@fastify/static";
 import validator from "validator";
 import xss from 'xss';
 import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import path from "path";
 
 
 import { registerRawWs } from "./ws-raw.js";
-import { initDb } from "./database/index.js";
+import { initDb, get } from "./database/index.js";
 import {
   UserService,
   GameService,
@@ -157,8 +161,20 @@ await app.register(rateLimit, {
   }),
 });
 
+// Register multipart for file uploads
+await app.register(multipart, {
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max
+    files: 1, // Maximum 1 file per request
+  },
+});
 
-
+// Register static files pour servir les avatars uploadés
+await app.register(fastifyStatic, {
+  root: path.join(process.cwd(), 'uploads'),
+  prefix: '/uploads/',
+  constraints: {}, // Pas de contraintes
+});
 
 await app.register(underPressure);
 
@@ -172,8 +188,10 @@ if (ROLE === "gateway") {
 
   try {
     const { GameRoomManager } = await import("./modules/game/engine/gameRoomManager.js");
+    const { setGameRoomManager } = await import("./ws-raw.js");
     roomManager = new GameRoomManager(); // ← assigne la variable extérieure
-    console.log("GameRoomManager initialized successfully");
+    setGameRoomManager(roomManager); // ← connecter au système WebSocket
+    console.log("GameRoomManager initialized and connected to WebSocket");
   } catch (error) {
     console.error("Failed to initialize GameRoomManager:", error);
     // Fallback simple pour éviter les crashs
@@ -224,7 +242,9 @@ if (ROLE === "gateway") {
   const safeUser = (u: any) => {
     if (!u) return null;
     const { password, ...rest } = u;
-    return { ...rest, avatar: u.avatar ?? UserService.defaultAvatar(u.username) };
+    // Ne pas ajouter de fallback Dicebear côté backend
+    // Le frontend gérera les avatars par défaut depuis /images/
+    return rest;
   };
 
   // ===================== AUTH =====================
@@ -290,7 +310,6 @@ app.post("/api/users/register", async (request, reply) => {
       const token = issueTokenForUser(userId);
       await UserService.updateUserStatus(userId, "online");
 
-
       // ⚠️ renvoyer le token dans la réponse
       return reply.code(201).send({ ok: true, userId, user, token });
 
@@ -328,7 +347,6 @@ app.post("/api/users/register", async (request, reply) => {
       return reply.code(500).send({ error: "proxy_failed" });
     }
   });
-
 
   app.get("/api/users", async (request, reply) => {
     try {
@@ -409,10 +427,39 @@ app.post("/api/users/register", async (request, reply) => {
       const userId = await getUserFromToken(request);
       if (!userId) return reply.code(401).send({ error: "Authentification requise" });
 
+      const { player2_username, tournament_id } = (request.body as any) || {};
+
+      console.log('🎮 Game creation request:', { player2_username, tournament_id });
+
+      // Si player2_username est fourni, convertir en player2_id
+      let player2_id = null;
+      if (player2_username && player2_username !== 'CPU') {
+        console.log(`🔍 Looking for user: ${player2_username}`);
+        const player2 = await UserService.findUserByUsername(player2_username);
+        if (!player2) {
+          console.log(`❌ User '${player2_username}' not found`);
+          return reply.code(404).send({ error: `Joueur '${player2_username}' non trouvé` });
+        }
+        player2_id = player2.id;
+        console.log(`✅ Found user '${player2_username}' with ID: ${player2_id}`);
+      } else if (player2_username === 'CPU') {
+        console.log('🤖 CPU player detected');
+        // Gérer le cas spécial du CPU
+        const cpuUser = await UserService.findUserByUsername('CPU');
+        if (cpuUser) {
+          player2_id = cpuUser.id;
+          console.log(`✅ CPU user found with ID: ${player2_id}`);
+        } else {
+          console.log('❌ CPU user not found');
+        }
+      } else {
+        console.log('👻 No player2_username provided or empty');
+      }
+
       const response = await fetch("http://game:8102/validate-game-creation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...(request.body ?? {}), currentUserId: userId }),
+        body: JSON.stringify({ player2_id, tournament_id, currentUserId: userId }),
       });
 
       if (!response.ok) {
@@ -422,24 +469,12 @@ app.post("/api/users/register", async (request, reply) => {
 
       const validatedData = await response.json();
 
-      if (validatedData.player2_id && validatedData.player2_id > 0) {
-        const player2 = await UserService.findUserById(validatedData.player2_id);
-        if (!player2) return reply.code(404).send({ error: "Joueur 2 non trouvé" });
-      }
-
       const gameId = await GameService.createGame({
         player1_id: validatedData.player1_id,
         player2_id: validatedData.player2_id ? Number(validatedData.player2_id) : null,
         status: validatedData.status,
         tournament_id: validatedData.tournament_id ?? null,
       });
-
-      if (validatedData.updatePlayerStatus) {
-        await UserService.updateUserStatus(userId, "ingame");
-        if (validatedData.player2_id > 0) {
-          await UserService.updateUserStatus(validatedData.player2_id, "ingame");
-        }
-      }
 
       return reply.code(201).send({
         message: validatedData.message,
@@ -470,6 +505,36 @@ app.post("/api/users/register", async (request, reply) => {
       }
       if (gameType !== "pong") {
         return reply.code(400).send({ error: "invalid_game_type" });
+      }
+
+      // ✅ Vérifier que les pseudos ne sont pas déjà utilisés par des utilisateurs authentifiés
+      // Sauf si c'est l'utilisateur actuellement connecté qui utilise son propre pseudo
+      const userId = await getUserFromToken(request);
+      let currentUserUsername: string | null = null;
+      if (userId) {
+        const currentUser = await UserService.findUserById(userId);
+        currentUserUsername = currentUser?.username || null;
+      }
+
+      const existingUser1 = await UserService.findUserByUsername(p1);
+      const existingUser2 = await UserService.findUserByUsername(p2);
+      
+      // Vérifier player1 (sauf si c'est l'utilisateur connecté)
+      if (existingUser1 && existingUser1.username !== currentUserUsername) {
+        return reply.code(400).send({ 
+          error: "username_reserved", 
+          message: `Le pseudo "${p1}" est réservé par un utilisateur authentifié. Veuillez en choisir un autre.`,
+          field: "player1"
+        });
+      }
+      
+      // Vérifier player2 (sauf si c'est l'utilisateur connecté)
+      if (existingUser2 && existingUser2.username !== currentUserUsername) {
+        return reply.code(400).send({ 
+          error: "username_reserved", 
+          message: `Le pseudo "${p2}" est réservé par un utilisateur authentifié. Veuillez en choisir un autre.`,
+          field: "player2"
+        });
       }
 
       // ❌ plus de création d'utilisateurs "temp" en DB
@@ -687,6 +752,62 @@ app.post("/api/users/register", async (request, reply) => {
     }
   });
 
+  // Annuler une partie (quand le joueur quitte la page de jeu)
+  app.post("/api/games/:id/cancel", async (request, reply) => {
+    try {
+      const idParam = (request.params as any).id;
+      const id = Number(idParam);
+      
+      // Vérifier si c'est une room locale (en mémoire uniquement, pas en DB)
+      // Les rooms locales ont un ID timestamp (string numérique long)
+      const isLocalRoom = roomManager && roomManager.rooms && roomManager.rooms.has(idParam);
+      
+      if (isLocalRoom) {
+        // C'est une partie locale en mémoire uniquement
+        const room = roomManager.rooms.get(idParam);
+        if (room) {
+          room.running = false;
+          console.log(`[CANCEL] Stopping local room ${idParam}`);
+        }
+        roomManager.rooms.delete(idParam);
+        console.log(`[CANCEL] Deleted local room ${idParam} from memory`);
+        return reply.send({ ok: true, cancelled: true, type: 'local' });
+      }
+      
+      // Sinon, c'est une partie en DB (authentifiée)
+      if (!Number.isInteger(id)) {
+        return reply.code(400).send({ error: "bad_id" });
+      }
+
+      const game = await GameService.findGameById(id);
+      if (!game) return reply.code(404).send({ error: "not_found" });
+      
+      // Si la partie est déjà terminée ou annulée, ne rien faire
+      if (game.status === "finished" || game.status === "cancelled") {
+        return reply.send({ ok: true, already: true });
+      }
+
+      // Mettre le statut à "cancelled"
+      await GameService.updateGame(id, { status: "cancelled" });
+      console.log(`[CANCEL] Marked game ${id} as cancelled in DB`);
+      
+      // Arrêter la room côté serveur si elle existe (avec l'ID numérique)
+      if (roomManager && roomManager.rooms && roomManager.rooms.has(id.toString())) {
+        const room = roomManager.rooms.get(id.toString());
+        if (room) {
+          room.running = false;
+        }
+        roomManager.rooms.delete(id.toString());
+        console.log(`[CANCEL] Deleted room ${id} from memory`);
+      }
+
+      return reply.send({ ok: true, cancelled: true, type: 'database' });
+    } catch (e) {
+      request.log.error(e, "Game cancel error");
+      return reply.code(500).send({ error: "Game cancel failed" });
+    }
+  });
+
   // ===================== TOURNOIS (REMOTE) =====================
   app.post("/api/tournaments", async (request, reply) => {
     try {
@@ -800,6 +921,27 @@ app.post("/api/users/register", async (request, reply) => {
       const uniqueNames = new Set(safePlayers.map((n) => n.toLowerCase()));
       if (uniqueNames.size !== safePlayers.length) {
         return reply.code(400).send({ error: "All players must have different names" });
+      }
+
+      // ✅ Vérifier que les pseudos ne sont pas déjà utilisés par des utilisateurs authentifiés
+      // Sauf si c'est l'utilisateur actuellement connecté qui utilise son propre pseudo
+      const userId = await getUserFromToken(request);
+      let currentUserUsername: string | null = null;
+      if (userId) {
+        const currentUser = await UserService.findUserById(userId);
+        currentUserUsername = currentUser?.username || null;
+      }
+
+      for (const playerName of safePlayers) {
+        const existingUser = await UserService.findUserByUsername(playerName);
+        // Vérifier seulement si ce n'est PAS l'utilisateur connecté
+        if (existingUser && existingUser.username !== currentUserUsername) {
+          return reply.code(400).send({ 
+            error: "username_reserved", 
+            message: `Le pseudo "${playerName}" est réservé par un utilisateur authentifié. Veuillez en choisir un autre.`,
+            field: "players"
+          });
+        }
       }
 
       const tournamentId = `local_${Date.now()}`;
@@ -940,6 +1082,17 @@ app.post("/api/users/register", async (request, reply) => {
         tournament.currentMatch = "finished";
         tournament.finishedAt = new Date().toISOString();
         nextMatch = { type: "finished", winner };
+
+        // Mettre à jour les statistiques de victoire de tournoi
+        try {
+          const winnerUser = await UserService.findUserByUsername(winner);
+          if (winnerUser) {
+            await StatsService.updateTournamentWin(winnerUser.id!);
+            console.log(`[Tournament] Updated tournament win stats for ${winner} (ID: ${winnerUser.id})`);
+          }
+        } catch (error) {
+          console.error(`[Tournament] Failed to update tournament win stats for ${winner}:`, error);
+        }
       } else {
         return reply.code(400).send({ error: "tournament_already_finished_or_invalid_state" });
       }
@@ -963,42 +1116,139 @@ app.post("/api/users/register", async (request, reply) => {
       const userId = await getUserFromToken(request);
       if (!userId) return reply.code(401).send({ error: "Authentification requise" });
 
-      const body = (request.body ?? {}) as any;
-      const cleaned = {
-        username: body.username ? sanitizeInput(body.username, 20) : undefined,
-        email:    body.email ? sanitizeInput(body.email, 100) : undefined,
-        avatar:   body.avatar ? sanitizeInput(body.avatar, 500) : undefined,
-      };
-
-      if (cleaned.username && cleaned.username.length < 3) {
-        return reply.code(400).send({ error: "username_too_short" });
+      console.log('[BACKEND] Profile update request from user:', userId);
+      
+      // Vérifier si c'est multipart (upload de fichier) ou JSON
+      const contentType = request.headers['content-type'] || '';
+      console.log('[BACKEND] Content-Type:', contentType);
+      
+      let body: any = {};
+      let avatarFilename: string | null = null;
+      let avatarBuffer: Buffer | null = null;
+      let removeAvatar = false;
+      
+      if (contentType.includes('multipart/form-data')) {
+        console.log('[BACKEND] Processing multipart/form-data');
+        // Traiter FormData avec fichier
+        const parts = request.parts();
+        
+        for await (const part of parts) {
+          console.log('[BACKEND] Part received:', part.type, part.fieldname);
+          if (part.type === 'file' && part.fieldname === 'avatar') {
+            console.log('[BACKEND] Avatar file:', part.filename);
+            avatarFilename = part.filename;
+            // Lire le stream immédiatement pour obtenir le buffer
+            avatarBuffer = await part.toBuffer();
+            console.log('[BACKEND] Avatar buffer size:', avatarBuffer.length);
+          } else if (part.type === 'field') {
+            // @ts-ignore
+            body[part.fieldname] = part.value;
+            console.log('[BACKEND] Field:', part.fieldname, '=', part.value);
+          }
+        }
+        
+        removeAvatar = body.removeAvatar === 'true';
+        console.log('[BACKEND] Remove avatar:', removeAvatar);
+      } else {
+        console.log('[BACKEND] Processing JSON');
+        // JSON classique
+        body = (request.body ?? {}) as any;
       }
-      if (cleaned.email && !validateEmail(cleaned.email)) {
-        return reply.code(400).send({ error: "invalid_email" });
+      
+      // Validation et nettoyage des champs
+      let newUsername: string | null = null;
+      let newEmail: string | null = null;
+      let newAvatar: string | null = null;
+      
+      if (body.username) {
+        newUsername = sanitizeInput(body.username, 20);
+        if (newUsername.length < 3) {
+          return reply.code(400).send({ error: "username_too_short" });
+        }
+        // Vérifier si le username est déjà pris
+        const existingUser = await UserService.findUserByUsername(newUsername);
+        if (existingUser && existingUser.id !== userId) {
+          return reply.code(409).send({ error: "username_taken" });
+        }
+      }
+      
+      if (body.email) {
+        newEmail = sanitizeInput(body.email, 100);
+        if (!validateEmail(newEmail)) {
+          return reply.code(400).send({ error: "invalid_email" });
+        }
+        // Vérifier si l'email est déjà pris
+        const existingUser = await UserService.findUserByEmail(newEmail);
+        if (existingUser && existingUser.id !== userId) {
+          return reply.code(409).send({ error: "email_taken" });
+        }
       }
 
-      const v = await fetch("http://user:8106/validate-profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(cleaned),
-      });
-      if (!v.ok) return reply.code(v.status).send(await v.json().catch(() => ({})));
-      const data = await v.json();
-
-      if (data.username) {
-        const u = await UserService.findUserByUsername(data.username);
-        if (u && u.id !== userId) return reply.code(409).send({ error: "username_taken" });
+      // Gestion de l'avatar
+      if (avatarBuffer && avatarFilename) {
+        console.log('[BACKEND] Processing avatar file upload');
+        // Sauvegarder le fichier uploadé
+        const fsPromises = await import('fs/promises');
+        const path = await import('path');
+        const crypto = await import('crypto');
+        
+        // Créer le dossier uploads si il n'existe pas
+        const uploadsDir = path.join(process.cwd(), 'uploads', 'avatars');
+        try {
+          await fsPromises.mkdir(uploadsDir, { recursive: true });
+        } catch (err) {
+          // Le dossier existe déjà
+        }
+        
+        // Générer un nom de fichier unique
+        const ext = path.extname(avatarFilename);
+        const filename = `avatar_${userId}_${crypto.randomBytes(8).toString('hex')}${ext}`;
+        const filepath = path.join(uploadsDir, filename);
+        
+        console.log('[BACKEND] Saving avatar to:', filepath);
+        
+        // Écrire le fichier avec le buffer
+        await fsPromises.writeFile(filepath, avatarBuffer);
+        
+        console.log('[BACKEND] Avatar file written successfully');
+        
+        // URL relative pour la base de données
+        newAvatar = `/uploads/avatars/${filename}`;
+        console.log('[BACKEND] Avatar saved, URL:', newAvatar);
+      } else if (removeAvatar) {
+        // Remettre l'avatar par défaut (dicebear)
+        const user = await UserService.findUserById(userId);
+        if (user) {
+          newAvatar = `https://api.dicebear.com/8.x/identicon/svg?seed=${encodeURIComponent(user.username)}`;
+        }
       }
-      if (data.email) {
-        const u = await UserService.findUserByEmail(data.email);
-        if (u && u.id !== userId) return reply.code(409).send({ error: "email_taken" });
+
+      // Mettre à jour le profil (username, email, avatar)
+      if (newUsername || newEmail || newAvatar) {
+        await UserService.updateProfile(userId, {
+          username: newUsername,
+          email: newEmail,
+          avatar: newAvatar,
+        });
       }
 
-      await UserService.updateProfile(userId, {
-        username: data.username ?? null,
-        email: data.email ?? null,
-        avatar: data.avatar ?? null,
-      });
+      // Gestion du changement de mot de passe
+      if (body.password && typeof body.password === 'string') {
+        const password = body.password.trim();
+        if (password.length < 8) {
+          return reply.code(400).send({ error: "password_too_short" });
+        }
+        if (password.length > 128) {
+          return reply.code(400).send({ error: "password_too_long" });
+        }
+        if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+          return reply.code(400).send({ error: "password_needs_letter_and_number" });
+        }
+        
+        // Hasher le mot de passe avec bcrypt
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await UserService.updatePassword(userId, hashedPassword);
+      }
 
       const updated = await UserService.findUserById(userId);
       return reply.send({ ok: true, user: safeUser(updated) });
@@ -1097,6 +1347,170 @@ app.post("/api/users/register", async (request, reply) => {
 
     const tournaments = await UserService.getUserTournaments(id);
     return reply.send({ tournaments });
+  });
+
+  app.get("/api/users/all", async (req, reply) => {
+    // Récupérer l'utilisateur actuel depuis le token JWT s'il y en a un
+    let currentUserId: number | null = null;
+    try {
+      const token = req.headers.authorization?.replace('Bearer ', '');
+      if (token) {
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        currentUserId = decoded.userId;
+      }
+    } catch (error) {
+      // Ignorer les erreurs de token pour permettre l'accès public
+    }
+
+    // Récupérer tous les utilisateurs
+    const users = await UserService.getAllUsers();
+    
+    // Formatter la réponse sans générer de fallback côté backend
+    // Le frontend gérera les avatars par défaut /images/X.JPG
+    const out = users.map((u: any) => ({
+      id: u.id,
+      username: u.username,
+      avatar: u.avatar, // null si pas d'avatar uploadé
+      status: u.status,
+      created_at: u.created_at
+    }));
+
+    return reply.send(out);
+  });
+
+  // ======== FRIENDSHIP ROUTES ========
+  // POST /api/friends/request - Envoyer une demande d'ami
+  app.post("/api/friends/request", async (req, reply) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return reply.code(401).send({ error: 'no_token' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const userId = decoded.userId;
+      const { targetId } = req.body as { targetId: number };
+
+      if (!targetId || targetId === userId) {
+        return reply.code(400).send({ error: 'invalid_target' });
+      }
+
+      // Vérifier si une relation existe déjà
+      const existingStatus = await FriendshipService.getFriendshipStatus(userId, targetId);
+      if (existingStatus) {
+        return reply.code(400).send({ error: 'friendship_exists', status: existingStatus });
+      }
+
+      await FriendshipService.request(userId, targetId);
+      return reply.send({ success: true, status: 'pending' });
+    } catch (error) {
+      return reply.code(500).send({ error: 'server_error' });
+    }
+  });
+
+  // POST /api/friends/accept - Accepter une demande d'ami
+  app.post("/api/friends/accept", async (req, reply) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return reply.code(401).send({ error: 'no_token' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const userId = decoded.userId;
+      const { requestId } = req.body as { requestId: number };
+
+      if (!requestId) {
+        return reply.code(400).send({ error: 'invalid_request' });
+      }
+
+      // Vérifier que la demande existe et nous concerne
+      const request = await get(
+        'SELECT user_id, friend_id FROM friendships WHERE id = ? AND friend_id = ? AND status = "pending"',
+        [requestId, userId]
+      );
+
+      if (!request) {
+        return reply.code(404).send({ error: 'request_not_found' });
+      }
+
+      await FriendshipService.accept(userId, request.user_id);
+      return reply.send({ success: true, status: 'accepted' });
+    } catch (error) {
+      return reply.code(500).send({ error: 'server_error' });
+    }
+  });
+
+  // POST /api/friends/decline - Refuser une demande d'ami
+  app.post("/api/friends/decline", async (req, reply) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return reply.code(401).send({ error: 'no_token' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const userId = decoded.userId;
+      const { requestId } = req.body as { requestId: number };
+
+      if (!requestId) {
+        return reply.code(400).send({ error: 'invalid_request' });
+      }
+
+      // Vérifier que la demande existe et nous concerne
+      const request = await get(
+        'SELECT user_id, friend_id FROM friendships WHERE id = ? AND friend_id = ? AND status = "pending"',
+        [requestId, userId]
+      );
+
+      if (!request) {
+        return reply.code(404).send({ error: 'request_not_found' });
+      }
+
+      await FriendshipService.decline(userId, request.user_id);
+      return reply.send({ success: true, status: 'declined' });
+    } catch (error) {
+      return reply.code(500).send({ error: 'server_error' });
+    }
+  });
+
+  // GET /api/friends/requests - Obtenir les demandes d'amis en attente
+  app.get("/api/friends/requests", async (req, reply) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return reply.code(401).send({ error: 'no_token' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const userId = decoded.userId;
+
+      const requests = await FriendshipService.getPendingRequests(userId);
+      const formatted = requests.map((r: any) => ({
+        id: r.id,
+        user_id: r.user_id,
+        username: r.username,
+        avatar_url: r.avatar ?? UserService.defaultAvatar(r.username),
+        created_at: r.created_at
+      }));
+
+      return reply.send({ requests: formatted });
+    } catch (error) {
+      return reply.code(500).send({ error: 'server_error' });
+    }
+  });
+
+  // GET /api/friends/status/:targetId - Obtenir le statut d'amitié avec un utilisateur
+  app.get("/api/friends/status/:targetId", async (req, reply) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return reply.code(401).send({ error: 'no_token' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const userId = decoded.userId;
+      const targetId = parseInt((req.params as any).targetId);
+
+      if (!targetId || targetId === userId) {
+        return reply.code(400).send({ error: 'invalid_target' });
+      }
+
+      const status = await FriendshipService.getFriendshipStatusFromPerspective(userId, targetId);
+      return reply.send({ status });
+    } catch (error) {
+      return reply.code(500).send({ error: 'server_error' });
+    }
   });
 
   // -------- pings

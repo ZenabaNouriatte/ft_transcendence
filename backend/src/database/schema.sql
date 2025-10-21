@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     avatar TEXT,
-    status TEXT DEFAULT 'offline' CHECK (status IN ('online', 'offline', 'ingame')),
+    status TEXT DEFAULT 'offline' CHECK (status IN ('online', 'offline')),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -29,16 +29,17 @@ CREATE TABLE IF NOT EXISTS games (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     player1_id INTEGER NOT NULL,
     player2_id INTEGER,
+    player1_type TEXT DEFAULT 'user' CHECK (player1_type IN ('user', 'local')),
+    player2_type TEXT DEFAULT 'user' CHECK (player2_type IN ('user', 'local')),
     player1_score INTEGER DEFAULT 0,
     player2_score INTEGER DEFAULT 0,
     status TEXT DEFAULT 'waiting' CHECK (status IN ('waiting', 'playing', 'finished', 'cancelled')),
     winner_id INTEGER,
+    winner_type TEXT CHECK (winner_type IN ('user', 'local')),
     tournament_id INTEGER,
+    duration INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     finished_at DATETIME,
-    FOREIGN KEY (player1_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (player2_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (winner_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE SET NULL
 );
 
@@ -96,6 +97,14 @@ CREATE TABLE IF NOT EXISTS user_stats (
     total_score INTEGER DEFAULT 0,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Table des joueurs locaux
+CREATE TABLE IF NOT EXISTS local_players (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_used DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- À exécuter une fois (migration) :

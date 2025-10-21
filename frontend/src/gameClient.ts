@@ -16,8 +16,6 @@ export class GameClient {
   private animationId: number | null = null;
   private pollingInterval: number | null = null;
 
-  
-  
   // États des touches pour les contrôles
   private keys: { [key: string]: boolean } = {};
   private lastPaddleActions: { p1: string | null, p2: string | null } = { p1: null, p2: null };
@@ -203,10 +201,17 @@ export class GameClient {
       const player1Name = localStorage.getItem('player1Name') || 'Player 1';
       const player2Name = localStorage.getItem('player2Name') || 'Player 2';
       
+      // Récupérer le token s'il existe (pour que le backend puisse autoriser l'utilisateur connecté)
+      const token = localStorage.getItem('token');
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
       // CHANGEMENT: utiliser /api/games/local au lieu de /api/games
       const response = await fetch('/api/games/local', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           player1: player1Name,
           player2: player2Name,
@@ -359,7 +364,19 @@ private async handleNetworkError(errorType: string | number): Promise<void> {
     if (currentGameMode === 'tournament') {
       await this.handleTournamentMatchEnd(winner, loser, { winner: Math.max(score1, score2), loser: Math.min(score1, score2) });
     } else {
-      // Mode classique - aller directement à la page de victoire
+      // Mode classique - sauvegarder le jeu et aller à la page de victoire
+      
+      // Sauvegarder le résultat du jeu en base de données
+      const gameId = localStorage.getItem('currentGameId');
+      if (gameId && (window as any).finishGame) {
+        try {
+          await (window as any).finishGame(parseInt(gameId), score1, score2);
+          console.log(`Game ${gameId} saved with scores: ${score1} - ${score2}`);
+        } catch (error) {
+          console.error('Error saving game to database:', error);
+        }
+      }
+      
       localStorage.setItem('winnerName', winner);
       localStorage.setItem('finalScore', finalScore);
       localStorage.setItem('gameMode', 'classic');
@@ -642,10 +659,21 @@ private async handleNetworkError(errorType: string | number): Promise<void> {
   }
 
   // Arrêter le jeu
-  stop() {
+  async stop() {
     this.isPlaying = false;
     this.stopRenderLoop();
     this.stopPolling();
+    
+    // ✅ Annuler la partie côté backend pour éviter qu'elle continue de tourner
+    if (this.gameId) {
+      try {
+        await fetch(`/api/games/${this.gameId}/cancel`, { method: 'POST' });
+        console.log('Game cancelled on backend:', this.gameId);
+      } catch (error) {
+        console.error('Failed to cancel game on backend:', error);
+      }
+    }
+    
     this.gameId = null;
     this.gameState = null;
   }

@@ -10,6 +10,55 @@ import {
 } from "./common/metrics.js";
 import { UserService } from "./services/index.js";
 
+// Global GameRoomManager instance (set by index.ts)
+let gameRoomManager: any = null;
+
+// Store WebSocket connections by gameId for broadcasting
+const gameConnections = new Map<string, Set<WebSocket>>();
+
+// Store WebSocket connections for chat broadcasting
+const chatConnections = new Set<WebSocket>();
+
+// Broadcast a message to all connections in a specific game
+function broadcastToGame(gameId: string, message: any) {
+  console.log(`🚀 [DEBUG] broadcastToGame called for gameId: ${gameId}, message type: ${message.type}`);
+  const connections = gameConnections.get(gameId);
+  if (!connections) {
+    console.log(`🚀 [DEBUG] No connections found for gameId: ${gameId}`);
+    return;
+  }
+  
+  console.log(`🚀 [DEBUG] Found ${connections.size} connections for gameId: ${gameId}`);
+  const messageStr = JSON.stringify(message);
+  connections.forEach((ws, index) => {
+    if (ws.readyState === ws.OPEN) {
+      console.log(`🚀 [DEBUG] Sending to connection ${index} for gameId: ${gameId}`);
+      ws.send(messageStr, (err?: Error) => {
+        if (err) console.error("Error broadcasting game message:", err);
+      });
+    } else {
+      console.log(`🚀 [DEBUG] Connection ${index} not open for gameId: ${gameId}`);
+    }
+  });
+}
+
+// Broadcast a message to all chat connections
+function broadcastToChat(message: any) {
+  const messageStr = JSON.stringify(message);
+  chatConnections.forEach((ws) => {
+    if (ws.readyState === ws.OPEN) {
+      ws.send(messageStr, (err?: Error) => {
+        if (err) console.error("Error broadcasting chat message:", err);
+      });
+    }
+  });
+}
+
+// Function to set the GameRoomManager instance
+export function setGameRoomManager(manager: any) {
+  gameRoomManager = manager;
+  console.log("🎮 GameRoomManager connected to WebSocket system");
+}
 
 // Fonction de sanitization si le module n'existe pas
 function sanitizeString(input: string, maxLength: number): string {
@@ -318,7 +367,11 @@ export function registerRawWs(app: FastifyInstance) {
           "chat.message", 
           "game.input",
           "game.pause",
-          "game.resume"
+          "game.resume",
+          "game.create",
+          "game.join",
+          "game.ready",
+          "game.start"
         ];
         
         if (!ALLOWED_TYPES.includes(type)) {
@@ -444,12 +497,348 @@ export function registerRawWs(app: FastifyInstance) {
               break;
             }
             
+            // Actually process the input with GameRoomManager
+            if (gameRoomManager) {
+              const room = gameRoomManager.getRoom(gameId);
+              if (room) {
+                room.movePaddle(player, direction);
+              }
+            }
+            
             app.log.info({ 
               requestId, 
               gameId, 
               player, 
               direction 
             }, "Game input processed");
+            break;
+          }
+
+          case "game.create": {
+            console.log("🎮 [Debug] game.create received, channel:", (ws as any)._channel);
+            
+            if ((ws as any)._channel !== "game-remote") {
+              safeSend({ 
+                type: "error", 
+                data: { message: "game_not_allowed_on_this_channel" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            if (!gameRoomManager) {
+              safeSend({ 
+                type: "error", 
+                data: { message: "game_system_not_ready" }, 
+                requestId 
+              });
+              break;
+            }
+
+            try {
+              // Utiliser un gameId personnalisé s'il est fourni, sinon générer un court
+              let gameId = msg.data?.gameId;
+              
+              if (!gameId || gameId.trim().length === 0) {
+                // Générer un ID court automatique (6 caractères alphanumériques)
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                gameId = '';
+                for (let i = 0; i < 6; i++) {
+                  gameId += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+              } else {
+                // Nettoyer et valider le gameId personnalisé
+                gameId = gameId.trim().replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
+                if (gameId.length === 0) {
+                  safeSend({ 
+                    type: "error", 
+                    data: { message: "invalid_game_id" }, 
+                    requestId 
+                  });
+                  break;
+                }
+              }
+              
+              // Vérifier si la room existe déjà
+              if (gameRoomManager.getRoom(gameId)) {
+                safeSend({ 
+                  type: "error", 
+                  data: { message: "room_already_exists", gameId }, 
+                  requestId 
+                });
+                break;
+              }
+              
+              const room = gameRoomManager.createRoom(gameId);
+              
+              safeSend({ 
+                type: "game.created", 
+                data: { gameId }, 
+                requestId 
+              });
+              
+              app.log.info({ gameId }, "Game room created");
+            } catch (error) {
+              app.log.error({ error }, "Error creating game room");
+              safeSend({ 
+                type: "error", 
+                data: { message: "failed_to_create_game" }, 
+                requestId 
+              });
+            }
+            break;
+          }
+
+          case "game.join": {
+            console.log("🎮 [Debug] game.join received, channel:", (ws as any)._channel);
+            
+            if ((ws as any)._channel !== "game-remote") {
+              safeSend({ 
+                type: "error", 
+                data: { message: "game_not_allowed_on_this_channel" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            if (!msg.data || typeof msg.data !== "object" || typeof msg.data.gameId !== "string") {
+              safeSend({ 
+                type: "error", 
+                data: { message: "invalid_game_data" }, 
+                requestId 
+              });
+              break;
+            }
+
+            const { gameId } = msg.data;
+            
+            if (!gameRoomManager) {
+              safeSend({ 
+                type: "error", 
+                data: { message: "game_system_not_ready" }, 
+                requestId 
+              });
+              break;
+            }
+
+            try {
+              const room = gameRoomManager.getRoom(gameId);
+              if (!room) {
+                safeSend({ 
+                  type: "error", 
+                  data: { message: "game_room_not_found" }, 
+                  requestId 
+                });
+                break;
+              }
+
+              // Try to add player to room
+              if (!ws.ctx?.userId) {
+                safeSend({ 
+                  type: "error", 
+                  data: { message: "authentication_required" }, 
+                  requestId 
+                });
+                break;
+              }
+
+              const userId = String(ws.ctx.userId);
+              const username = `Player${userId}`;
+              const joined = room.addPlayer(userId, username);
+              
+              if (joined) {
+                // Store gameId in WebSocket context for cleanup
+                (ws as any)._gameId = gameId;
+                (ws as any)._userId = userId;
+                console.log(`✅ [Debug] game.join - Stored _userId=${userId} on WebSocket for gameId=${gameId}`);
+                
+                // Add WebSocket to game connections for broadcasting
+                if (!gameConnections.has(gameId)) {
+                  gameConnections.set(gameId, new Set());
+                }
+                gameConnections.get(gameId)!.add(ws);
+                
+                // Set up message handler for this room to broadcast to WebSockets
+                const messageHandler = (message: any) => {
+                  broadcastToGame(gameId, message);
+                };
+                room.addMessageHandler(messageHandler);
+                
+                // Store handler for cleanup
+                (ws as any)._gameMessageHandler = messageHandler;
+                
+                safeSend({ 
+                  type: "game.joined", 
+                  data: { gameId, userId }, 
+                  requestId 
+                });
+                app.log.info({ gameId, userId }, "Player joined game");
+              } else {
+                safeSend({ 
+                  type: "error", 
+                  data: { message: "game_room_full" }, 
+                  requestId 
+                });
+              }
+            } catch (error) {
+              app.log.error({ error, gameId }, "Error joining game room");
+              safeSend({ 
+                type: "error", 
+                data: { message: "failed_to_join_game" }, 
+                requestId 
+              });
+            }
+            break;
+          }
+
+          case "game.ready": {
+            console.log("🎮 [Debug] game.ready received, channel:", (ws as any)._channel);
+            
+            if ((ws as any)._channel !== "game-remote") {
+              safeSend({ 
+                type: "error", 
+                data: { message: "game_not_allowed_on_this_channel" }, 
+                requestId 
+              });
+              break;
+            }
+
+            if (!gameRoomManager) {
+              safeSend({ 
+                type: "error", 
+                data: { message: "game_system_not_ready" }, 
+                requestId 
+              });
+              break;
+            }
+
+            try {
+              const gameId = msg.data?.gameId;
+              
+              // 🔍 DEBUG: Vérifier toutes les sources possibles de userId
+              console.log("🔍 [Debug] game.ready - Checking userId sources:");
+              console.log("  - (ws as any)._userId:", (ws as any)._userId);
+              console.log("  - ws.ctx?.userId:", ws.ctx?.userId);
+              console.log("  - msg.data?.userId:", msg.data?.userId);
+              console.log("  - gameId:", gameId);
+              
+              // Utiliser _userId s'il existe, sinon fallback sur ctx.userId
+              let userId = (ws as any)._userId;
+              if (!userId && ws.ctx?.userId) {
+                userId = String(ws.ctx.userId);
+                console.log("  ℹ️ Using fallback userId from ws.ctx");
+              }
+              
+              const ready = msg.data?.ready || false;
+              
+              if (!gameId || !userId) {
+                console.log("❌ [Debug] Missing gameId or userId:", { gameId, userId });
+                safeSend({ 
+                  type: "error", 
+                  data: { message: "missing_game_or_user_id", debug: { gameId, userId } }, 
+                  requestId 
+                });
+                break;
+              }
+
+              const room = gameRoomManager.getRoom(gameId);
+              if (!room) {
+                safeSend({ 
+                  type: "error", 
+                  data: { message: "room_not_found" }, 
+                  requestId 
+                });
+                break;
+              }
+
+              // Mettre à jour le statut ready du joueur dans la room
+              console.log(`🔧 [Debug] Calling setPlayerReady(userId="${userId}", ready=${ready})`);
+              const result = room.setPlayerReady(userId, ready);
+              console.log(`🔧 [Debug] setPlayerReady returned:`, result);
+              
+              // Diffuser le nouveau statut à tous les joueurs de la room
+              broadcastToGame(gameId, {
+                type: "game.ready",
+                data: {
+                  userId: userId,
+                  ready: ready,
+                  playerName: `Player${userId}`
+                }
+              });
+              
+              app.log.info({ gameId, userId, ready }, "Player ready status updated");
+              
+            } catch (error) {
+              console.log(`❌ [Debug] Exception in game.ready:`, error);
+              app.log.error({ error }, "Error updating player ready status");
+              safeSend({ 
+                type: "error", 
+                data: { message: "ready_status_update_failed" }, 
+                requestId 
+              });
+            }
+            break;
+          }
+
+          case "game.start": {
+            console.log("🎮 [Debug] game.start received, channel:", (ws as any)._channel);
+            
+            if ((ws as any)._channel !== "game-remote") {
+              safeSend({ 
+                type: "error", 
+                data: { message: "game_not_allowed_on_this_channel" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            if (!msg.data || typeof msg.data !== "object" || typeof msg.data.gameId !== "string") {
+              safeSend({ 
+                type: "error", 
+                data: { message: "invalid_game_data" }, 
+                requestId 
+              });
+              break;
+            }
+
+            const { gameId } = msg.data;
+            
+            if (!gameRoomManager) {
+              safeSend({ 
+                type: "error", 
+                data: { message: "game_system_not_ready" }, 
+                requestId 
+              });
+              break;
+            }
+
+            try {
+              const room = gameRoomManager.getRoom(gameId);
+              if (!room) {
+                safeSend({ 
+                  type: "error", 
+                  data: { message: "game_room_not_found" }, 
+                  requestId 
+                });
+                break;
+              }
+
+              room.startGame();
+              app.log.info({ gameId }, "Game started");
+              
+              safeSend({ 
+                type: "game.started", 
+                data: { gameId }, 
+                requestId 
+              });
+            } catch (error) {
+              app.log.error({ error, gameId }, "Error starting game");
+              safeSend({ 
+                type: "error", 
+                data: { message: "failed_to_start_game" }, 
+                requestId 
+              });
+            }
             break;
           }
 

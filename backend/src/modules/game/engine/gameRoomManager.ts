@@ -3,6 +3,7 @@
 
 import { PongEngine } from './pongEngine.js';
 import { GameRoom, Player, GameMessage, PlayerAction, PaddleDirection } from './gameTypes.js';
+import { GameService, UserService, StatsService } from '../../../services/index.js';
 
 export class GameRoomManager {
   private rooms: Map<string, GameRoomInstance> = new Map();
@@ -161,6 +162,29 @@ export class GameRoomInstance {
     return true;
   }
 
+  // Définir le statut "ready" d'un joueur
+  public setPlayerReady(userId: string, ready: boolean): boolean {
+    const player = this.players.get(userId);
+    if (!player) {
+      console.log(`[Backend] Cannot set ready status: player ${userId} not found in room ${this.gameId}`);
+      return false;
+    }
+
+    player.ready = ready;
+    console.log(`[Backend] Player ${player.username} (${userId}) ready status set to ${ready} in room ${this.gameId}`);
+    
+    // Vérifier si tous les joueurs sont prêts
+    const allPlayersReady = Array.from(this.players.values()).every(p => p.ready === true);
+    const hasEnoughPlayers = this.players.size >= 2;
+    
+    if (allPlayersReady && hasEnoughPlayers && this.status === 'waiting') {
+      console.log(`[Backend] All players ready in room ${this.gameId}, starting game automatically`);
+      setTimeout(() => this.startGame(), 1000); // Petit délai pour que les joueurs voient le statut
+    }
+    
+    return true;
+  }
+
   // Traiter une action de joueur
   public handlePlayerAction(action: PlayerAction): boolean {
     const player = this.players.get(action.playerId);
@@ -189,7 +213,10 @@ export class GameRoomInstance {
 
     // Vérifier si la partie est terminée
     if (!gameStillRunning && this.status !== 'ended') {
-      this.endGame();
+      // Ne pas bloquer la boucle de jeu, fire and forget
+      this.endGame().catch(error => 
+        console.error(`[Backend] Error ending game ${this.gameId}:`, error)
+      );
     }
 
     // Diffuser l'état de jeu à tous les clients connectés
@@ -219,18 +246,24 @@ export class GameRoomInstance {
   }
 
   // Terminer la partie
-  private endGame(): void {
+  private async endGame(): Promise<void> {
     this.status = 'ended';
     const winner = this.engine.getWinner();
+    const finalState = this.engine.getGameState();
 
     console.log(`[Backend] Game ${this.gameId} ended. Winner: ${winner}`);
+
+    // Sauvegarder le jeu en base pour les statistiques (seulement si on a un gagnant)
+    if (winner) {
+      await this.saveGameToDB(winner, finalState);
+    }
 
     this.broadcastMessage({
       type: 'game_ended',
       gameId: this.gameId,
       data: { 
         winner,
-        finalState: this.engine.getGameState()
+        finalState
       },
       timestamp: Date.now()
     });
@@ -312,5 +345,83 @@ export class GameRoomInstance {
     this.engine.resume();
     console.log(`[Backend] Game ${this.gameId} resumed`);
     return true;
+  }
+
+  // Sauvegarder le jeu en base pour les statistiques
+  private async saveGameToDB(winner: string, finalState: any): Promise<void> {
+    try {
+      console.log(`[Backend] Saving local game ${this.gameId} to database for stats`);
+      
+      // Récupérer les joueurs
+      const playersArray = Array.from(this.players.values());
+      if (playersArray.length !== 2) {
+        console.warn(`[Backend] Game ${this.gameId} has ${playersArray.length} players, skipping DB save`);
+        return;
+      }
+
+      const player1 = playersArray.find(p => p.id === 'player1');
+      const player2 = playersArray.find(p => p.id === 'player2');
+      
+      if (!player1 || !player2) {
+        console.warn(`[Backend] Could not find both players in game ${this.gameId}, skipping DB save`);
+        return;
+      }
+
+      // Trouver ou créer les joueurs en base
+      let player1Info = await this.findOrCreatePlayer(player1.username);
+      let player2Info = await this.findOrCreatePlayer(player2.username);
+
+      // Déterminer le gagnant - le moteur retourne "Player 1" ou "Player 2"
+      const winnerInfo = winner === 'Player 1' ? player1Info : player2Info;
+      const winnerUsername = winner === 'Player 1' ? player1.username : player2.username;
+      
+      console.log(`[Backend] Game winner: ${winner}, mapping to ${winnerInfo.type} ID: ${winnerInfo.id} (${winnerUsername})`);
+
+      // Calculer les scores et la durée
+      const player1Score = finalState.score1;
+      const player2Score = finalState.score2;
+      const gameDuration = Math.round((Date.now() - this.createdAt) / 1000); // Durée en secondes
+
+      // Créer le jeu en base avec la nouvelle méthode
+      const gameId = await GameService.createGameFromUsernames({
+        player1_username: player1.username,
+        player2_username: player2.username,
+        winner_username: winnerUsername,
+        player1_score: player1Score,
+        player2_score: player2Score,
+        duration: gameDuration,
+        tournament_id: undefined // Pas de tournoi pour les jeux locaux
+      });
+
+      // Les statistiques sont automatiquement mises à jour dans createGameFromUsernames
+      // pour les utilisateurs authentifiés seulement
+
+      console.log(`[Backend] Local game ${this.gameId} saved as DB game ${gameId} with winner ${winnerUsername} (${winnerInfo.type} ID: ${winnerInfo.id})`);
+
+    } catch (error) {
+      console.error(`[Backend] Failed to save game ${this.gameId} to DB:`, error);
+    }
+  }
+
+  // Trouver ou créer un joueur (utilisateur authentifié ou joueur local)
+  private async findOrCreatePlayer(username: string): Promise<{ id: number; type: 'user' | 'local' }> {
+    try {
+      // D'abord, chercher dans les utilisateurs authentifiés
+      let user = await UserService.findUserByUsername(username);
+      
+      if (user) {
+        return { id: user.id!, type: 'user' };
+      }
+
+      // Si pas trouvé, créer ou récupérer un joueur local
+      const { LocalPlayerService } = await import('../../../services/localPlayerService.js');
+      const localPlayer = await LocalPlayerService.findOrCreateByUsername(username);
+      
+      console.log(`[Backend] Using local player ${username} with ID ${localPlayer.id}`);
+      return { id: localPlayer.id!, type: 'local' };
+    } catch (error) {
+      console.error(`[Backend] Failed to find/create player ${username}:`, error);
+      throw error;
+    }
   }
 }

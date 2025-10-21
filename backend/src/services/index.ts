@@ -8,7 +8,7 @@ export interface User {
   email: string;
   password: string;
   avatar?: string;
-  status?: 'online' | 'offline' | 'ingame';
+  status?: 'online' | 'offline';
   created_at?: string;
   updated_at?: string;
 }
@@ -17,11 +17,15 @@ export interface Game {
   id?: number;
   player1_id: number;
   player2_id: number | null;
+  player1_type?: 'user' | 'local';
+  player2_type?: 'user' | 'local';
   player1_score?: number;
   player2_score?: number;
   status?: 'waiting' | 'playing' | 'finished' | 'cancelled';
   winner_id?: number;
+  winner_type?: 'user' | 'local';
   tournament_id?: number | null;
+  duration?: number;
   created_at?: string;
   finished_at?: string;
 }
@@ -77,8 +81,8 @@ export class UserService {
     return user ?? null;
   }
 
-  static async updateUserStatus(id: number, status: 'online' | 'offline' | 'ingame'): Promise<void> {
-    await run(`UPDATE users SET status = ?, updated_at = datetime('now') WHERE id = ?`, [status, id]);
+  static async updateUserStatus(id: number, status: 'online' | 'offline'): Promise<void> {
+    await run('UPDATE users SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [status, id]);
   }
 
   static async getAllUsers(): Promise<User[]> {
@@ -101,9 +105,25 @@ export class UserService {
 
   static async getUserHistory(userId: number, limit = 20) {
     return all(
-      `SELECT g.*
+      `SELECT g.*, 
+              CASE 
+                WHEN g.player1_type = 'user' THEN u1.username 
+                ELSE l1.username 
+              END as player1_username,
+              CASE 
+                WHEN g.player2_type = 'user' THEN u2.username 
+                ELSE l2.username 
+              END as player2_username,
+              t.name as tournament_name
          FROM games g
-        WHERE g.player1_id = ? OR g.player2_id = ?
+         LEFT JOIN users u1 ON g.player1_id = u1.id AND g.player1_type = 'user'
+         LEFT JOIN users u2 ON g.player2_id = u2.id AND g.player2_type = 'user'
+         LEFT JOIN local_players l1 ON g.player1_id = l1.id AND g.player1_type = 'local'
+         LEFT JOIN local_players l2 ON g.player2_id = l2.id AND g.player2_type = 'local'
+         LEFT JOIN tournaments t ON g.tournament_id = t.id
+        WHERE ((g.player1_id = ? AND g.player1_type = 'user') 
+           OR (g.player2_id = ? AND g.player2_type = 'user'))
+           AND g.status != 'cancelled'
         ORDER BY g.created_at DESC
         LIMIT ?`,
       [userId, userId, limit]
@@ -126,6 +146,13 @@ export class UserService {
          updated_at = datetime('now')
        WHERE id = ?`,
       [data.username ?? null, data.email ?? null, data.avatar ?? null, userId]
+    );
+  }
+
+  static async updatePassword(userId: number, hashedPassword: string): Promise<void> {
+    await run(
+      `UPDATE users SET password = ?, updated_at = datetime('now') WHERE id = ?`,
+      [hashedPassword, userId]
     );
   }
 
@@ -156,15 +183,21 @@ export class UserService {
 export class GameService {
   static async createGame(game: Game): Promise<number> {
     await run(
-      `INSERT INTO games (player1_id, player2_id, player1_score, player2_score, status, tournament_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+      `INSERT INTO games (player1_id, player2_id, player1_type, player2_type, player1_score, player2_score, 
+                         status, winner_id, winner_type, tournament_id, duration, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       [
         game.player1_id,
         game.player2_id ?? null,
+        game.player1_type || 'user',
+        game.player2_type || 'user',
         game.player1_score || 0,
         game.player2_score || 0,
         game.status || 'waiting',
+        game.winner_id ?? null,
+        game.winner_type ?? null,
         game.tournament_id ?? null,
+        game.duration || 0,
       ]
     );
     const row = await get<{ id: number }>(`SELECT last_insert_rowid() AS id`);
@@ -251,10 +284,88 @@ export class GameService {
     }
   }
 
+  // Nouvelle méthode pour créer un jeu à partir d'usernames (gère automatiquement users vs local players)
+  static async createGameFromUsernames(gameData: {
+    player1_username: string;
+    player2_username: string;
+    winner_username: string;
+    player1_score: number;
+    player2_score: number;
+    duration: number;
+    tournament_id?: number;
+  }): Promise<number> {
+    const { LocalPlayerService } = await import('./localPlayerService.js');
+
+    // Déterminer le type et l'ID de chaque joueur
+    const player1User = await UserService.findUserByUsername(gameData.player1_username);
+    const player2User = await UserService.findUserByUsername(gameData.player2_username);
+    const winnerUser = await UserService.findUserByUsername(gameData.winner_username);
+
+    let player1_id: number;
+    let player1_type: 'user' | 'local';
+    let player2_id: number;
+    let player2_type: 'user' | 'local';
+    let winner_id: number;
+    let winner_type: 'user' | 'local';
+
+    // Player 1
+    if (player1User) {
+      player1_id = player1User.id!;
+      player1_type = 'user';
+    } else {
+      const localPlayer1 = await LocalPlayerService.findOrCreateByUsername(gameData.player1_username);
+      player1_id = localPlayer1.id!;
+      player1_type = 'local';
+    }
+
+    // Player 2
+    if (player2User) {
+      player2_id = player2User.id!;
+      player2_type = 'user';
+    } else {
+      const localPlayer2 = await LocalPlayerService.findOrCreateByUsername(gameData.player2_username);
+      player2_id = localPlayer2.id!;
+      player2_type = 'local';
+    }
+
+    // Winner
+    if (winnerUser) {
+      winner_id = winnerUser.id!;
+      winner_type = 'user';
+    } else {
+      const localWinner = await LocalPlayerService.findOrCreateByUsername(gameData.winner_username);
+      winner_id = localWinner.id!;
+      winner_type = 'local';
+    }
+
+    const game: Game = {
+      player1_id,
+      player2_id,
+      player1_type,
+      player2_type,
+      player1_score: gameData.player1_score,
+      player2_score: gameData.player2_score,
+      status: 'finished',
+      winner_id,
+      winner_type,
+      tournament_id: gameData.tournament_id,
+      duration: gameData.duration,
+    };
+
+    const gameId = await this.createGame(game);
+    
+    // Mettre à jour les statistiques uniquement pour les utilisateurs authentifiés
+    await StatsService.updateStatsAfterGame(gameId);
+    
+    return gameId;
+  }
+
   static async getUserGames(userId: number): Promise<Game[]> {
     return all<Game>(
       `SELECT * FROM games
-        WHERE player1_id = ? OR player2_id = ?
+        WHERE ((player1_id = ? AND player1_type = 'user') 
+           OR (player2_id = ? AND player2_type = 'user'))
+           AND status != 'cancelled'
         ORDER BY created_at DESC`,
       [userId, userId]
     );
@@ -273,6 +384,7 @@ export class GameService {
   static async getAllGames(limit = 50, offset = 0): Promise<Game[]> {
     return all<Game>(
       `SELECT * FROM games
+        WHERE status != 'cancelled'
         ORDER BY created_at DESC
         LIMIT ? OFFSET ?`,
       [limit, offset]
@@ -299,6 +411,7 @@ export class GameService {
     }
     return all(
       `SELECT * FROM games
+        WHERE status != 'cancelled'
         ORDER BY created_at DESC
         LIMIT ? OFFSET ?`,
       [limit, offset]
@@ -441,24 +554,68 @@ export class StatsService {
     const game = await GameService.findGameById(gameId);
     if (!game || game.status !== 'finished' || !game.winner_id) return;
 
-    const loserId = game.winner_id === game.player1_id ? game.player2_id : game.player1_id;
+    // Déterminer correctement le perdant en comparant à la fois l'ID et le type
+    const isPlayer1Winner = (game.winner_id === game.player1_id && game.winner_type === game.player1_type);
+    const loserId = isPlayer1Winner ? game.player2_id : game.player1_id;
+    const loserType = isPlayer1Winner ? game.player2_type : game.player1_type;
+    const isTournamentGame = game.tournament_id !== null;
 
+    // Mettre à jour les stats du gagnant (seulement si c'est un utilisateur authentifié)
+    if (game.winner_type === 'user') {
+      if (isTournamentGame) {
+        await run(
+          `UPDATE user_stats
+              SET games_played = games_played + 1,
+                  games_won    = games_won + 1,
+                  tournaments_played = tournaments_played + 1,
+                  updated_at   = datetime('now')
+            WHERE user_id = ?`,
+          [game.winner_id]
+        );
+      } else {
+        await run(
+          `UPDATE user_stats
+              SET games_played = games_played + 1,
+                  games_won    = games_won + 1,
+                  updated_at   = datetime('now')
+            WHERE user_id = ?`,
+          [game.winner_id]
+        );
+      }
+    }
+
+    // Mettre à jour les stats du perdant (seulement si c'est un utilisateur authentifié)
+    if (loserType === 'user') {
+      if (isTournamentGame) {
+        await run(
+          `UPDATE user_stats
+              SET games_played = games_played + 1,
+                  games_lost   = games_lost + 1,
+                  tournaments_played = tournaments_played + 1,
+                  updated_at   = datetime('now')
+            WHERE user_id = ?`,
+          [loserId]
+        );
+      } else {
+        await run(
+          `UPDATE user_stats
+              SET games_played = games_played + 1,
+                  games_lost   = games_lost + 1,
+                  updated_at   = datetime('now')
+            WHERE user_id = ?`,
+          [loserId]
+        );
+      }
+    }
+  }
+
+  static async updateTournamentWin(userId: number): Promise<void> {
     await run(
       `UPDATE user_stats
-          SET games_played = games_played + 1,
-              games_won    = games_won + 1,
-              updated_at   = datetime('now')
+          SET tournaments_won = tournaments_won + 1,
+              updated_at = datetime('now')
         WHERE user_id = ?`,
-      [game.winner_id]
-    );
-
-    await run(
-      `UPDATE user_stats
-          SET games_played = games_played + 1,
-              games_lost   = games_lost + 1,
-              updated_at   = datetime('now')
-        WHERE user_id = ?`,
-      [loserId]
+      [userId]
     );
   }
 
@@ -491,11 +648,31 @@ export class FriendshipService {
 
   static async accept(selfId: number, targetId: number) {
     // on accepte la demande inverse (target -> self)
-    await run(
+    console.log(`[DEBUG] Accepting friendship: selfId=${selfId}, targetId=${targetId}`);
+    const result = await run(
       `UPDATE friendships SET status='accepted'
-        WHERE user_id = ? AND friend_id = ?`,
+        WHERE user_id = ? AND friend_id = ? AND status = 'pending'`,
       [targetId, selfId]
     );
+    console.log(`[DEBUG] Accept result:`, result);
+    
+    // Vérifier que l'update a bien fonctionné
+    const friendship = await get(
+      'SELECT * FROM friendships WHERE user_id = ? AND friend_id = ?',
+      [targetId, selfId]
+    );
+    console.log(`[DEBUG] Friendship after accept:`, friendship);
+  }
+
+  static async decline(selfId: number, targetId: number) {
+    // on refuse la demande inverse (target -> self) en la supprimant
+    console.log(`[DEBUG] Declining friendship: selfId=${selfId}, targetId=${targetId}`);
+    const result = await run(
+      `DELETE FROM friendships 
+        WHERE user_id = ? AND friend_id = ? AND status = 'pending'`,
+      [targetId, selfId]
+    );
+    console.log(`[DEBUG] Decline result:`, result);
   }
 
   static async block(selfId: number, targetId: number) {
@@ -503,6 +680,65 @@ export class FriendshipService {
       `INSERT OR REPLACE INTO friendships (user_id, friend_id, status)
        VALUES (?, ?, 'blocked')`,
       [selfId, targetId]
+    );
+  }
+
+  static async getFriendshipStatus(userId: number, targetId: number): Promise<string | null> {
+    const result = await get(
+      `SELECT status FROM friendships 
+       WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)`,
+      [userId, targetId, targetId, userId]
+    );
+    return result?.status || null;
+  }
+
+  static async getFriendshipStatusFromPerspective(userId: number, targetId: number): Promise<string> {
+    // Chercher si l'utilisateur a envoyé une demande à targetId
+    const sentRequest = await get(
+      `SELECT status FROM friendships WHERE user_id = ? AND friend_id = ?`,
+      [userId, targetId]
+    );
+    
+    // Chercher si targetId a envoyé une demande à l'utilisateur
+    const receivedRequest = await get(
+      `SELECT status FROM friendships WHERE user_id = ? AND friend_id = ?`,
+      [targetId, userId]
+    );
+    
+    if (sentRequest?.status === 'accepted' || receivedRequest?.status === 'accepted') {
+      return 'friend';
+    }
+    
+    if (sentRequest?.status === 'pending') {
+      return 'sent';
+    }
+    
+    if (receivedRequest?.status === 'pending') {
+      return 'received';
+    }
+    
+    return 'none';
+  }
+
+  static async getPendingRequests(userId: number) {
+    return all(
+      `SELECT f.id, f.user_id, u.username, u.avatar, f.created_at
+       FROM friendships f 
+       JOIN users u ON u.id = f.user_id
+       WHERE f.friend_id = ? AND f.status = 'pending'
+       ORDER BY f.created_at DESC`,
+      [userId]
+    );
+  }
+
+  static async getFriends(userId: number) {
+    return all(
+      `SELECT u.id, u.username, u.avatar, u.status, f.created_at as friend_since
+       FROM friendships f 
+       JOIN users u ON (u.id = f.friend_id OR u.id = f.user_id)
+       WHERE (f.user_id = ? OR f.friend_id = ?) AND f.status = 'accepted' AND u.id != ?
+       ORDER BY u.username`,
+      [userId, userId, userId]
     );
   }
 }
