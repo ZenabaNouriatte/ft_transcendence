@@ -1019,3 +1019,29 @@ input.styled-input.logged-user-tournament:focus {
   text-align: center;
   padding: 10px;
 }
+
+/* Chat styles */
+.chat-message {
+  background-color: rgba(30, 41, 59, 0.8);
+  border-left: 3px solid #22d3ee;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.chat-username {
+  color: #22d3ee;
+  font-weight: bold;
+  margin-right: 8px;
+}
+
+.chat-text {
+  color: #ffffff;
+}
+
+.chat-time {
+  color: #94a3b8;
+  font-size: 12px;
+  float: right;
+  margin-left: 12px;
+}

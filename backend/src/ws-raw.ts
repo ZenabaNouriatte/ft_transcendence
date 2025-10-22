@@ -45,13 +45,19 @@ function broadcastToGame(gameId: string, message: any) {
 // Broadcast a message to all chat connections
 function broadcastToChat(message: any) {
   const messageStr = JSON.stringify(message);
+  console.log('[chat] Broadcasting to', chatConnections.size, 'connections:', messageStr);
   chatConnections.forEach((ws) => {
     if (ws.readyState === ws.OPEN) {
+      console.log('[chat] Sending to one client...');
       ws.send(messageStr, (err?: Error) => {
-        if (err) console.error("Error broadcasting chat message:", err);
+        if (err) console.error("[chat] Error broadcasting chat message:", err);
+        else console.log('[chat] ✅ Message sent successfully');
       });
+    } else {
+      console.log('[chat] ⚠️ WebSocket not open, state:', ws.readyState);
     }
   });
+  console.log('[chat] Broadcast complete');
 }
 
 // Function to set the GameRoomManager instance
@@ -227,6 +233,7 @@ export function registerRawWs(app: FastifyInstance) {
         }
         
        ws.ctx.userId = data.userId;
+       (ws as any)._token = token; // Store token for later use
        if (ws.ctx.userId) {
           try {
             const after = incConn(ws.ctx.userId);
@@ -446,6 +453,59 @@ export function registerRawWs(app: FastifyInstance) {
                 userId: ws.ctx.userId,
                 messageLength: messageContent.length 
               }, "Chat message processed");
+              
+              // Get username and broadcast message to all chat connections
+              const userId = ws.ctx?.userId;
+              if (!userId) {
+                app.log.error("No userId found in context for chat message");
+                break;
+              }
+              
+              // Use the token to get the user's information
+              const token = (ws as any)._token || 'unknown';
+              
+              fetch(`http://gateway:8000/api/users/me`, {
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                }
+              })
+                .then(userResponse => {
+                  let username = `User${userId}`;
+                  
+                  if (userResponse.ok) {
+                    return userResponse.json().then(userData => {
+                      if (userData.user && userData.user.username) {
+                        username = userData.user.username;
+                      }
+                      return username;
+                    });
+                  } else {
+                    return username;
+                  }
+                })
+                .then(username => {
+                  // Broadcast the message to all chat connections
+                  console.log('[chat] About to broadcast message with username:', username);
+                  broadcastToChat({
+                    type: "chat.message",
+                    username: username,
+                    message: messageContent,
+                    timestamp: new Date().toISOString()
+                  });
+                  console.log('[chat] broadcastToChat call completed');
+                })
+                .catch(fetchErr => {
+                  console.log('[chat] ⚠️ Fetch error, broadcasting with fallback username');
+                  app.log.error({ fetchErr }, "Error fetching user data for chat");
+                  // Still broadcast with fallback username
+                  broadcastToChat({
+                    type: "chat.message",
+                    username: `User${userId}`,
+                    message: messageContent,
+                    timestamp: new Date().toISOString()
+                  });
+                });
               
             } catch (err) {
               safeSend({ 
