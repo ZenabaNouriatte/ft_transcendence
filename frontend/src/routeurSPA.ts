@@ -618,40 +618,46 @@ const routes: Record<string, Route> = {
   // Interface WebSocket pour jouer en ligne
   "#/online": () => `
     <div class="flex flex-col items-center">
-      <h1 class="page-title-large page-title-blue">Online Game</h1>
-      <div class="form-box-blue">
+      <h1 class="page-title-large page-title-purple">Online Game</h1>
+      <div class="form-box-purple">
         <div id="connectionStatus" class="mb-6 text-center">
           <span id="statusText" class="text-lg font-bold text-red-400">🔴 Disconnected</span>
         </div>
         
         <div class="mb-6">
-          <label class="form-label">Room Name (optional):</label>
+          <label class="form-label">Create custom room name:</label>
           <input id="customRoomNameInput" class="styled-input w-full" 
-                 placeholder="Enter custom room name (e.g., 'MyGame', 'Battle1')" maxlength="20">
-          <p class="text-sm text-gray-400 mt-1">Custom names are shorter and easier to share</p>
+                 placeholder="Enter custom room name (ex: 'MyGame')" maxlength="20">
         </div>
         
         <div class="mb-6">
           <label class="form-label">Or join existing room:</label>
           <input id="roomIdInput" class="styled-input w-full font-mono text-sm" 
                  placeholder="Enter room ID to join existing room" maxlength="50">
-          <p class="text-sm text-gray-400 mt-2">Leave both empty to create a room with short auto-generated ID</p>
+          <p class="text-sm text-gray-600 mt-2">Leave both empty to create a room with short auto-generated ID</p>
         </div>
         
         <div class="flex gap-4 mb-6">
-          <button id="connectBtn" class="retro-btn hover-blue flex-1">
-            🔌 Connect
-          </button>
-          <button id="createRoomBtn" class="retro-btn hover-green flex-1">
-            🆕 New Room
-          </button>
+        <button id="createRoomBtn" class="retro-btn hover-purple flex-1">
+        Create Room
+        </button>
+        <button id="connectBtn" class="retro-btn hover-green flex-1">
+          Join Room
+        </button>
         </div>
         
-        <!-- Bouton retour toujours visible -->
-        <div class="flex justify-center mb-6">
-          <button id="backFromOnlineBtn" class="retro-btn-small hover-blue">
-            🏠 Back to Menu
-          </button>
+        <!-- Players list (hidden until connected) -->
+        <div id="playersInfo" class="hidden mb-6 p-4 rounded-lg" style="background-color: rgba(168, 136, 199, 0.2); border: 2px solid #a888c7;">
+        <h3 class="text-lg font-bold mb-2" style="color: #a888c7;">Players:</h3>
+        <div id="playersList" class="text-gray-700">
+        No players connected
+        </div>
+        <div id="readyStatus" class="mt-4 p-3 rounded-lg hidden" style="background-color: rgba(168, 136, 199, 0.15); border: 2px solid #a888c7;">
+        <h4 class="text-md font-bold mb-2 text-center" style="color: #a888c7;">Ready Status:</h4>
+        <div class="text-sm text-center">
+        <span style="color: #f0c35a; font-weight: bold;">Both players must be ready to start the game</span>
+        </div>
+        </div>
         </div>
         
         <!-- Game controls (hidden until connected) -->
@@ -661,22 +667,8 @@ const routes: Record<string, Route> = {
               ✋ Ready Up!
             </button>
             <button id="startOnlineBtn" class="retro-btn hover-green flex-1 hidden" disabled>
-              🚀 Start Game
+              Launch Game
             </button>
-          </div>
-        </div>
-        
-        <!-- Players list (hidden until connected) -->
-        <div id="playersInfo" class="hidden mb-6 p-4 bg-gray-800 rounded-lg">
-          <h3 class="text-lg font-bold mb-2">Players:</h3>
-          <div id="playersList" class="text-gray-300">
-            No players connected
-          </div>
-          <div id="readyStatus" class="mt-4 p-3 bg-gray-700 rounded-lg hidden">
-            <h4 class="text-md font-bold mb-2 text-center">Ready Status:</h4>
-            <div class="text-sm text-center">
-              <span class="text-orange-400">Both players must be ready to start the game</span>
-            </div>
           </div>
         </div>
         
@@ -699,6 +691,13 @@ const routes: Record<string, Route> = {
             </button>
           </div>
         </div>
+      </div>
+      
+      <!-- Bouton retour en dehors de la box -->
+      <div class="mt-6">
+        <button id="backFromOnlineBtn" class="retro-btn-small hover-blue">
+          Back to Menu
+        </button>
       </div>
     </div>
   `,

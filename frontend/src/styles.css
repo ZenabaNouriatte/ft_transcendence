@@ -213,6 +213,18 @@ body {
   margin: 0 auto;
 }
 
+/* Boîte de formulaire avec bordure violette (page Online) */
+.form-box-purple {
+  background-color: rgba(251, 222, 156, 0.6);
+  padding: 2.5rem;
+  border-radius: 16px;
+  border: 7px solid #a888c7;
+  box-shadow: 0 4px 12px rgba(168, 136, 199, 0.3);
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto;
+}
+
 /* Boîte de formulaire avec bordure bleue (page Profile) */
 .form-box-blue {
   background-color: rgba(251, 222, 156, 0.6);
@@ -603,6 +615,10 @@ input.styled-input.logged-user-tournament:focus {
 
 .page-title-orange {
   color: #f0c35a; /* Couleur orange déjà utilisée sur la page Tournament */
+}
+
+.page-title-purple {
+  color: #a888c7; /* Couleur violette foncée comme l'ombre du bouton online */
 }
 
 .page-title-blue {
