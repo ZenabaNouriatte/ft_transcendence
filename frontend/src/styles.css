@@ -36,6 +36,28 @@ body {
   white-space: nowrap;
 }
 
+/* Bouton retro plus large pour Tournament */
+.retro-btn-wide {
+  background-color: #f0e6d6;
+  color: #6d5a42;
+  font-size: 18px;
+  font-family: monospace, sans-serif;
+  padding: 16px 50px; /* Plus de padding horizontal */
+  border: 2px solid #8b7355;
+  border-radius: 50px;
+  cursor: pointer;
+  box-shadow: 0px 6px 0px #4a3c2a;
+  transition: all 0.15s ease;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 190px; /* Plus large que le retro-btn normal */
+  white-space: nowrap;
+}
+
 /* Version petite du bouton retro */
 .retro-btn-small {
   background-color: #f0e6d6;
@@ -134,7 +156,7 @@ body {
 /* Boîte de sélection du mode de jeu */
 .game-selection-box {
   background-color: rgba(251, 222, 156, 0.6);
-  padding: 2.5rem;
+  padding: 3.5rem 2.5rem; /* Plus de padding vertical */
   border-radius: 16px;
   border: 3px solid #8b7355;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -359,7 +381,7 @@ input.styled-input.logged-user-tournament:focus {
 .game-buttons-container {
   display: flex;
   flex-direction: row;
-  gap: 1.5rem;
+  gap: 1rem; /* Réduit de 1.5rem à 1rem */
   justify-content: center;
   align-items: center;
 }
@@ -409,7 +431,8 @@ input.styled-input.logged-user-tournament:focus {
 }
 
 /* Hover spécial orange pour le bouton tournament */
-.retro-btn.hover-orange:hover {
+.retro-btn.hover-orange:hover,
+.retro-btn-wide.hover-orange:hover {
   background-color: #f7c94d;
   color: #fff;
   transform: translateY(-2px);
@@ -417,10 +440,43 @@ input.styled-input.logged-user-tournament:focus {
 }
 
 /* Active spécial orange pour le bouton tournament */
-.retro-btn.hover-orange:active {
+.retro-btn.hover-orange:active,
+.retro-btn-wide.hover-orange:active {
   background-color: #f0b935;
   color: #fff;
   box-shadow: 0px 2px 0px #d4a330;
+  transform: translateY(4px);
+}
+
+/* Hover spécial violet pastel pour le bouton online */
+.retro-btn.hover-purple:hover {
+  background-color: #d4b5e8; /* Violet pastel */
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0px 8px 0px #a888c7;
+}
+
+/* Active spécial violet pastel pour le bouton online */
+.retro-btn.hover-purple:active {
+  background-color: #c19fd9;
+  color: #fff;
+  box-shadow: 0px 2px 0px #a888c7;
+  transform: translateY(4px);
+}
+
+/* Hover spécial rouge pour le bouton cancel */
+.retro-btn.hover-red:hover {
+  background-color: #ee8989;
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0px 8px 0px #b15b5b;
+}
+
+/* Active spécial rouge pour le bouton cancel */
+.retro-btn.hover-red:active {
+  background-color: #e87575;
+  color: #fff;
+  box-shadow: 0px 2px 0px #b15b5b;
   transform: translateY(4px);
 }
 
@@ -828,16 +884,14 @@ input.styled-input.logged-user-tournament:focus {
 }
 
 .retro-btn-round:hover {
-  background-color: #8fb5d9;
-  color: #fff;
+  background-color: #e8dcc8; /* Beige classique au lieu de bleu */
   transform: translateY(-2px);
-  box-shadow: 0px 8px 0px #7998b6;
+  box-shadow: 0px 8px 0px #4a3c2a;
 }
 
 .retro-btn-round:active {
-  background-color: #7f94cd;
-  color: #fff;
-  box-shadow: 0px 2px 0px #6e85c1;
+  background-color: #d9c9ad; /* Beige un peu plus foncé */
+  box-shadow: 0px 2px 0px #4a3c2a;
   transform: translateY(4px);
 }
 
@@ -1021,27 +1075,80 @@ input.styled-input.logged-user-tournament:focus {
 }
 
 /* Chat styles */
+/* Conteneur principal du chat avec bordure orange */
+.chat-window-container {
+  background-color: rgba(251, 222, 156, 0.85); /* #fbde9c avec transparence */
+  border: 3px solid #f99256;
+  box-shadow: 0 8px 32px rgba(249, 146, 86, 0.3);
+}
+
+/* Header du chat */
+.chat-header {
+  background-color: #f99256; /* Orange comme le bouton */
+  border-bottom: 2px solid #e57a3d; /* Orange plus foncé pour la bordure */
+  border-radius: 0.5rem 0.5rem 0 0;
+}
+
+/* Zone des messages avec transparence */
+.chat-messages-bg {
+  background-color: rgba(251, 222, 156, 0.6); /* Plus transparent pour contraster avec les messages */
+}
+
+/* Messages individuels - opaques */
 .chat-message {
-  background-color: rgba(30, 41, 59, 0.8);
-  border-left: 3px solid #22d3ee;
-  padding: 8px 12px;
-  border-radius: 6px;
+  background-color: rgb(241, 226, 191);
+  border-left: 4px solid #f99256;
+  padding: 10px 14px;
+  border-radius: 8px;
   font-size: 14px;
+  box-shadow: 0 2px 4px rgba(249, 146, 86, 0.2);
 }
 
 .chat-username {
-  color: #22d3ee;
+  color: #d97838; /* Orange plus foncé pour la lisibilité */
   font-weight: bold;
   margin-right: 8px;
 }
 
 .chat-text {
-  color: #ffffff;
+  color: #1a1a1a; /* Texte noir pour contraste sur fond clair */
 }
 
 .chat-time {
-  color: #94a3b8;
+  color: #8b6f47; /* Marron clair pour l'heure */
   font-size: 12px;
   float: right;
   margin-left: 12px;
 }
+
+/* Zone d'input */
+.chat-input-area {
+  background-color: #fbde9c;
+  border-top: 2px solid #f99256;
+  border-radius: 0 0 0.5rem 0.5rem;
+}
+
+.chat-input-field {
+  background-color: #ffffff;
+  border: 2px solid #f99256;
+  color: #1a1a1a;
+}
+
+.chat-input-field:focus {
+  border-color: #e57a3d;
+  box-shadow: 0 0 0 3px rgba(249, 146, 86, 0.2);
+}
+
+.chat-send-btn {
+  background-color: #f99256;
+  color: white;
+  border: 2px solid #e57a3d;
+  transition: all 0.3s ease;
+}
+
+.chat-send-btn:hover {
+  background-color: #e57a3d;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(249, 146, 86, 0.3);
+}
+

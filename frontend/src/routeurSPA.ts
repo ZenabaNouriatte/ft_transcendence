@@ -39,32 +39,27 @@ const Presence = (() => {
 
     sock.onopen = () => console.log('[presence]✅ WebSocket opened');
     sock.onmessage = (e) => {
-      console.log('[presence] msg:', e.data);
+      console.log('[WS] Message received:', e.data);
       
       // Ignorer les messages non-JSON comme "hello: connected"
       if (!e.data.startsWith('{')) {
-        console.log('[chat] Ignoring non-JSON message');
         return;
       }
       
-      // Gestion des messages de chat
       try {
         const data = JSON.parse(e.data);
-        console.log('[chat] Parsed data:', data);
-        console.log('[chat] data.type:', data.type);
+        console.log('[WS] Parsed data type:', data.type);
+        
         if (data.type === 'chat.message') {
-          console.log('[chat] ✅ Chat message detected!');
-          console.log('[chat] username:', data.username);
-          console.log('[chat] message:', data.message);
+          console.log('[CHAT] Message reçu:', data);
           // Nouveau message de chat reçu
           const newMessage = {
-            username: data.username || 'Anonymous',
+            username: data.username || 'Anonyme',
             message: data.message || '',
             timestamp: new Date()
           };
-          console.log('[chat] New message object:', newMessage);
           chatMessages.push(newMessage);
-          console.log('[chat] Total messages:', chatMessages.length);
+          console.log('[CHAT] Total messages:', chatMessages.length);
           updateChatDisplay();
         }
       } catch (error) {
@@ -101,10 +96,13 @@ const Presence = (() => {
   }
 
   function send(message: any) {
+    console.log('[Presence] send called, sock state:', sock?.readyState);
+    console.log('[Presence] WebSocket.OPEN constant:', WebSocket.OPEN);
     if (sock && sock.readyState === WebSocket.OPEN) {
+      console.log('[Presence] Sending message:', JSON.stringify(message));
       sock.send(JSON.stringify(message));
     } else {
-      console.warn('[presence] Cannot send message: WebSocket not connected');
+      console.error('[presence] Cannot send message: WebSocket not connected. State:', sock?.readyState);
     }
   }
 
@@ -118,15 +116,17 @@ window.addEventListener('beforeunload', () => {
 
 // ===== Système de Chat =====
 function updateChatDisplay() {
-  console.log('[chat] updateChatDisplay called, messages:', chatMessages.length);
+  console.log('[CHAT] updateChatDisplay called');
   const chatMessagesContainer = document.getElementById('chatMessages');
-  console.log('[chat] Container element:', chatMessagesContainer);
+  console.log('[CHAT] Container found:', !!chatMessagesContainer);
+  console.log('[CHAT] Messages to display:', chatMessages.length);
+  
   if (!chatMessagesContainer) {
-    console.warn('[chat] ⚠️ chatMessages container not found!');
+    console.error('[CHAT] Container #chatMessages not found!');
     return;
   }
 
-  chatMessagesContainer.innerHTML = chatMessages
+  const html = chatMessages
     .slice(-50) // Garde seulement les 50 derniers messages
     .map(msg => `
       <div class="chat-message">
@@ -136,19 +136,28 @@ function updateChatDisplay() {
       </div>
     `).join('');
   
+  console.log('[CHAT] Generated HTML length:', html.length);
+  chatMessagesContainer.innerHTML = html;
+  
   // Scroll automatique vers le bas
   chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
 }
 
 function sendChatMessage(message: string) {
-  if (!message.trim()) return;
+  console.log('[CHAT] sendChatMessage called with:', message);
+  if (!message.trim()) {
+    console.log('[CHAT] Message empty, not sending');
+    return;
+  }
   
-  Presence.send({
+  const payload = {
     type: 'chat.message',
     data: {
       message: message.trim()
     }
-  });
+  };
+  console.log('[CHAT] Sending payload:', payload);
+  Presence.send(payload);
 }
 
 function toggleChat() {
@@ -169,29 +178,29 @@ function getChatOverlayHTML(): string {
   return `
     <!-- Chat Overlay -->
     <div id="chatOverlay" class="fixed inset-0 bg-black bg-opacity-50 z-50" style="display: none;">
-      <div class="fixed right-4 top-4 bottom-4 w-80 bg-slate-900 border-2 border-cyan-400 rounded-lg flex flex-col">
+      <div class="fixed right-4 top-4 bottom-4 w-96 rounded-lg flex flex-col chat-window-container">
         <!-- Header -->
-        <div class="flex justify-between items-center p-4 border-b border-cyan-400">
-          <h3 class="text-cyan-400 font-bold">Chat Global</h3>
-          <button id="closeChatBtn" class="text-white hover:text-red-400 text-xl">&times;</button>
+        <div class="flex justify-between items-center p-4 chat-header">
+          <h3 class="font-bold text-xl text-white">💬 Chat Global</h3>
+          <button id="closeChatBtn" class="text-white hover:text-red-200 text-2xl font-bold">&times;</button>
         </div>
         
         <!-- Messages Container -->
-        <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-2">
+        <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-2 chat-messages-bg">
           <!-- Messages will be added here dynamically -->
         </div>
         
         <!-- Input Area -->
-        <div class="p-4 border-t border-cyan-400">
-          <div class="flex gap-2">
+        <div class="p-4 chat-input-area">
+          <div class="flex gap-2 items-center justify-center">
             <input 
               id="chatInput" 
               type="text" 
               placeholder="Tapez votre message..." 
-              class="flex-1 bg-slate-800 border border-cyan-400 text-white px-3 py-2 rounded focus:outline-none focus:border-cyan-300"
+              class="flex-1 px-3 py-2 rounded focus:outline-none chat-input-field"
               maxlength="500"
             >
-            <button id="sendChatBtn" class="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded font-bold">
+            <button id="sendChatBtn" class="px-6 py-2 rounded font-bold chat-send-btn whitespace-nowrap">
               Envoyer
             </button>
           </div>
@@ -556,11 +565,11 @@ const routes: Record<string, Route> = {
     const authButtons = isLoggedIn 
       ? `<!-- Boutons utilisateur connecté en haut à droite -->
          <div class="fixed top-8 right-8 z-10 flex gap-3">
-           <button id="chatBtn" class="retro-btn hover-green" title="Chat">
-             💬
+           <button id="chatBtn" class="retro-btn-round" title="Chat">
+             <img class="btn-icon-round" src="/images/chat-removebg-preview.png" alt="Chat">
            </button>
            <button id="findFriendsBtn" class="retro-btn-round">
-             <img class="btn-icon-round" src="/images/search.png">
+             <img class="btn-icon-round" src="/images/search.png" alt="Search">
            </button>
            <button id="userProfileBtn" class="retro-btn hover-blue flex items-center gap-2">
              <div id="userMiniAvatar" class="mini-avatar" style="background-image: url('/images/1.JPG')"></div>
@@ -590,11 +599,11 @@ const routes: Record<string, Route> = {
             <button id="classicBtn" class="retro-btn hover-green">
               <img class="btn-icon" src="/images/classic.png" alt="Classic">CLASSIC
             </button>
-            <button id="onlineBtn" class="retro-btn hover-blue">
-              <img class="btn-icon" src="/images/remote.png" alt="Online">ONLINE
-            </button>
-            <button id="tournamentBtn" class="retro-btn hover-orange">
+            <button id="tournamentBtn" class="retro-btn-wide hover-orange">
               <img class="btn-icon" src="/images/tournament.png" alt="Tournament">TOURNAMENT
+            </button>
+            <button id="onlineBtn" class="retro-btn hover-purple">
+              <img class="btn-icon" src="/images/remote.png" alt="Online">ONLINE
             </button>
           </div>
         </div>
@@ -1020,7 +1029,7 @@ const routes: Record<string, Route> = {
           
           <!-- Boutons actions -->
           <div class="mt-8 flex gap-4">
-            <button id="editProfileBtn" class="retro-btn hover-blue">
+            <button id="editProfileBtn" class="retro-btn">
               Edit Profile
             </button>
             <button id="logoutBtn" class="retro-btn">
@@ -1079,8 +1088,8 @@ const routes: Record<string, Route> = {
             <div id="editProfileSuccess" class="success-message" style="display: none;"></div>
             
             <div class="modal-buttons">
-              <button type="submit" class="retro-btn hover-blue">Save Changes</button>
-              <button type="button" id="cancelModalBtn" class="retro-btn">Cancel</button>
+              <button type="submit" class="retro-btn hover-green">Save Changes</button>
+              <button type="button" id="cancelModalBtn" class="retro-btn hover-red">Cancel</button>
             </div>
           </form>
         </div>
@@ -1347,20 +1356,24 @@ async function render() {
       });
       
       document.getElementById("sendChatBtn")?.addEventListener("click", () => {
-        const chatInput = document.getElementById("chatInput") as HTMLInputElement;
-        if (chatInput) {
-          sendChatMessage(chatInput.value);
-          chatInput.value = '';
+        console.log('[CHAT] Send button clicked');
+        const input = document.getElementById("chatInput") as HTMLInputElement;
+        console.log('[CHAT] Input element:', input);
+        console.log('[CHAT] Input value:', input?.value);
+        if (input && input.value.trim()) {
+          sendChatMessage(input.value);
+          input.value = '';
         }
       });
-      
+
       // Envoyer message avec Entrée
       document.getElementById("chatInput")?.addEventListener("keypress", (e) => {
-        if ((e as KeyboardEvent).key === "Enter") {
-          const chatInput = document.getElementById("chatInput") as HTMLInputElement;
-          if (chatInput) {
-            sendChatMessage(chatInput.value);
-            chatInput.value = '';
+        if (e.key === 'Enter') {
+          console.log('[CHAT] Enter key pressed');
+          const input = e.target as HTMLInputElement;
+          if (input && input.value.trim()) {
+            sendChatMessage(input.value);
+            input.value = '';
           }
         }
       });

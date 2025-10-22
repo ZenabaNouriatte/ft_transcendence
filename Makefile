@@ -28,4 +28,4 @@ build:
 restart: clean build up
 
 front-build:
-	cd frontend && npm install && npm run build
+	cd frontend && npm install && npm run build && docker compose build frontend && docker compose up -d frontend

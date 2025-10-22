@@ -262,6 +262,12 @@ export function registerRawWs(app: FastifyInstance) {
       return;
     }
 
+    // Add to chat connections if this is a chat channel
+    if ((ws as any)._channel === "chat") {
+      chatConnections.add(ws);
+      console.log('[chat] Added WebSocket to chatConnections. Total:', chatConnections.size);
+    }
+
     // 2.d) Safe send utility
     const safeSend = (objOrString: any) => {
       const payload = typeof objOrString === "string" ? objOrString : JSON.stringify(objOrString);
@@ -278,6 +284,12 @@ export function registerRawWs(app: FastifyInstance) {
     ws.on("close", (code: number, reason: Buffer) => {
       try { wsConnections.dec(); } catch {}
       updateGauge(wss);
+
+      // Clean up chat connections
+      if ((ws as any)._channel === "chat") {
+        chatConnections.delete(ws);
+        console.log('[chat] Removed WebSocket from chatConnections. Total:', chatConnections.size);
+      }
 
       let left = -1;
       if (ws.ctx?.userId) {
