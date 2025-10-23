@@ -22,6 +22,7 @@ export interface Player {
   username: string;
   paddle: 'left' | 'right';  // Quel paddle contrôle ce joueur
   connected: boolean;
+  ready?: boolean;  // Statut "prêt" du joueur avant le début de la partie
 }
 
 export interface GameRoom {
