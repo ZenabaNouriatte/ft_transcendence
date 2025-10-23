@@ -10,6 +10,10 @@ services:
     depends_on:
       frontend: { condition: service_started }
       gateway:  { condition: service_started }
+      grafana: { condition: service_started }
+      prometheus: { condition: service_started }
+      alertmanager: { condition: service_started }
+      kibana: { condition: service_started }
     healthcheck:
       test: ["CMD-SHELL", "curl -kfsS https://localhost/healthz >/dev/null || exit 1"]
       interval: 10s
@@ -104,7 +108,9 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --web.enable-lifecycle
-    ports: ["9090:9090"]
+      - --web.external-url=https://localhost:8443/prometheus/
+      - --web.route-prefix=/
+    ports: ["9090"]
     volumes:
       - prometheus-data:/prometheus
     restart: unless-stopped
@@ -114,7 +120,9 @@ services:
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
-    ports: ["9093:9093"]
+      - --web.external-url=https://localhost:8443/alertmanager/
+      - --web.route-prefix=/
+    ports: ["9093"]
     volumes:
       - alertmanager-data:/alertmanager
     restart: unless-stopped
@@ -123,7 +131,7 @@ services:
     build: ./monitoring/grafana
     env_file: 
       - .env
-    ports: ["3000:3000"]
+    ports: ["3000"]
     volumes:
       - grafana-data:/var/lib/grafana           # ✅ data persistante
     depends_on: [prometheus]
@@ -142,7 +150,7 @@ services:
       - xpack.security.http.ssl.enabled=false      
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
     ports:
-      - "127.0.0.1:9200:9200"
+      - "9200"
     volumes:
       - esdata:/usr/share/elasticsearch/data
     healthcheck:
@@ -159,7 +167,7 @@ services:
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
     ports:
-      - "127.0.0.1:5601:5601"
+      - "5601"
 
   logstash:
     build: ./monitoring/elk/logstash
@@ -167,7 +175,7 @@ services:
       elasticsearch:
         condition: service_healthy
     ports:
-      - "127.0.0.1:5000:5000"
+      - "5000"
     environment:
       - LS_JAVA_OPTS=-Xms256m -Xmx256m
       - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
