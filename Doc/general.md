@@ -20,11 +20,11 @@ WebSocket : https://localhost:8443/ws-test.html
 
 Grafana : http://localhost:3000 (admin/admin)
 
-Prometheus : http://localhost:9090
+Prometheus : https://localhost:9090
 
-Kibana : http://localhost:5601
+Kibana : https://localhost:5601
 
-Alertmanager : http://localhost:9093
+Alertmanager : https://localhost:9093
 
 ## Structure du projet
 
