@@ -123,9 +123,13 @@ services:
     build: ./monitoring/grafana
     env_file: 
       - .env
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
     ports: ["3000:3000"]
     volumes:
-      - grafana-data:/var/lib/grafana           # ✅ data persistante
+      - grafana-data:/var/lib/grafana        
+      - grafana-certs:/etc/grafana/certs   
     depends_on: [prometheus]
     restart: unless-stopped
 
@@ -177,6 +181,7 @@ services:
 volumes:
   certs: {}
   grafana-data: {}
+  grafana-certs: {}
   prometheus-data: {}
   esdata: {}
   sqlite_data: {}

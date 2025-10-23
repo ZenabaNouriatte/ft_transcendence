@@ -1,3 +1,19 @@
 FROM grafana/grafana:11.2.0
+
+USER root
+
+# Installer OpenSSL
+RUN apk add --no-cache openssl
+
+# Copier les fichiers de configuration
 COPY provisioning/ /etc/grafana/provisioning/
 COPY dashboards/ /var/lib/grafana/dashboards/
+COPY provisioning/orgs/org.yml /etc/grafana/provisioning/orgs/org.yml
+COPY grafana.ini /etc/grafana/grafana.ini
+COPY entrypoint.sh /entrypoint.sh
+
+# Créer le répertoire pour les certificats et rendre le script exécutable
+RUN mkdir -p /etc/grafana/certs && \
+    chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
