@@ -1,22 +1,2 @@
 FROM prom/alertmanager:v0.27.0
-
-USER root
-RUN apt-get update && apt-get install -y openssl
-
-# Créer le répertoire pour les certificats
-RUN mkdir -p /etc/alertmanager/certs
-
-# Générer un certificat auto-signé
-RUN openssl req -x509 -newkey rsa:4096 -keyout /etc/alertmanager/certs/alertmanager.key \
-    -out /etc/alertmanager/certs/alertmanager.crt -days 365 -nodes \
-    -subj "/CN=localhost"
-
 COPY alertmanager.yml /etc/alertmanager/alertmanager.yml
-
-USER nobody
-
-ENTRYPOINT [ "/bin/alertmanager", \
-             "--config.file=/etc/alertmanager/alertmanager.yml", \
-             "--web.listen-address=:9093", \
-             "--web.cert-file=/etc/alertmanager/certs/alertmanager.crt", \
-             "--web.key-file=/etc/alertmanager/certs/alertmanager.key" ]

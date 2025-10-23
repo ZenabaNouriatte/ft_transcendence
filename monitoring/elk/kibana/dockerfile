@@ -1,21 +1,2 @@
 FROM docker.elastic.co/kibana/kibana:8.14.3
-
-USER root
-
-# Installer OpenSSL
-RUN apt-get update && apt-get install -y openssl
-
-# Créer le répertoire pour les certificats
-RUN mkdir -p /usr/share/kibana/config/certs
-
-# Générer un certificat auto-signé
-RUN openssl req -x509 -newkey rsa:4096 -keyout /usr/share/kibana/config/certs/kibana.key \
-    -out /usr/share/kibana/config/certs/kibana.crt -days 365 -nodes \
-    -subj "/CN=localhost"
-
 COPY kibana.yml /usr/share/kibana/config/kibana.yml
-
-# Fixer les permissions
-RUN chown -R kibana:kibana /usr/share/kibana/config/certs
-
-USER kibana
