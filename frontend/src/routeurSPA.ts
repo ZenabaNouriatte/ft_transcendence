@@ -666,9 +666,6 @@ const routes: Record<string, Route> = {
             <button id="readyBtn" class="retro-btn hover-orange flex-1">
               ✋ Ready Up!
             </button>
-            <button id="startOnlineBtn" class="retro-btn hover-green flex-1 hidden" disabled>
-              Launch Game
-            </button>
           </div>
         </div>
         
@@ -1510,7 +1507,6 @@ async function render() {
     const gameArea = document.getElementById("onlineGameArea") as HTMLElement;
     const canvas = document.getElementById("onlineCanvas") as HTMLCanvasElement;
     const readyBtn = document.getElementById("readyBtn") as HTMLButtonElement;
-    const startBtn = document.getElementById("startOnlineBtn") as HTMLButtonElement;
     const readyStatus = document.getElementById("readyStatus") as HTMLElement;
     
     // Fonction pour mettre à jour le statut
@@ -1537,21 +1533,11 @@ async function render() {
       const statusDiv = readyStatus.querySelector('.text-sm.text-center');
       
       if (readyCount === totalPlayers && totalPlayers === 2) {
-        // Tous les joueurs sont prêts - activer le bouton Start
-        if (statusDiv) statusDiv.innerHTML = '<span class="text-green-400">🟢 Both players ready! Game can start!</span>';
-        if (startBtn) {
-          startBtn.classList.remove('hidden');
-          startBtn.disabled = false;
-          startBtn.classList.add('animate-pulse');
-        }
+        // Tous les joueurs sont prêts - le jeu va démarrer automatiquement
+        if (statusDiv) statusDiv.innerHTML = '<span class="text-green-400">🟢 Both players ready! Starting game...</span>';
       } else {
         // En attente d'autres joueurs
         if (statusDiv) statusDiv.innerHTML = `<span class="text-orange-400">Ready: ${readyCount}/${totalPlayers} players</span>`;
-        if (startBtn) {
-          startBtn.classList.add('hidden');
-          startBtn.disabled = true;
-          startBtn.classList.remove('animate-pulse');
-        }
       }
       
       // Mettre à jour le texte du bouton Ready
@@ -1748,7 +1734,7 @@ async function render() {
     }
     
     // Fonction pour gérer les messages reçus
-    function handleGameMessage(message: any) {
+    async function handleGameMessage(message: any) {
       switch (message.type) {
         case 'game.created':
           currentRoomId = message.data.gameId;
@@ -1767,6 +1753,26 @@ async function render() {
         case 'game.joined':
           currentRoomId = message.data.gameId;
           updateStatus(`🟢 Joined room: ${currentRoomId}`, 'text-green-400');
+          
+          console.log(`[Debug] game.joined received - currentUserId: ${currentUserId}, data:`, message.data);
+          
+          // Mettre à jour la liste des joueurs si elle est fournie
+          if (message.data && message.data.players) {
+            await updatePlayersList(message.data);
+            
+            // Déterminer le numéro de joueur actuel
+            if (currentUserId) {
+              const currentPlayer = message.data.players.find((p: any) => p.id === currentUserId);
+              if (currentPlayer) {
+                currentPlayerNumber = currentPlayer.paddle === 'left' ? 1 : 2;
+                console.log(`[Debug] ✅ Joined as player ${currentPlayerNumber} with paddle ${currentPlayer.paddle}, userId: ${currentUserId}`);
+              } else {
+                console.warn(`[Debug] ❌ Could not find currentPlayer in players list. UserId: ${currentUserId}, Players:`, message.data.players);
+              }
+            } else {
+              console.warn(`[Debug] ❌ currentUserId is null`);
+            }
+          }
           break;
           
         case 'game.started':
@@ -1790,6 +1796,21 @@ async function render() {
           break;
           
         case 'game_state':
+          // Gérer le countdown
+          if (message.data && typeof message.data.countdown === 'number') {
+            if (message.data.countdown > 0) {
+              updateStatus(`⏱️ Starting in ${message.data.countdown}...`, 'text-yellow-400');
+              // Afficher le canvas et masquer les contrôles dès le countdown
+              if (gameControls) gameControls.classList.add('hidden');
+              if (playersInfo) playersInfo.classList.add('hidden');
+              if (gameArea) gameArea.classList.remove('hidden');
+              initializeGameCanvas();
+            } else if (message.data.countdown === 0) {
+              updateStatus('🚀 GO!', 'text-green-400');
+            }
+            break;
+          }
+          
           // Mettre à jour l'état du jeu sur le canvas
           if (message.data && message.data.state) {
             renderGameState(message.data.state);
@@ -1797,16 +1818,17 @@ async function render() {
           
           // Mettre à jour la liste des joueurs si disponible
           if (message.data && message.data.players) {
-            updatePlayersList(message.data);
+            await updatePlayersList(message.data);
             
-            // Déterminer le numéro de joueur actuel
+            // Déterminer le numéro de joueur actuel basé sur le paddle
             if (currentUserId) {
               const currentPlayer = message.data.players.find((p: any) => p.id === currentUserId);
               if (currentPlayer) {
-                // Mapping inversé pour corriger les contrôles
-                const newPlayerNumber = currentPlayer.paddle === 'left' ? 2 : 1;
+                // Mapping correct : left = joueur 1, right = joueur 2
+                const newPlayerNumber = currentPlayer.paddle === 'left' ? 1 : 2;
                 if (currentPlayerNumber !== newPlayerNumber) {
                   currentPlayerNumber = newPlayerNumber;
+                  console.log(`[Debug] Player number set to ${currentPlayerNumber} for paddle ${currentPlayer.paddle}`);
                 }
               }
             }
@@ -1814,9 +1836,16 @@ async function render() {
           break;
           
         case 'player_joined':
-        case 'player_left':
+          console.log('[Debug] 📥 player_joined received:', message.data);
           // Mettre à jour la liste des joueurs
-          updatePlayersList(message.data);
+          await updatePlayersList(message.data);
+          console.log('[Debug] ✅ updatePlayersList called after player_joined');
+          break;
+          
+        case 'player_left':
+          console.log('[Debug] 📤 player_left received:', message.data);
+          // Mettre à jour la liste des joueurs
+          await updatePlayersList(message.data);
           break;
           
         case 'game_ended':
@@ -1954,8 +1983,10 @@ async function render() {
     
     // Fonction pour mettre à jour la liste des joueurs
     async function updatePlayersList(data: any) {
+      console.log('[Debug] 📋 updatePlayersList called with data:', data);
       if (playersList) {
         if (data && data.players && data.players.length > 0) {
+          console.log('[Debug] ✅ Updating players list with', data.players.length, 'players');
           // Mettre à jour la liste des joueurs dans room
           playersInRoom = data.players;
           
@@ -2088,22 +2119,6 @@ async function render() {
       }
     });
     
-    document.getElementById("startOnlineBtn")?.addEventListener('click', () => {
-      if (currentRoomId) {
-        // Afficher immédiatement la zone de jeu pour plus de fluidité
-        updateStatus('🚀 Démarrage du jeu...', 'text-blue-400');
-        if (gameControls) gameControls.classList.add('hidden');
-        if (playersInfo) playersInfo.classList.add('hidden');
-        if (gameArea) gameArea.classList.remove('hidden');
-        
-        // Initialiser le canvas immédiatement
-        initializeGameCanvas();
-        
-        // Envoyer la demande de démarrage au serveur
-        sendMessage({ type: 'game.start', data: { gameId: currentRoomId } });
-      }
-    });
-    
     document.getElementById("readyBtn")?.addEventListener('click', () => {
       if (!currentRoomId || !currentUserId) return;
       
@@ -2178,6 +2193,7 @@ async function render() {
       }
       
       if (direction && currentPlayerNumber) {
+        console.log(`[Debug] Sending input - Player: ${currentPlayerNumber}, Direction: ${direction}, RoomId: ${currentRoomId}`);
         sendMessage({
           type: 'game.input',
           data: {
@@ -2186,6 +2202,8 @@ async function render() {
             direction: direction
           }
         });
+      } else if (direction && !currentPlayerNumber) {
+        console.warn(`[Debug] Cannot send input - currentPlayerNumber is null. UserId: ${currentUserId}`);
       }
     }
     

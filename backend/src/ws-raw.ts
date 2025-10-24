@@ -573,7 +573,9 @@ export function registerRawWs(app: FastifyInstance) {
             if (gameRoomManager) {
               const room = gameRoomManager.getRoom(gameId);
               if (room) {
-                room.movePaddle(player, direction);
+                // Convertir le numéro de joueur en position de paddle
+                const paddleSide: 'left' | 'right' = player === 1 ? 'left' : 'right';
+                room.movePaddle(paddleSide, direction as any);
               }
             }
             
@@ -658,49 +660,35 @@ export function registerRawWs(app: FastifyInstance) {
                   console.error(`❌ [Auto-join] Failed to get creator username for user ${creatorId}:`, error);
                 }
                 
+                // IMPORTANT: Configurer le WebSocket AVANT addPlayer pour recevoir le broadcast
+                // Store gameId in WebSocket context for cleanup
+                (ws as any)._gameId = gameId;
+                (ws as any)._userId = creatorId;
+                
+                // Add WebSocket to game connections
+                if (!gameConnections.has(gameId)) {
+                  gameConnections.set(gameId, new Set());
+                }
+                gameConnections.get(gameId)!.add(ws);
+                
+                // Set up message handler for this room
+                const messageHandler = (message: any) => {
+                  broadcastToGame(gameId, message);
+                };
+                room.addMessageHandler(messageHandler);
+                (ws as any)._gameMessageHandler = messageHandler;
+                
+                // Maintenant ajouter le joueur (le broadcast sera reçu)
                 const joined = room.addPlayer(creatorId, creatorUsername);
                 
                 if (joined) {
                   console.log(`✅ [Auto-join] Creator ${creatorUsername} (${creatorId}) auto-joined room ${gameId}`);
-                  
-                  // Store gameId in WebSocket context for cleanup
-                  (ws as any)._gameId = gameId;
-                  (ws as any)._userId = creatorId;
-                  
-                  // Add WebSocket to game connections
-                  if (!gameConnections.has(gameId)) {
-                    gameConnections.set(gameId, new Set());
-                  }
-                  gameConnections.get(gameId)!.add(ws);
-                  
-                  // Set up message handler for this room
-                  const messageHandler = (message: any) => {
-                    broadcastToGame(gameId, message);
-                  };
-                  room.addMessageHandler(messageHandler);
-                  (ws as any)._gameMessageHandler = messageHandler;
                   
                   // Envoyer la confirmation de création ET de join
                   safeSend({ 
                     type: "game.created", 
                     data: { gameId, autoJoined: true }, 
                     requestId 
-                  });
-                  
-                  // Diffuser l'événement de join à tous les clients de la room
-                  broadcastToGame(gameId, {
-                    type: 'game.joined',
-                    gameId,
-                    data: {
-                      gameId,
-                      players: Array.from(room.getPlayers().values()).map((p: any) => ({
-                        id: p.id,
-                        username: p.username,
-                        paddle: p.paddle,
-                        ready: p.ready
-                      }))
-                    },
-                    timestamp: Date.now()
                   });
                 } else {
                   // Si le join a échoué, envoyer juste la création
