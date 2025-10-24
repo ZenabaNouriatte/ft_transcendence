@@ -142,21 +142,20 @@ services:
 
   elasticsearch:
     build: ./monitoring/elk/elasticsearch
-    env_file: 
-      - .env
+#    env_file: 
+#      - .env
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=true
       - ES_JAVA_OPTS=-Xms256m -Xmx256m
       - xpack.security.transport.ssl.enabled=false  
-      - xpack.security.http.ssl.enabled=false      
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - xpack.security.http.ssl.enabled=false          
     ports:
-      - "9200"
+      - "9200:9200"
     volumes:
       - esdata:/usr/share/elasticsearch/data
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-u", "elastic:elastic", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200 || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 30
@@ -169,7 +168,9 @@ services:
     env_file: 
       - .env
     environment:
-        ELASTICSEARCH_HOSTS: ${ELASTICSEARCH_HOSTS:-http://elasticsearch:9200}
+    - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_HOSTS:-http://elasticsearch:9200}
+    - ELASTICSEARCH_USERNAME=${KIBANA_SYSTEM_USERNAME}          
+    - ELASTICSEARCH_PASSWORD=${KIBANA_SYSTEM_PASSWORD}  
     expose: ["5601"] 
     restart: unless-stopped
 
@@ -181,8 +182,8 @@ services:
     expose: ["5000"] 
     environment:
       - LS_JAVA_OPTS=-Xms256m -Xmx256m
-      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
-      - ELASTICSEARCH_USERNAME=${ELASTIC_USERNAME}
+      - ELASTICSEARCH_USERNAME=${ELASTIC_USERNAME}                   # ← CORRIGER
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}  
     restart: unless-stopped
 
 volumes:

@@ -1,33 +1,57 @@
 #!/bin/bash
-# elk-init-docker.sh - init mot de passe kibana_system depuis un conteneur
-
+# elk-init.sh - Initialisation complète des utilisateurs Elasticsearch
 set -euo pipefail
 
-ES_USER="${ES_USER:-elastic}"
-ES_PASS="${ES_PASS:-${ELASTIC_PASSWORD:-elastic}}"
-KIBANA_SYS_PASS="${KIBANA_SYS_PASS:-kibana}"
+echo "=== Initialisation Elasticsearch Security ==="
 
-echo "Initialisation du mot de passe Kibana via Docker..."
+# Charger les variables depuis .env si présent
+if [ -f .env ]; then
+  export $(grep -v '^#' .env | xargs)
+fi
 
-# Exécute le script depuis le conteneur elasticsearch
-docker compose exec -T elasticsearch bash <<EOF
-set -e
+ELASTIC_PASSWORD="${ELASTIC_PASSWORD:-elastic123}"
+KIBANA_SYSTEM_PASSWORD="${KIBANA_SYSTEM_PASSWORD:-kibana123}"
+CONTAINER_NAME="${CONTAINER_NAME:-ft_transcendence-elasticsearch-1}"
 
-echo "Attente d'Elasticsearch..."
-for i in {1..30}; do
-  if curl -s -u "${ES_USER}:${ES_PASS}" "http://localhost:9200/_cluster/health" >/dev/null 2>&1; then
-    echo "Elasticsearch prêt !"
+echo "1. Attente du démarrage d'Elasticsearch..."
+for i in {1..60}; do
+  if docker exec "$CONTAINER_NAME" curl -s http://localhost:9200 >/dev/null 2>&1; then
+    echo "   ✓ Elasticsearch répond"
     break
   fi
-  echo "   tentative \$i/30..."
+  echo "   Tentative $i/60..."
   sleep 2
 done
 
-echo "Configuration du mot de passe kibana_system..."
-curl -s -u "${ES_USER}:${ES_PASS}" \
+echo ""
+echo "2. Configuration du mot de passe 'elastic'..."
+# Utiliser elasticsearch-reset-password en mode batch
+docker exec "$CONTAINER_NAME" \
+  /usr/share/elasticsearch/bin/elasticsearch-reset-password \
+  -u elastic -b -a -s -p "$ELASTIC_PASSWORD" || {
+    echo "   ⚠ Mot de passe 'elastic' peut-être déjà configuré"
+  }
+
+echo ""
+echo "3. Attente de la disponibilité avec auth..."
+sleep 5
+
+echo ""
+echo "4. Configuration du mot de passe 'kibana_system'..."
+docker exec "$CONTAINER_NAME" curl -s \
+  -u "elastic:$ELASTIC_PASSWORD" \
   -X POST "http://localhost:9200/_security/user/kibana_system/_password" \
   -H "Content-Type: application/json" \
-  -d '{"password":"${KIBANA_SYS_PASS}"}' >/dev/null
+  -d "{\"password\":\"$KIBANA_SYSTEM_PASSWORD\"}" || {
+    echo "   ✗ Échec de la configuration kibana_system"
+    exit 1
+  }
 
-echo "Init kibana password OK."
-EOF
+echo ""
+echo "=== ✓ Configuration terminée ==="
+echo "Utilisateurs configurés:"
+echo "  - elastic: $ELASTIC_PASSWORD"
+echo "  - kibana_system: $KIBANA_SYSTEM_PASSWORD"
+echo ""
+echo "Vous pouvez maintenant démarrer Kibana et Logstash:"
+echo "  docker-compose up -d kibana logstash"
