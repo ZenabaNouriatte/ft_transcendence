@@ -248,21 +248,41 @@ export class GameRoomInstance {
   // Terminer la partie
   private async endGame(): Promise<void> {
     this.status = 'ended';
-    const winner = this.engine.getWinner();
+    const winnerPaddle = this.engine.getWinner();
     const finalState = this.engine.getGameState();
 
-    console.log(`[Backend] Game ${this.gameId} ended. Winner: ${winner}`);
+    console.log(`[Backend] Game ${this.gameId} ended. Winner paddle: ${winnerPaddle}`);
 
-    // Sauvegarder le jeu en base pour les statistiques (seulement si on a un gagnant)
-    if (winner) {
-      await this.saveGameToDB(winner, finalState);
+    // Trouver le joueur gagnant avec son nom complet
+    let winnerPlayer = null;
+    if (winnerPaddle) {
+      // Convertir "player1"/"player2" en "left"/"right"
+      const winnerSide = winnerPaddle === 'player1' ? 'left' : 'right';
+      
+      // Trouver le joueur qui a ce paddle
+      for (const player of this.players.values()) {
+        if (player.paddle === winnerSide) {
+          winnerPlayer = {
+            id: player.id,
+            name: player.username,
+            paddle: player.paddle
+          };
+          console.log(`[Backend] Winner found: ${player.username} (${player.id})`);
+          break;
+        }
+      }
+    }
+
+    // Sauvegarder le jeu en base pour les statistiques
+    if (winnerPaddle) {
+      await this.saveGameToDB(winnerPaddle, finalState);
     }
 
     this.broadcastMessage({
       type: 'game_ended',
       gameId: this.gameId,
       data: { 
-        winner,
+        winner: winnerPlayer,  // Objet complet au lieu d'une simple string
         finalState
       },
       timestamp: Date.now()

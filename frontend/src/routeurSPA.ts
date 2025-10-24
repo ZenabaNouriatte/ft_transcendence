@@ -1752,7 +1752,15 @@ async function render() {
       switch (message.type) {
         case 'game.created':
           currentRoomId = message.data.gameId;
-          updateStatus(`🟢 Room created: ${currentRoomId}`, 'text-green-400');
+          const autoJoined = message.data.autoJoined;
+          
+          if (autoJoined) {
+            updateStatus(`🟢 Room created and joined: ${currentRoomId}`, 'text-green-400');
+            console.log(`✅ Auto-joined room ${currentRoomId}`);
+          } else {
+            updateStatus(`🟢 Room created: ${currentRoomId}`, 'text-green-400');
+          }
+          
           if (roomIdInput && currentRoomId) roomIdInput.value = currentRoomId;
           break;
           
