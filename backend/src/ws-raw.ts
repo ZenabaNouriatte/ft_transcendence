@@ -484,24 +484,28 @@ export function registerRawWs(app: FastifyInstance) {
               })
                 .then(userResponse => {
                   let username = `User${userId}`;
+                  let avatar: string | null = null;
                   
                   if (userResponse.ok) {
                     return userResponse.json().then(userData => {
                       if (userData.user && userData.user.username) {
                         username = userData.user.username;
+                        avatar = userData.user.avatar || null;
                       }
-                      return username;
+                      return { username, avatar };
                     });
                   } else {
-                    return username;
+                    return { username, avatar };
                   }
                 })
-                .then(username => {
+                .then(({ username, avatar }) => {
                   // Broadcast the message to all chat connections
-                  console.log('[chat] About to broadcast message with username:', username);
+                  console.log('[chat] About to broadcast message with username:', username, 'avatar:', avatar);
                   broadcastToChat({
                     type: "chat.message",
+                    userId: userId,
                     username: username,
+                    avatar: avatar,
                     message: messageContent,
                     timestamp: new Date().toISOString()
                   });
@@ -513,7 +517,9 @@ export function registerRawWs(app: FastifyInstance) {
                   // Still broadcast with fallback username
                   broadcastToChat({
                     type: "chat.message",
+                    userId: userId,
                     username: `User${userId}`,
+                    avatar: null,
                     message: messageContent,
                     timestamp: new Date().toISOString()
                   });

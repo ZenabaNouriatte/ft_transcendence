@@ -676,11 +676,43 @@ export class FriendshipService {
   }
 
   static async block(selfId: number, targetId: number) {
+    // Supprimer toutes les amitiés existantes entre les deux utilisateurs
     await run(
-      `INSERT OR REPLACE INTO friendships (user_id, friend_id, status)
+      `DELETE FROM friendships WHERE 
+       (user_id = ? AND friend_id = ?) OR 
+       (user_id = ? AND friend_id = ?)`,
+      [selfId, targetId, targetId, selfId]
+    );
+    
+    // Ajouter le blocage
+    await run(
+      `INSERT INTO friendships (user_id, friend_id, status)
        VALUES (?, ?, 'blocked')`,
       [selfId, targetId]
     );
+  }
+
+  static async unblock(selfId: number, targetId: number) {
+    await run(
+      `DELETE FROM friendships WHERE user_id = ? AND friend_id = ? AND status = 'blocked'`,
+      [selfId, targetId]
+    );
+  }
+
+  static async getBlockedUsers(userId: number): Promise<number[]> {
+    const results = await all(
+      `SELECT friend_id FROM friendships WHERE user_id = ? AND status = 'blocked'`,
+      [userId]
+    );
+    return results.map((r: any) => r.friend_id);
+  }
+
+  static async isBlocked(userId: number, targetId: number): Promise<boolean> {
+    const result = await get(
+      `SELECT 1 FROM friendships WHERE user_id = ? AND friend_id = ? AND status = 'blocked'`,
+      [targetId, userId]
+    );
+    return !!result;
   }
 
   static async getFriendshipStatus(userId: number, targetId: number): Promise<string | null> {

@@ -824,6 +824,74 @@ input.styled-input.logged-user-tournament:focus {
   vertical-align: middle;
 }
 
+/* Bouton Block User - Style rouge avec effet hover */
+.block-user-btn {
+  background-color: #f87171;
+  color: #9b2c2c;
+  font-size: 14px;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
+  padding: 8px 16px;
+  border: 2px solid #e11d48;
+  border-radius: 20px;
+  cursor: pointer;
+  box-shadow: 0px 3px 0px #c53030;
+  transition: all 0.15s ease;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  min-width: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.block-user-btn:hover {
+  background-color: #fd4f4f;
+  transform: translateY(-1px);
+  box-shadow: 0px 4px 0px #c53030;
+}
+
+.block-user-btn:active {
+  background-color: #fa3f3f;
+  box-shadow: 0px 1px 0px #c53030;
+  transform: translateY(2px);
+}
+
+/* Bouton Unblock User - Style vert avec effet hover */
+.unblock-user-btn {
+  background-color: #22c58e;
+  color: #086f56;
+  font-size: 14px;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
+  padding: 8px 16px;
+  border: 2px solid #059669;
+  border-radius: 20px;
+  cursor: pointer;
+  box-shadow: 0px 3px 0px #047857;
+  transition: all 0.15s ease;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  min-width: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.unblock-user-btn:hover {
+  background-color: #1da97a;
+  transform: translateY(-1px);
+  box-shadow: 0px 4px 0px #047857;
+}
+
+.unblock-user-btn:active {
+  background-color: #16a972;
+  box-shadow: 0px 1px 0px #047857;
+  transform: translateY(2px);
+}
+
 /* Boutons Accept/Decline pour les demandes d'amis */
 .accept-request-btn {
   background-color: #22c58e;

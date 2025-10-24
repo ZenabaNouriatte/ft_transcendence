@@ -1393,6 +1393,18 @@ app.post("/api/users/register", async (request, reply) => {
         return reply.code(400).send({ error: 'invalid_target' });
       }
 
+      // Vérifier si l'utilisateur est bloqué par la cible
+      const isBlocked = await FriendshipService.isBlocked(userId, targetId);
+      if (isBlocked) {
+        return reply.code(403).send({ error: 'blocked', message: 'You have been blocked by this user' });
+      }
+
+      // Vérifier si l'utilisateur a bloqué la cible
+      const hasBlocked = await FriendshipService.isBlocked(targetId, userId);
+      if (hasBlocked) {
+        return reply.code(403).send({ error: 'you_blocked', message: "You've blocked this account. Unblock it and try again." });
+      }
+
       // Vérifier si une relation existe déjà
       const existingStatus = await FriendshipService.getFriendshipStatus(userId, targetId);
       if (existingStatus) {
@@ -1482,7 +1494,7 @@ app.post("/api/users/register", async (request, reply) => {
         id: r.id,
         user_id: r.user_id,
         username: r.username,
-        avatar_url: r.avatar ?? UserService.defaultAvatar(r.username),
+        avatar: r.avatar ?? null,
         created_at: r.created_at
       }));
 
@@ -1508,6 +1520,64 @@ app.post("/api/users/register", async (request, reply) => {
 
       const status = await FriendshipService.getFriendshipStatusFromPerspective(userId, targetId);
       return reply.send({ status });
+    } catch (error) {
+      return reply.code(500).send({ error: 'server_error' });
+    }
+  });
+
+  // POST /api/friends/block - Bloquer un utilisateur
+  app.post("/api/friends/block", async (req, reply) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return reply.code(401).send({ error: 'no_token' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const userId = decoded.userId;
+      const { targetId } = req.body as any;
+
+      if (!targetId || targetId === userId) {
+        return reply.code(400).send({ error: 'invalid_target' });
+      }
+
+      await FriendshipService.block(userId, targetId);
+      return reply.send({ success: true });
+    } catch (error) {
+      return reply.code(500).send({ error: 'server_error' });
+    }
+  });
+
+  // POST /api/friends/unblock - Débloquer un utilisateur
+  app.post("/api/friends/unblock", async (req, reply) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return reply.code(401).send({ error: 'no_token' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const userId = decoded.userId;
+      const { targetId } = req.body as any;
+
+      if (!targetId || targetId === userId) {
+        return reply.code(400).send({ error: 'invalid_target' });
+      }
+
+      await FriendshipService.unblock(userId, targetId);
+      return reply.send({ success: true });
+    } catch (error) {
+      return reply.code(500).send({ error: 'server_error' });
+    }
+  });
+
+  // GET /api/friends/blocked - Obtenir la liste des utilisateurs bloqués
+  app.get("/api/friends/blocked", async (req, reply) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return reply.code(401).send({ error: 'no_token' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const userId = decoded.userId;
+
+      const blockedIds = await FriendshipService.getBlockedUsers(userId);
+      return reply.send({ blockedUsers: blockedIds });
     } catch (error) {
       return reply.code(500).send({ error: 'server_error' });
     }

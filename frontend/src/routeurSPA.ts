@@ -16,7 +16,40 @@ console.log('[build] routeurSPA loaded @', new Date().toISOString());
 
 // ===== Variables globales du Chat =====
 let isChatOpen = false;
-let chatMessages: Array<{username: string, message: string, timestamp: Date}> = [];
+let chatMessages: Array<{userId: number, username: string, avatar: string | null, message: string, timestamp: Date}> = [];
+
+// Charger les messages depuis localStorage au démarrage
+function loadChatMessagesFromStorage() {
+  try {
+    const stored = localStorage.getItem('chatMessages');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Convertir les timestamps de string à Date
+      chatMessages = parsed.map((msg: any) => ({
+        ...msg,
+        timestamp: new Date(msg.timestamp)
+      }));
+      console.log('[CHAT] Loaded', chatMessages.length, 'messages from localStorage');
+    }
+  } catch (error) {
+    console.error('[CHAT] Error loading messages from localStorage:', error);
+    chatMessages = [];
+  }
+}
+
+// Sauvegarder les messages dans localStorage
+function saveChatMessagesToStorage() {
+  try {
+    // Garder seulement les 100 derniers messages pour ne pas surcharger localStorage
+    const messagesToSave = chatMessages.slice(-100);
+    localStorage.setItem('chatMessages', JSON.stringify(messagesToSave));
+  } catch (error) {
+    console.error('[CHAT] Error saving messages to localStorage:', error);
+  }
+}
+
+// Charger les messages au démarrage
+loadChatMessagesFromStorage();
 
 // ===== Presence WS (singleton) =====
 const Presence = (() => {
@@ -54,13 +87,22 @@ const Presence = (() => {
           console.log('[CHAT] Message reçu:', data);
           // Nouveau message de chat reçu
           const newMessage = {
+            userId: data.userId || 0,
             username: data.username || 'Anonyme',
+            avatar: data.avatar || null,
             message: data.message || '',
             timestamp: new Date()
           };
-          chatMessages.push(newMessage);
-          console.log('[CHAT] Total messages:', chatMessages.length);
-          updateChatDisplay();
+          
+          // Ne pas afficher les messages des utilisateurs bloqués
+          if (!isUserBlocked(newMessage.userId)) {
+            chatMessages.push(newMessage);
+            saveChatMessagesToStorage(); // Sauvegarder dans localStorage
+            console.log('[CHAT] Total messages:', chatMessages.length);
+            updateChatDisplay();
+          } else {
+            console.log('[CHAT] Message from blocked user ignored:', newMessage.username);
+          }
         }
       } catch (error) {
         console.warn('[chat] Erreur parsing message:', error);
@@ -128,13 +170,30 @@ function updateChatDisplay() {
 
   const html = chatMessages
     .slice(-50) // Garde seulement les 50 derniers messages
-    .map(msg => `
-      <div class="chat-message">
-        <span class="chat-username">${escapeHtml(msg.username)}:</span>
-        <span class="chat-text">${escapeHtml(msg.message)}</span>
-        <span class="chat-time">${msg.timestamp.toLocaleTimeString()}</span>
-      </div>
-    `).join('');
+    .map(msg => {
+      // Obtenir le chemin de l'avatar de l'utilisateur (personnalisé ou par défaut)
+      const avatarPath = getUserAvatarPath(msg.userId, msg.avatar);
+      
+      // Formater l'heure sans les secondes (HH:MM)
+      const timeString = msg.timestamp.toLocaleTimeString('fr-FR', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+      
+      return `
+        <div class="chat-message" style="display: flex; align-items: center; gap: 4px; padding: 8px 12px;">
+          <div class="chat-avatar" style="width: 32px; height: 32px; border-radius: 50%; border: 2px solid #ff8c00; overflow: hidden; flex-shrink: 0; background-image: url('${avatarPath}'); background-size: cover; background-position: center;"></div>
+          <div style="flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px;">
+            <span class="chat-username" style="cursor: pointer; font-weight: bold; color: #ff8c00; text-decoration: none; transition: all 0.2s; flex-shrink: 0;" 
+                  onmouseover="this.style.opacity='0.7'; this.style.textDecoration='underline';" 
+                  onmouseout="this.style.opacity='1'; this.style.textDecoration='none';"
+                  onclick="localStorage.setItem('viewingFriendUserId', '${msg.userId}'); localStorage.setItem('viewingFriendUsername', '${escapeHtml(msg.username)}'); location.hash = '#/friends-profile';">${escapeHtml(msg.username)}:</span>
+            <span class="chat-text" style="flex: 1; min-width: 0; word-break: break-word;">${escapeHtml(msg.message)}</span>
+            <span class="chat-time" style="font-size: 0.85em; color: #888; flex-shrink: 0; margin-right: 8px;">${timeString}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
   
   console.log('[CHAT] Generated HTML length:', html.length);
   chatMessagesContainer.innerHTML = html;
@@ -165,6 +224,10 @@ function toggleChat() {
   const chatOverlay = document.getElementById('chatOverlay');
   if (chatOverlay) {
     chatOverlay.style.display = isChatOpen ? 'flex' : 'none';
+    // Afficher les messages quand on ouvre le chat
+    if (isChatOpen) {
+      updateChatDisplay();
+    }
   }
 }
 
@@ -178,7 +241,7 @@ function getChatOverlayHTML(): string {
   return `
     <!-- Chat Overlay -->
     <div id="chatOverlay" class="fixed inset-0 bg-black bg-opacity-50 z-50" style="display: none;">
-      <div class="fixed right-4 top-4 bottom-4 w-96 rounded-lg flex flex-col chat-window-container">
+      <div class="fixed right-4 top-4 bottom-4 w-[500px] rounded-lg flex flex-col chat-window-container">
         <!-- Header -->
         <div class="flex justify-between items-center p-4 chat-header">
           <h3 class="font-bold text-xl text-white">💬 Chat Global</h3>
@@ -212,7 +275,11 @@ function getChatOverlayHTML(): string {
 
 function bootPresenceFromStorage() {
   const t = localStorage.getItem('token');
-  if (t) Presence.connect(t);
+  if (t) {
+    Presence.connect(t);
+    // Charger la liste des utilisateurs bloqués
+    loadBlockedUsers();
+  }
   // Fermer proprement la WS quand l’onglet se ferme (ne touche pas au token)
   window.addEventListener('beforeunload', () => {
     try { Presence.disconnect(); } catch {}
@@ -449,7 +516,7 @@ async function getUserProfile(userId: number): Promise<any> {
 }
 
 // ===== FUNCTIONS AMIS =====
-async function sendFriendRequest(targetId: number): Promise<{success: boolean, status?: string, error?: string}> {
+async function sendFriendRequest(targetId: number): Promise<{success: boolean, status?: string, error?: string, message?: string}> {
   try {
     const token = localStorage.getItem('token');
     const response = await fetch('/api/friends/request', {
@@ -465,7 +532,7 @@ async function sendFriendRequest(targetId: number): Promise<{success: boolean, s
     if (response.ok) {
       return { success: true, status: data.status };
     } else {
-      return { success: false, error: data.error };
+      return { success: false, error: data.error, message: data.message };
     }
   } catch (error) {
     return { success: false, error: 'network_error' };
@@ -544,6 +611,80 @@ async function declineFriendRequest(requestId: number): Promise<boolean> {
   } catch (error) {
     return false;
   }
+}
+
+// ===== FONCTIONS DE BLOCAGE =====
+let blockedUserIds: number[] = [];
+
+async function loadBlockedUsers(): Promise<void> {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch('/api/friends/blocked', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      blockedUserIds = data.blockedUsers || [];
+      console.log('[BLOCK] Loaded blocked users:', blockedUserIds);
+    }
+  } catch (error) {
+    console.error('Error loading blocked users:', error);
+  }
+}
+
+async function blockUser(targetId: number): Promise<boolean> {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch('/api/friends/block', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ targetId })
+    });
+
+    if (response.ok) {
+      blockedUserIds.push(targetId);
+      console.log('[BLOCK] User blocked:', targetId);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error blocking user:', error);
+    return false;
+  }
+}
+
+async function unblockUser(targetId: number): Promise<boolean> {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch('/api/friends/unblock', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ targetId })
+    });
+
+    if (response.ok) {
+      blockedUserIds = blockedUserIds.filter(id => id !== targetId);
+      console.log('[BLOCK] User unblocked:', targetId);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error unblocking user:', error);
+    return false;
+  }
+}
+
+function isUserBlocked(userId: number): boolean {
+  return blockedUserIds.indexOf(userId) !== -1;
 }
 
 // Référence à l'écouteur de clavier pour pouvoir le nettoyer
@@ -669,6 +810,20 @@ const routes: Record<string, Route> = {
             <button id="startOnlineBtn" class="retro-btn hover-green flex-1 hidden" disabled>
               Launch Game
             </button>
+          </div>
+        </div>
+        
+        <!-- Players list (hidden until connected) -->
+        <div id="playersInfo" class="hidden mb-6 p-4 bg-gray-800 rounded-lg">
+          <h3 class="text-lg font-bold mb-2">Players:</h3>
+          <div id="playersList" class="text-gray-300">
+            No players connected
+          </div>
+          <div id="readyStatus" class="mt-4 p-3 bg-gray-700 rounded-lg hidden">
+            <h4 class="text-md font-bold mb-2 text-center">Ready Status:</h4>
+            <div class="text-sm text-center">
+              <span class="text-orange-400">Both players must be ready to start the game</span>
+            </div>
           </div>
         </div>
         
@@ -1165,7 +1320,7 @@ const routes: Record<string, Route> = {
           <h1 id="friendProfileUsername" class="page-title-large page-title-blue text-center mb-4">${friendUsername}</h1>
           
           <!-- Boutons Ajouter et Statut -->
-          <div class="mb-8 flex gap-3 items-center">
+          <div class="mb-4 flex gap-3 items-center">
             <button id="addFriendFromProfile" class="add-friend-btn">
               ADD
             </button>
@@ -1173,6 +1328,13 @@ const routes: Record<string, Route> = {
               <img src="/images/offline.png" alt="status" class="status-icon">
               OFFLINE
             </div>
+          </div>
+          
+          <!-- Bouton Block centré -->
+          <div class="mb-8 flex justify-center">
+            <button id="blockUserBtn" class="block-user-btn">
+              <span id="blockButtonText">BLOCK</span>
+            </button>
           </div>
           
           <!-- Statistiques -->
@@ -3313,7 +3475,13 @@ async function render() {
                 target.disabled = true;
                 console.log(`Friend request sent to ${username}`);
               } else {
-                // Erreur - remettre le bouton à l'état initial
+                // Erreur - afficher le message et remettre le bouton à l'état initial
+                if (result.message) {
+                  alert(result.message);
+                } else if (result.error) {
+                  alert(`Error: ${result.error}`);
+                }
+                
                 target.disabled = false;
                 target.textContent = 'ADD';
                 
@@ -3563,7 +3731,12 @@ async function render() {
           button.disabled = true;
           console.log(`Friend request sent to ${friendUsername}`);
         } else {
-          // Erreur - recharger le statut correct
+          // Erreur - afficher le message et recharger le statut correct
+          if (result.message) {
+            alert(result.message);
+          } else if (result.error) {
+            alert(`Error: ${result.error}`);
+          }
           await loadFriendButtonStatus();
           console.error('Error sending friend request:', result.error);
         }
@@ -3573,6 +3746,74 @@ async function render() {
         console.error('Network error sending friend request:', error);
       }
     });
+    
+    // Gestion du bouton Block/Unblock
+    document.getElementById('blockUserBtn')?.addEventListener('click', async () => {
+      const button = document.getElementById('blockUserBtn') as HTMLButtonElement;
+      const buttonText = document.getElementById('blockButtonText') as HTMLSpanElement;
+      
+      // Vérifier si l'utilisateur est déjà bloqué
+      const isBlocked = isUserBlocked(friendUserIdNum);
+      
+      if (isBlocked) {
+        // Débloquer l'utilisateur
+        if (confirm(`Are you sure you want to unblock ${friendUsername}?`)) {
+          button.disabled = true;
+          buttonText.textContent = 'UNBLOCKING...';
+          
+          const success = await unblockUser(friendUserIdNum);
+          
+          if (success) {
+            buttonText.textContent = 'BLOCK';
+            button.className = 'block-user-btn';
+            console.log(`${friendUsername} has been unblocked`);
+            
+            // Recharger le statut du bouton ADD
+            await loadFriendButtonStatus();
+          } else {
+            buttonText.textContent = 'UNBLOCK';
+            console.error('Error unblocking user');
+          }
+          
+          button.disabled = false;
+        }
+      } else {
+        // Bloquer l'utilisateur
+        if (confirm(`Are you sure you want to block ${friendUsername}? They won't be able to send you friend requests and you won't see their chat messages.`)) {
+          button.disabled = true;
+          buttonText.textContent = 'BLOCKING...';
+          
+          const success = await blockUser(friendUserIdNum);
+          
+          if (success) {
+            buttonText.textContent = 'UNBLOCK';
+            button.className = 'unblock-user-btn';
+            console.log(`${friendUsername} has been blocked`);
+            
+            // Recharger le statut du bouton ADD (ils ne sont plus amis)
+            await loadFriendButtonStatus();
+          } else {
+            buttonText.textContent = 'BLOCK';
+            console.error('Error blocking user');
+          }
+          
+          button.disabled = false;
+        }
+      }
+    });
+    
+    // Charger l'état initial du bouton Block
+    // D'abord recharger la liste des utilisateurs bloqués depuis le serveur
+    await loadBlockedUsers();
+    
+    const isBlockedInitial = isUserBlocked(friendUserIdNum);
+    const blockButton = document.getElementById('blockUserBtn') as HTMLButtonElement;
+    const blockButtonText = document.getElementById('blockButtonText') as HTMLSpanElement;
+    
+    if (isBlockedInitial) {
+      blockButtonText.textContent = 'UNBLOCK';
+      blockButton.className = 'unblock-user-btn';
+    }
   } else if (route === "#/friend-requests") {
     // --- PAGE DEMANDES D'AMIS ---
     
