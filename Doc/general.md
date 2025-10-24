@@ -18,13 +18,13 @@ App : https://localhost:8443 (http://localhost:8080 est redirigé vers la préc�
 
 WebSocket : https://localhost:8443/ws-test.html
 
-Grafana : http://localhost:3000 (admin/admin)
+Grafana : https://localhost:8443/grafana/
 
-Prometheus : http://localhost:9090
+Prometheus : https://localhost:8443/prometheus/
 
-Kibana : http://localhost:5601
+Kibana : https://localhost:8443/kibana/
 
-Alertmanager : http://localhost:9093
+Alertmanager : https://localhost:8443/alertmanager/
 
 ## Structure du projet
 
