@@ -2,17 +2,22 @@
 events {}
 
 http {
-  # HTTP -> HTTPS
+  # HTTP -> HTTPS redirect
   server {
     listen 80;
     return 301 https://$host:8443$request_uri;
   }
 
-  # Helpers WS
-  map $http_upgrade $connection_upgrade { default upgrade; '' close; }
-  map $request_id    $req_id            { default $request_id; }
+  # WebSocket helpers
+  map $http_upgrade $connection_upgrade { 
+    default upgrade; 
+    '' close; 
+  }
+  map $request_id $req_id { 
+    default $request_id; 
+  }
 
-  # Logs JSON
+  # JSON logs
   log_format json escape=json
     '{ "time":"$time_local","remote_addr":"$remote_addr","request_id":"$req_id",'
     '"method":"$request","status":$status,"body_bytes_sent":$body_bytes_sent,'
@@ -22,13 +27,13 @@ http {
     listen 443 ssl;
     server_name _;
 
-    # TLS
+    # TLS configuration
     ssl_certificate     /etc/nginx/certs/server.crt;
     ssl_certificate_key /etc/nginx/certs/server.key;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers on;
 
-    # Sécurité + CSP compatible remote + WS
+    # Security headers
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "DENY" always;
@@ -38,17 +43,21 @@ http {
     client_max_body_size 10m;
     proxy_buffering off;
 
-    # Health du proxy
-    location = /healthz { return 200; }
+    # Health check endpoint
+    location = /healthz { 
+      return 200; 
+    }
 
-    # ── Frontend (tout le site statique) ──
-    # On délègue entièrement au service `frontend`
-    location = /index.html { proxy_pass http://frontend:80/index.html; }
-    location = /ws-test.html { proxy_pass http://frontend:80/ws-test.html; }
+    # ── Frontend (static site) ──
+    location = /index.html { 
+      proxy_pass http://frontend:80/index.html; 
+    }
+    location = /ws-test.html { 
+      proxy_pass http://frontend:80/ws-test.html; 
+    }
     location / {
       proxy_pass http://frontend:80;
       proxy_http_version 1.1;
-      # SPA: le serveur `frontend` rendra index.html pour les routes client si configuré ainsi
     }
 
     # ── API -> gateway ──
@@ -58,7 +67,7 @@ http {
       proxy_read_timeout 60s;
 
       proxy_set_header Authorization $http_authorization;
-      proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $scheme; 
 
       proxy_hide_header Content-Security-Policy;
@@ -86,7 +95,6 @@ http {
       proxy_pass http://gateway:8000/metrics;
       proxy_http_version 1.1;
       proxy_read_timeout 30s;
-
     }
 
     # ── WebSocket -> gateway ──
@@ -98,10 +106,10 @@ http {
       proxy_set_header Connection $connection_upgrade;
       proxy_set_header Host $host;
 
-      proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;  # // NEW
-      proxy_set_header   X-Forwarded-Proto $scheme;                      # // NEW
-      proxy_read_timeout  60s;                                           # // NEW
-      proxy_send_timeout  60s; 
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_read_timeout 60s;
+      proxy_send_timeout 60s; 
 
       proxy_hide_header Content-Security-Policy;
       proxy_hide_header X-Content-Type-Options;
@@ -110,7 +118,65 @@ http {
       proxy_hide_header Cross-Origin-Resource-Policy;
     }
 
+    # ── Grafana : https://localhost:8443/grafana/ ──
+    location /grafana/ {
+      proxy_pass http://grafana:3000/;
+      proxy_http_version 1.1;
+
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Host $host;
+      proxy_set_header X-Forwarded-Port $server_port;
+
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection $connection_upgrade;
+
+      proxy_redirect off;
+    }
+
+    # ── Prometheus : https://localhost:8443/prometheus/ ──
+    location /prometheus/ {
+      rewrite ^/prometheus/(.*) /$1 break;
+      proxy_pass http://prometheus:9090;
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # ── Kibana : https://localhost:8443/kibana/ ──
+    location /kibana/ {
+      proxy_pass http://kibana:5601;
+      proxy_http_version 1.1;
+
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Host $host;
+      proxy_set_header X-Forwarded-Port $server_port;
+
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection $connection_upgrade;
+
+      proxy_read_timeout 90s;
+      proxy_redirect off;
+    }
+
+    # ── Alertmanager : https://localhost:8443/alertmanager/ ──
+    location /alertmanager/ {
+      rewrite ^/alertmanager/(.*) /$1 break;
+      proxy_pass http://alertmanager:9093;
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     access_log /var/log/nginx/access.json json;
   }
 }
-

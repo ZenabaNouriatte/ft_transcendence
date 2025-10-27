@@ -10,6 +10,10 @@ services:
     depends_on:
       frontend: { condition: service_started }
       gateway:  { condition: service_started }
+      grafana: { condition: service_started }
+      prometheus: { condition: service_started }
+      alertmanager: { condition: service_started }
+      kibana: { condition: service_started }
     healthcheck:
       test: ["CMD-SHELL", "curl -kfsS https://localhost/healthz >/dev/null || exit 1"]
       interval: 10s
@@ -104,7 +108,10 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --web.enable-lifecycle
-    ports: ["9090:9090"]
+      - --web.external-url=https://localhost:8443/prometheus/
+      - --web.route-prefix=/
+    expose:
+      - "9090"
     volumes:
       - prometheus-data:/prometheus
     restart: unless-stopped
@@ -114,7 +121,10 @@ services:
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
-    ports: ["9093:9093"]
+      - --web.external-url=https://localhost:8443/alertmanager/
+      - --web.route-prefix=/
+    expose:
+      - "9093"
     volumes:
       - alertmanager-data:/alertmanager
     restart: unless-stopped
@@ -123,9 +133,14 @@ services:
     build: ./monitoring/grafana
     env_file: 
       - .env
-    ports: ["3000:3000"]
+    environment:
+    - GF_METRICS_ENABLED=true
+    - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:%(http_port)s/grafana/
+    - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    expose:
+      - "3000"
     volumes:
-      - grafana-data:/var/lib/grafana           # ✅ data persistante
+      - grafana-data:/var/lib/grafana           
     depends_on: [prometheus]
     restart: unless-stopped
 
@@ -134,40 +149,54 @@ services:
 
   elasticsearch:
     build: ./monitoring/elk/elasticsearch
+    env_file: [.env]
     environment:
+      - node.name=elasticsearch
       - discovery.type=single-node
       - xpack.security.enabled=true
       - ES_JAVA_OPTS=-Xms256m -Xmx256m
       - xpack.security.transport.ssl.enabled=false  
       - xpack.security.http.ssl.enabled=false      
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
-    ports:
-      - "127.0.0.1:9200:9200"
+    expose:
+          - "9200"
+#    ports:
+#      - "127.0.0.1:9200:9200"
     volumes:
       - esdata:/usr/share/elasticsearch/data
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-u", "elastic:elastic", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s"]
+      test: ["CMD", "curl", "-fsS", "-u", "elastic:${ELASTIC_PASSWORD}", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s"]
       interval: 10s
       timeout: 3s
       retries: 30
+    restart: unless-stopped
 
   kibana:
     build: ./monitoring/elk/kibana
     depends_on:
       elasticsearch:
         condition: service_healthy
+    env_file: [.env]
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-    ports:
-      - "127.0.0.1:5601:5601"
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_SYSTEM_PASSWORD}
+    expose:
+      - "5601"
+#    ports:
+#      - "127.0.0.1:5601:5601"
+    restart: unless-stopped
 
   logstash:
     build: ./monitoring/elk/logstash
     depends_on:
       elasticsearch:
         condition: service_healthy
-    ports:
-      - "127.0.0.1:5000:5000"
+    env_file: [.env]
+    expose:
+      - "5000"
+#    ports:
+#      - "127.0.0.1:5000:5000"
     environment:
       - LS_JAVA_OPTS=-Xms256m -Xmx256m
       - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
