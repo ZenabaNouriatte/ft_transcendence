@@ -41,12 +41,14 @@ http {
     # Health du proxy
     location = /healthz { return 200; }
 
-    # ── Frontend  ──
+    # ── Frontend (tout le site statique) ──
+    # On délègue entièrement au service `frontend`
     location = /index.html { proxy_pass http://frontend:80/index.html; }
     location = /ws-test.html { proxy_pass http://frontend:80/ws-test.html; }
     location / {
       proxy_pass http://frontend:80;
       proxy_http_version 1.1;
+      # SPA: le serveur `frontend` rendra index.html pour les routes client si configuré ainsi
     }
 
     # ── API -> gateway ──
@@ -106,71 +108,6 @@ http {
       proxy_hide_header X-Frame-Options;
       proxy_hide_header Referrer-Policy;
       proxy_hide_header Cross-Origin-Resource-Policy;
-    }
-
-    # ── Grafana : https://localhost:8443/grafana/ ──
-    location /grafana/ {
-      # Preserve the incoming path when proxying so Grafana receives /grafana/... as expected
-      # (proxy_pass without a URI appends the original request URI)
-      proxy_pass http://grafana:3000;
-      proxy_http_version 1.1;
-
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-Proto $scheme;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Host $host;
-      proxy_set_header X-Forwarded-Port $server_port;
-
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection $connection_upgrade;
-
-      # Disable nginx-side redirect rewriting; Grafana will use GF_SERVER_ROOT_URL to build redirects
-      proxy_redirect off;
-    }
-
-    # ── Prometheus : https://localhost:8443/prometheus/ ──
-    location /prometheus/ {
-      rewrite ^/prometheus/(.*) /$1 break;
-      proxy_pass http://prometheus:9090;
-      proxy_http_version 1.1;
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # ── Kibana : https://localhost:8443/kibana/ ──
-    location /kibana/ {
-      # Keep the /kibana/ prefix so Kibana (server.basePath) receives the expected path
-  # Preserve the original request URI so Kibana receives /kibana/... (do NOT use trailing slash)
-  proxy_pass http://kibana:5601;
-      proxy_http_version 1.1;
-
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-Proto $scheme;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Host $host;
-      proxy_set_header X-Forwarded-Port $server_port;
-  # Do not modify the request path; Kibana is configured with server.basePath
-
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection $connection_upgrade;
-
-      proxy_read_timeout 90s;
-      proxy_redirect off;
-    }
-
-    # ── Alertmanager : https://localhost:8443/alertmanager/ ──
-    location /alertmanager/ {
-      rewrite ^/alertmanager/(.*) /$1 break;
-      proxy_pass http://alertmanager:9093;
-      proxy_http_version 1.1;
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     access_log /var/log/nginx/access.json json;

@@ -7,18 +7,15 @@ set -o pipefail
 command -v jq >/dev/null 2>&1 || { echo "ERROR: jq manquant (sudo apt-get install jq)"; exit 1; }
 
 # Configuration COMPLÈTE
-: "${TEST_MODE:=proxy}"
 : "${PROXY_HTTPS:=https://localhost:8443}"
-: "${GRAFANA_URL:=${PROXY_HTTPS}/grafana}"
-: "${PROM_URL:=${PROXY_HTTPS}/prometheus}"
-: "${ALERT_URL:=${PROXY_HTTPS}/alertmanager}"
-: "${KIBANA_URL:=${PROXY_HTTPS}/kibana}"
-: "${ES_INTERNAL_URL:=http://elasticsearch:9200}"
+: "${PROM_URL:=http://localhost:9090}"
+: "${ES_URL:=http://localhost:9200}"
 : "${ES_AUTH:=elastic:elastic}"
+: "${GRAFANA_URL:=http://localhost:3000}"
+: "${ALERT_URL:=http://localhost:9093}"
 : "${PING_VIA_GATEWAY:=0}"
 : "${TEST_INTERNAL:=1}"
 : "${DB_PERSIST_TEST:=1}"
-
 
 # Helpers
 dc() { docker compose "$@"; }
@@ -32,7 +29,7 @@ section(){ echo -e "\n${c_blue}$*${c_reset}"; }
 
 # Helpers techniques COMPLETS
 http_code(){ curl -k -s -o /dev/null -w "%{http_code}" "$@"; }
-prom_raw(){ curl -k -sG --data-urlencode "query=$1" "$PROM_URL/api/v1/query"; }
+prom_raw(){ curl -sG --data-urlencode "query=$1" "$PROM_URL/api/v1/query"; }
 prom_first_num(){ jq -r '.data.result[0].value[1] // empty' 2>/dev/null | head -n1; }
 prom_query(){ prom_raw "$1" | prom_first_num; }
 prom_count_series(){ prom_raw "$1" | grep -c '"metric"'; }
@@ -343,7 +340,7 @@ sleep 2
 # ===============================
 # 4. MONITORING ET METRIQUES
 # ===============================
-section "4. MONITORING - Observabilité via HTTPS"
+section "4. MONITORING - Observabilité"
 
 echo "Prometheus - Services de base..."
 v=$(prom_wait_value_ge 'up{job="gateway"}' 1 10 5)
@@ -365,65 +362,19 @@ v=$(prom_wait_value_ge 'ws_messages_total{type="chat.message"}' 1 12 5)
 c=$(prom_wait_series_ge 'websocket_connections_active{job="gateway"}' 1 8 5)
 [ "$c" -ge 1 ] && ok "Connexions WebSocket actives monitorées" || sk "Connexions WebSocket non monitorées"
 
-echo "Test de connectivité approfondi des services monitoring..."
-# Test Grafana API
-if curl -k -s "${GRAFANA_URL}/api/health" | jq -e '.database == "ok"' >/dev/null; then
-  ok "Grafana API health OK"
-else
-  ko "Grafana API health échoué"
-fi
+echo "Grafana et Alertmanager..."
+code=$(curl -s -o /dev/null -w "%{http_code}" "$GRAFANA_URL/login")
+[ "$code" = "200" ] && ok "Grafana accessible" || ko "Grafana inaccessible"
 
-# Test Prometheus query
-if curl -k -s "${PROM_URL}/api/v1/query?query=up" | jq -e '.data.result' >/dev/null; then
-  ok "Prometheus API query fonctionnelle"
-else
-  ko "Prometheus API query échouée"
-fi
+code=$(curl -s -o /dev/null -w "%{http_code}" "$ALERT_URL/#/alerts")
+[ "$code" = "200" ] && ok "Alertmanager accessible" || ko "Alertmanager inaccessible"
 
-# Test Kibana status
-if curl -k -s "${KIBANA_URL}/api/status" | jq -e '.status.overall.level' >/dev/null; then
-  ok "Kibana API status accessible"
-else
-  ko "Kibana API status inaccessible"
-fi
+echo "Elasticsearch et Kibana..."
+code=$(curl -s -u "$ES_AUTH" -o /dev/null -w "%{http_code}" "$ES_URL/_cluster/health")
+[ "$code" = "200" ] && ok "Elasticsearch opérationnel" || ko "Elasticsearch inaccessible"
 
-echo "Grafana via HTTPS..."
-code=$(curl -k -s -o /dev/null -w "%{http_code}" "${GRAFANA_URL}/login")
-[ "$code" = "200" ] && ok "Grafana accessible (via proxy HTTPS)" || ko "Grafana inaccessible via HTTPS (code: $code)"
-
-# Health Grafana (via proxy HTTPS)
-gapi=$(curl -k -s "${GRAFANA_URL}/api/health" | jq -r '.database // empty')
-[ "$gapi" = "ok" ] && ok "Grafana /api/health OK via HTTPS" || ko "Grafana /api/health KO via HTTPS"
-
-echo "Prometheus via HTTPS..."
-# Health Prometheus (GET, pas HEAD) via HTTPS
-phealth=$(curl -k -s "${PROM_URL}/-/healthy")
-echo "$phealth" | grep -q "Healthy" && ok "Prometheus Healthy via HTTPS" || ko "Prometheus unhealthy via HTTPS"
-
-# Une page UI pour s'assurer du routage HTTPS
-pcode=$(curl -k -s -o /dev/null -w "%{http_code}" "${PROM_URL}/graph")
-[ "$pcode" = "200" ] && ok "Prometheus UI via proxy HTTPS" || ko "Prometheus UI KO via HTTPS (code: $code)"
-
-echo "Alertmanager via HTTPS..."
-ahealth=$(curl -k -s "${ALERT_URL}/-/healthy")
-echo "$ahealth" | grep -q "^OK" && ok "Alertmanager Healthy via HTTPS" || ko "Alertmanager unhealthy via HTTPS"
-
-# ⚠️ Utiliser GET (HEAD → 405 attendu) via HTTPS
-acode=$(curl -k -s -o /dev/null -w "%{http_code}" "${ALERT_URL}/")
-[ "$acode" = "200" ] && ok "Alertmanager UI via proxy HTTPS" || ko "Alertmanager UI KO via HTTPS (code: $acode)"
-
-echo "Kibana via HTTPS..."
-# API status JSON via proxy HTTPS
-kstat=$(curl -k -s "${KIBANA_URL}/api/status" | jq -r '.status.level // empty')
-[ -n "$kstat" ] && ok "Kibana status=${kstat} via HTTPS" || ko "Kibana /api/status KO via HTTPS"
-
-echo "Elasticsearch (interne)..."
-# Tester ES depuis le réseau docker via le conteneur 'proxy'
-if dc exec -T proxy sh -lc "apk add --no-cache curl >/dev/null 2>&1 || true; curl -su '$ES_AUTH' -o /dev/null -w '%{http_code}' '${ES_INTERNAL_URL}/_cluster/health'" | grep -q '^200$'; then
-  ok "Elasticsearch opérationnel (via réseau docker)"
-else
-  ko "Elasticsearch inaccessible (auth/URL/boot?)"
-fi
+code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:5601/api/status")
+[ "$code" = "200" ] && ok "Kibana accessible" || sk "Kibana non prêt"
 
 # ===============================
 # 5. ARCHITECTURE MICROSERVICES

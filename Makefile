@@ -5,8 +5,8 @@ FRONT_ORIGINS := https://$(PUBLIC_HOST):8443,https://localhost:8443
 
 up:
 	PUBLIC_HOST="$(PUBLIC_HOST)" FRONT_ORIGINS="$(FRONT_ORIGINS)" docker compose up -d --build
-#	./scripts/elk-init.sh
-#	docker compose restart kibana
+	./scripts/elk-init.sh
+	docker compose restart kibana
 
 down:
 	docker compose down
