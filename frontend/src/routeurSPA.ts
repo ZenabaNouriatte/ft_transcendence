@@ -12,6 +12,7 @@
 // - "#/victory" : Page de victoire avec affichage du gagnant et score final
 
 import { GameClient } from './gameClient.js';
+import * as DM from './dm.js';
 console.log('[build] routeurSPA loaded @', new Date().toISOString());
 
 // ===== Variables globales du Chat =====
@@ -103,6 +104,13 @@ const Presence = (() => {
           } else {
             console.log('[CHAT] Message from blocked user ignored:', newMessage.username);
           }
+        } else if (data.type === 'dm.message' && data.data) {
+          console.log('[DM] Message direct reçu:', data);
+          // Message direct reçu
+          DM.handleIncomingDm(data.data);
+        } else if (data.type === 'dm.sent') {
+          console.log('[DM] Message envoyé confirmé:', data);
+          // Confirmation que notre message a été envoyé
         }
       } catch (error) {
         console.warn('[chat] Erreur parsing message:', error);
@@ -231,6 +239,77 @@ function toggleChat() {
   }
 }
 
+// Injecter le chat overlay dans le DOM s'il n'existe pas déjà
+function ensureChatOverlayExists() {
+  if (!document.getElementById('chatOverlay')) {
+    const chatContainer = document.createElement('div');
+    chatContainer.innerHTML = getChatOverlayHTML();
+    document.body.appendChild(chatContainer.firstElementChild as HTMLElement);
+    console.log('[CHAT] Chat overlay injected into DOM');
+    // Attacher les event listeners après injection
+    attachChatEventListeners();
+  }
+}
+
+// Fonction pour attacher les event listeners du chat
+function attachChatEventListeners() {
+  console.log('[CHAT] Attaching event listeners');
+  
+  document.getElementById("closeChatBtn")?.addEventListener("click", () => {
+    toggleChat();
+  });
+  
+  document.getElementById("sendChatBtn")?.addEventListener("click", () => {
+    const input = document.getElementById("chatInput") as HTMLInputElement;
+    if (input && input.value.trim()) {
+      sendChatMessage(input.value);
+      input.value = '';
+    }
+  });
+
+  document.getElementById("chatInput")?.addEventListener("keypress", (e) => {
+    if (e.key === 'Enter') {
+      const input = e.target as HTMLInputElement;
+      if (input && input.value.trim()) {
+        sendChatMessage(input.value);
+        input.value = '';
+      }
+    }
+  });
+
+  document.getElementById("chatTabGlobal")?.addEventListener("click", () => {
+    DM.switchToGlobalTab();
+  });
+
+  document.getElementById("chatTabMessages")?.addEventListener("click", () => {
+    DM.switchToDmTab();
+  });
+
+  document.getElementById("dmBackBtn")?.addEventListener("click", () => {
+    DM.closeDmConversation();
+  });
+
+  document.getElementById("sendDmBtn")?.addEventListener("click", () => {
+    const input = document.getElementById("dmInput") as HTMLInputElement;
+    const activeDmUserId = DM.getActiveDmUserId();
+    if (input && input.value.trim() && activeDmUserId) {
+      DM.sendDirectMessage(activeDmUserId, input.value);
+      input.value = '';
+    }
+  });
+
+  document.getElementById("dmInput")?.addEventListener("keypress", (e) => {
+    if (e.key === 'Enter') {
+      const input = e.target as HTMLInputElement;
+      const activeDmUserId = DM.getActiveDmUserId();
+      if (input && input.value.trim() && activeDmUserId) {
+        DM.sendDirectMessage(activeDmUserId, input.value);
+        input.value = '';
+      }
+    }
+  });
+}
+
 function escapeHtml(text: string): string {
   const div = document.createElement('div');
   div.textContent = text;
@@ -241,31 +320,87 @@ function getChatOverlayHTML(): string {
   return `
     <!-- Chat Overlay -->
     <div id="chatOverlay" class="fixed inset-0 bg-black bg-opacity-50 z-50" style="display: none;">
-      <div class="fixed right-4 top-4 bottom-4 w-[500px] rounded-lg flex flex-col chat-window-container">
-        <!-- Header -->
-        <div class="flex justify-between items-center p-4 chat-header">
-          <h3 class="font-bold text-xl text-white">💬 Chat Global</h3>
-          <button id="closeChatBtn" class="text-white hover:text-red-200 text-2xl font-bold">&times;</button>
-        </div>
-        
-        <!-- Messages Container -->
-        <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-2 chat-messages-bg">
-          <!-- Messages will be added here dynamically -->
-        </div>
-        
-        <!-- Input Area -->
-        <div class="p-4 chat-input-area">
-          <div class="flex gap-2 items-center justify-center">
-            <input 
-              id="chatInput" 
-              type="text" 
-              placeholder="Tapez votre message..." 
-              class="flex-1 px-3 py-2 rounded focus:outline-none chat-input-field"
-              maxlength="500"
-            >
-            <button id="sendChatBtn" class="px-6 py-2 rounded font-bold chat-send-btn whitespace-nowrap">
-              Envoyer
+      <div class="fixed right-4 top-4 bottom-4 w-[500px] rounded-lg flex flex-col chat-window-container" style="max-height: calc(100vh - 32px);">
+        <!-- Header with Tabs -->
+        <div class="chat-header flex-shrink-0">
+          <div class="flex border-b border-orange-500">
+            <button id="chatTabGlobal" class="flex-1 px-4 py-3 font-bold text-white chat-tab-active">
+              Global
             </button>
+            <button id="chatTabMessages" class="flex-1 px-4 py-3 font-bold text-gray-400 hover:text-white transition-colors">
+              Messages <span id="dmUnreadBadge" class="hidden ml-1 px-2 py-0.5 text-xs bg-red-500 text-white rounded-full">0</span>
+            </button>
+          </div>
+          <button id="closeChatBtn" class="absolute top-2 right-2 text-white hover:text-red-200 text-2xl font-bold">&times;</button>
+        </div>
+        
+        <!-- Global Chat View -->
+        <div id="globalChatView" class="flex-1 flex flex-col min-h-0">
+          <!-- Messages Container -->
+          <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-2 chat-messages-bg min-h-0">
+            <!-- Messages will be added here dynamically -->
+          </div>
+          
+          <!-- Input Area -->
+          <div class="p-4 chat-input-area flex-shrink-0">
+            <div class="flex gap-2 items-center justify-center">
+              <input 
+                id="chatInput" 
+                type="text" 
+                placeholder="Tapez votre message..." 
+                class="flex-1 px-3 py-2 rounded focus:outline-none chat-input-field"
+                maxlength="500"
+              >
+              <button id="sendChatBtn" class="px-6 py-2 rounded font-bold chat-send-btn whitespace-nowrap">
+                Envoyer
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Direct Messages View -->
+        <div id="dmView" class="flex-1 flex-col hidden min-h-0">
+          <!-- Conversations List -->
+          <div id="dmConversationsList" class="flex-1 overflow-y-auto min-h-0" style="background-color: rgba(241, 226, 191, 0.15);">
+            <div class="p-4 text-center text-gray-400">
+              Chargement des conversations...
+            </div>
+          </div>
+
+          <!-- Active Conversation -->
+          <div id="dmActiveConversation" class="hidden h-full">
+            <div class="flex flex-col h-full">
+            <!-- Conversation Header -->
+            <div class="p-3 border-b border-orange-500 flex items-center gap-3 flex-shrink-0" style="background-color: rgba(241, 226, 191, 0.15);">
+              <button id="dmBackBtn" class="text-white hover:text-orange-400 text-xl font-bold">←</button>
+              <img id="dmActiveUserAvatar" src="" alt="" class="w-8 h-8 rounded-full border-2 border-orange-500">
+              <div class="flex-1">
+                <div id="dmActiveUserName" class="font-bold text-white"></div>
+                <div id="dmActiveUserStatus" class="text-xs text-gray-400"></div>
+              </div>
+            </div>
+
+            <!-- Messages Container -->
+            <div id="dmMessages" class="flex-1 overflow-y-auto space-y-2 min-h-0 p-4" style="background-color: rgba(241, 226, 191, 0.15);">
+              <!-- DM messages will be added here -->
+            </div>
+
+            <!-- Input Area -->
+            <div class="p-4 chat-input-area flex-shrink-0">
+              <div class="flex gap-2 items-center justify-center">
+                <input 
+                  id="dmInput" 
+                  type="text" 
+                  placeholder="Tapez votre message direct..." 
+                  class="flex-1 px-3 py-2 rounded focus:outline-none chat-input-field"
+                  maxlength="500"
+                >
+                <button id="sendDmBtn" class="px-6 py-2 rounded font-bold chat-send-btn whitespace-nowrap">
+                  Envoyer
+                </button>
+              </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1324,6 +1459,9 @@ const routes: Record<string, Route> = {
             <button id="addFriendFromProfile" class="add-friend-btn">
               ADD
             </button>
+            <button id="sendMessageBtn" class="message-round-btn" title="Envoyer un message">
+              💬
+            </button>
             <div id="friendStatusIndicator" class="status-offline-btn">
               <img src="/images/offline.png" alt="status" class="status-icon">
               OFFLINE
@@ -1445,6 +1583,13 @@ async function render() {
   // AFFICHAGE DE LA PAGE
   root.innerHTML = routes[route]();
 
+  // Injecter le chat overlay si l'utilisateur est connecté et qu'il n'existe pas déjà
+  const currentUsername = localStorage.getItem('currentUsername');
+  const isLoggedIn = currentUsername && currentUsername !== 'Guest';
+  if (isLoggedIn) {
+    ensureChatOverlayExists();
+  }
+
   // GESTION DES ÉVÉNEMENTS PAR PAGE
   if (route === "") {
     // --- PAGE D'ACCUEIL ---
@@ -1461,9 +1606,7 @@ async function render() {
       location.hash = "#/tournament";
     });
     
-    // Vérifier si un utilisateur est connecté pour adapter les événements
-    const currentUsername = localStorage.getItem('currentUsername');
-    const isLoggedIn = currentUsername && currentUsername !== 'Guest';
+    // Note: isLoggedIn already declared above, no need to redeclare
     
     if (isLoggedIn) {
       // Bouton Chat
@@ -1511,33 +1654,9 @@ async function render() {
     }
     
     // Event listeners du Chat (toujours actifs si user connecté)
-    if (isLoggedIn) {
-      document.getElementById("closeChatBtn")?.addEventListener("click", () => {
-        toggleChat();
-      });
-      
-      document.getElementById("sendChatBtn")?.addEventListener("click", () => {
-        console.log('[CHAT] Send button clicked');
-        const input = document.getElementById("chatInput") as HTMLInputElement;
-        console.log('[CHAT] Input element:', input);
-        console.log('[CHAT] Input value:', input?.value);
-        if (input && input.value.trim()) {
-          sendChatMessage(input.value);
-          input.value = '';
-        }
-      });
-
-      // Envoyer message avec Entrée
-      document.getElementById("chatInput")?.addEventListener("keypress", (e) => {
-        if (e.key === 'Enter') {
-          console.log('[CHAT] Enter key pressed');
-          const input = e.target as HTMLInputElement;
-          if (input && input.value.trim()) {
-            sendChatMessage(input.value);
-            input.value = '';
-          }
-        }
-      });
+    // Attachés via attachChatEventListeners() ou directement si chat déjà dans DOM
+    if (isLoggedIn && document.getElementById('chatOverlay')) {
+      attachChatEventListeners();
     }
     
   } else if (route === "#/classic") {
@@ -3746,6 +3865,40 @@ async function render() {
         console.error('Network error sending friend request:', error);
       }
     });
+
+    // Gestion du bouton Send Message
+    document.getElementById('sendMessageBtn')?.addEventListener('click', () => {
+      console.log('[DM] Send Message button clicked');
+      console.log('[DM] DM module:', DM);
+      console.log('[DM] friendUserIdNum:', friendUserIdNum);
+      
+      // Ouvrir le chat et basculer vers l'onglet Messages
+      isChatOpen = true;
+      const chatOverlay = document.getElementById('chatOverlay');
+      if (chatOverlay) {
+        chatOverlay.style.display = 'flex';
+        console.log('[DM] Chat overlay opened');
+      } else {
+        console.error('[DM] Chat overlay not found!');
+      }
+      
+      // Basculer vers l'onglet DM
+      if (DM && DM.switchToDmTab) {
+        console.log('[DM] Switching to DM tab');
+        DM.switchToDmTab();
+      } else {
+        console.error('[DM] DM.switchToDmTab not available!');
+      }
+      
+      // Ouvrir la conversation avec cet utilisateur
+      if (DM && DM.openDmConversation) {
+        console.log('[DM] Opening conversation with user:', friendUserIdNum);
+        DM.openDmConversation(friendUserIdNum);
+      } else {
+        console.error('[DM] DM.openDmConversation not available!');
+      }
+    });
+
     
     // Gestion du bouton Block/Unblock
     document.getElementById('blockUserBtn')?.addEventListener('click', async () => {

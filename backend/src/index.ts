@@ -22,6 +22,7 @@ import {
   StatsService,
   TournamentService,
   FriendshipService,
+  DirectMessageService,
 } from "./services/index.js";
 import { registerHttpTimingHooks, sendMetrics } from "./common/metrics.js";
 
@@ -1578,6 +1579,138 @@ app.post("/api/users/register", async (request, reply) => {
 
       const blockedIds = await FriendshipService.getBlockedUsers(userId);
       return reply.send({ blockedUsers: blockedIds });
+    } catch (error) {
+      return reply.code(500).send({ error: 'server_error' });
+    }
+  });
+
+  // ============================================================================
+  // DIRECT MESSAGES ROUTES
+  // ============================================================================
+
+  // POST /api/messages/send - Envoyer un message direct
+  app.post("/api/messages/send", async (req, reply) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return reply.code(401).send({ error: 'no_token' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const senderId = decoded.userId;
+      const { receiverId, message } = req.body as { receiverId: number; message: string };
+
+      if (!receiverId || !message || message.trim() === '') {
+        return reply.code(400).send({ error: 'invalid_data' });
+      }
+
+      const newMessage = await DirectMessageService.sendMessage(senderId, receiverId, message.trim());
+      return reply.send({ success: true, message: newMessage });
+    } catch (error: any) {
+      if (error.message === 'Cannot send message to blocked user') {
+        return reply.code(403).send({ error: 'user_blocked' });
+      }
+      if (error.message === 'Sender or receiver not found') {
+        return reply.code(404).send({ error: 'user_not_found' });
+      }
+      return reply.code(500).send({ error: 'server_error' });
+    }
+  });
+
+  // GET /api/messages/conversation/:userId - Récupérer la conversation avec un utilisateur
+  app.get("/api/messages/conversation/:userId", async (req, reply) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return reply.code(401).send({ error: 'no_token' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const currentUserId = decoded.userId;
+      const { userId } = req.params as { userId: string };
+      const otherUserId = parseInt(userId, 10);
+
+      if (isNaN(otherUserId)) {
+        return reply.code(400).send({ error: 'invalid_user_id' });
+      }
+
+      const messages = await DirectMessageService.getConversation(currentUserId, otherUserId);
+      return reply.send({ messages: messages.reverse() }); // Inverser pour avoir du plus ancien au plus récent
+    } catch (error) {
+      return reply.code(500).send({ error: 'server_error' });
+    }
+  });
+
+  // GET /api/messages/conversations - Récupérer toutes les conversations
+  app.get("/api/messages/conversations", async (req, reply) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return reply.code(401).send({ error: 'no_token' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const userId = decoded.userId;
+
+      const conversations = await DirectMessageService.getConversations(userId);
+      return reply.send({ conversations });
+    } catch (error) {
+      return reply.code(500).send({ error: 'server_error' });
+    }
+  });
+
+  // POST /api/messages/read - Marquer les messages comme lus
+  app.post("/api/messages/read", async (req, reply) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return reply.code(401).send({ error: 'no_token' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const userId = decoded.userId;
+      const { otherUserId } = req.body as { otherUserId: number };
+
+      if (!otherUserId) {
+        return reply.code(400).send({ error: 'invalid_data' });
+      }
+
+      await DirectMessageService.markAsRead(userId, otherUserId);
+      return reply.send({ success: true });
+    } catch (error) {
+      return reply.code(500).send({ error: 'server_error' });
+    }
+  });
+
+  // GET /api/messages/unread-count - Obtenir le nombre de messages non lus
+  app.get("/api/messages/unread-count", async (req, reply) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return reply.code(401).send({ error: 'no_token' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const userId = decoded.userId;
+
+      const count = await DirectMessageService.getUnreadCount(userId);
+      return reply.send({ unreadCount: count });
+    } catch (error) {
+      return reply.code(500).send({ error: 'server_error' });
+    }
+  });
+
+  // DELETE /api/messages/:messageId - Supprimer un message
+  app.delete("/api/messages/:messageId", async (req, reply) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return reply.code(401).send({ error: 'no_token' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const userId = decoded.userId;
+      const { messageId } = req.params as { messageId: string };
+      const msgId = parseInt(messageId, 10);
+
+      if (isNaN(msgId)) {
+        return reply.code(400).send({ error: 'invalid_message_id' });
+      }
+
+      const deleted = await DirectMessageService.deleteMessage(msgId, userId);
+      if (deleted) {
+        return reply.send({ success: true });
+      } else {
+        return reply.code(404).send({ error: 'message_not_found' });
+      }
     } catch (error) {
       return reply.code(500).send({ error: 'server_error' });
     }
