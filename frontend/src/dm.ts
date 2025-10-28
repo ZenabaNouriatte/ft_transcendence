@@ -9,6 +9,7 @@ let dmUnreadCount = 0;
 
 // Switch between Global Chat and DM tabs
 export function switchToDmTab() {
+  console.log('[DM] Switching to DM tab');
   const globalView = document.getElementById('globalChatView');
   const dmView = document.getElementById('dmView');
   const tabGlobal = document.getElementById('chatTabGlobal');
@@ -19,14 +20,15 @@ export function switchToDmTab() {
   
   if (tabGlobal) {
     tabGlobal.classList.remove('chat-tab-active');
-    tabGlobal.classList.add('text-gray-400');
+    tabGlobal.classList.add('chat-tab-inactive');
   }
   if (tabMessages) {
     tabMessages.classList.add('chat-tab-active');
-    tabMessages.classList.remove('text-gray-400');
+    tabMessages.classList.remove('chat-tab-inactive');
   }
   
-  // Load conversations
+  // IMPORTANT: Always load conversations when switching to DM tab
+  console.log('[DM] Loading conversations from backend');
   loadDmConversations();
 }
 
@@ -41,20 +43,23 @@ export function switchToGlobalTab() {
   
   if (tabGlobal) {
     tabGlobal.classList.add('chat-tab-active');
-    tabGlobal.classList.remove('text-gray-400');
+    tabGlobal.classList.remove('chat-tab-inactive');
   }
   if (tabMessages) {
     tabMessages.classList.remove('chat-tab-active');
-    tabMessages.classList.add('text-gray-400');
+    tabMessages.classList.add('chat-tab-inactive');
   }
 }
 
 // Load list of conversations
 export async function loadDmConversations() {
   const token = localStorage.getItem('token');
-  if (!token) return;
+  if (!token) {
+    console.warn('[DM] No token found, cannot load conversations');
+    return;
+  }
   
-  console.log('[DM] Loading conversations...');
+  console.log('[DM] Loading conversations from /api/messages/conversations...');
   
   try {
     const response = await fetch('/api/messages/conversations', {
@@ -65,21 +70,25 @@ export async function loadDmConversations() {
     
     if (!response.ok) {
       console.error('[DM] Failed to load conversations, status:', response.status);
+      const errorText = await response.text();
+      console.error('[DM] Error response:', errorText);
       return;
     }
     
     const data = await response.json();
     dmConversations = data.conversations || [];
     
-    console.log('[DM] Loaded conversations:', dmConversations.length, dmConversations);
+    console.log('[DM] ✅ Loaded', dmConversations.length, 'conversation(s) from backend');
+    console.log('[DM] Conversations:', dmConversations);
     
     // Update unread count
     dmUnreadCount = dmConversations.reduce((sum: number, conv: any) => sum + (conv.unread_count || 0), 0);
+    console.log('[DM] Total unread messages:', dmUnreadCount);
     updateDmUnreadBadge();
     
     displayDmConversations();
   } catch (error) {
-    console.error('[DM] Error loading conversations:', error);
+    console.error('[DM] ❌ Error loading conversations:', error);
   }
 }
 
@@ -146,6 +155,15 @@ export async function openDmConversation(userId: number) {
   // Load user info first, then conversation
   await loadUserInfoAndConversation(userId);
   
+  // Ensure this conversation exists in the local list for when we go back
+  // This is important for new conversations that don't have messages yet
+  const existsInList = dmConversations.some((c: any) => c.other_user_id === userId);
+  if (!existsInList) {
+    console.log('[DM] Adding new conversation to local list temporarily');
+    // The conversation will be properly loaded from backend when we go back or refresh
+    await loadDmConversations();
+  }
+  
   // Mark as read
   markConversationAsRead(userId);
 }
@@ -199,8 +217,11 @@ async function loadUserInfoAndConversation(userId: number) {
     if (avatarEl) avatarEl.src = getUserAvatarPath(userId, conv.other_avatar);
     if (nameEl) nameEl.textContent = conv.other_username;
     if (statusEl) {
-      statusEl.textContent = conv.other_status === 'online' ? '🟢 En ligne' : '⚪ Hors ligne';
-      statusEl.className = `text-xs ${conv.other_status === 'online' ? 'status-online' : 'status-offline'}`;
+      const isOnline = conv.other_status === 'online';
+      const statusIcon = isOnline ? '/images/online.png' : '/images/offline.png';
+      const statusText = isOnline ? 'En ligne' : 'Hors ligne';
+      statusEl.innerHTML = `<img src="${statusIcon}" alt="${statusText}" style="width: 12px; height: 12px; display: inline-block; margin-right: 4px;"> ${statusText}`;
+      statusEl.className = `text-xs ${isOnline ? 'status-online' : 'status-offline'}`;
     }
     
     // Now load the conversation messages
@@ -243,13 +264,17 @@ function displayDmMessages() {
   if (!messagesContainer) return;
   
   const currentUserId = getCurrentUserIdSync();
+  console.log('[DM] Displaying messages, current user ID:', currentUserId);
+  console.log('[DM] Total messages:', dmMessages.length);
   
-  messagesContainer.innerHTML = dmMessages.map(msg => {
+  messagesContainer.innerHTML = dmMessages.map((msg, index) => {
     const isSent = msg.sender_id === currentUserId;
     const messageClass = isSent ? 'dm-message-sent' : 'dm-message-received';
     
+    console.log(`[DM] Message ${index}: sender_id=${msg.sender_id}, currentUserId=${currentUserId}, isSent=${isSent}`);
+    
     return `
-      <div class="flex ${isSent ? 'justify-end' : 'justify-start'}">
+      <div class="flex w-full ${isSent ? 'justify-end' : 'justify-start'}">
         <div class="${messageClass}">
           <div>${escapeHtml(msg.message)}</div>
           <div class="dm-message-time">${formatTime(msg.created_at)}</div>
@@ -293,18 +318,21 @@ export async function sendDirectMessage(userId: number, message: string) {
       dmMessages.push(data.message);
       displayDmMessages();
       
-      console.log('[DM] Message sent successfully, updating conversation list');
+      console.log('[DM] ✅ Message sent successfully, message ID:', data.message.id);
+      console.log('[DM] Updating conversation list...');
       
-      // Update or create conversation in local list
+      // IMPORTANT: Always reload conversations after sending a message
+      // This ensures the conversation appears in the list even if it's new
+      await loadDmConversations();
+      
+      // Update the specific conversation if it exists in the list now
       const existingConv = dmConversations.find((c: any) => c.other_user_id === userId);
       if (existingConv) {
-        console.log('[DM] Updating existing conversation');
+        console.log('[DM] Conversation found in list, updating last message');
         existingConv.last_message = message.trim();
         existingConv.last_message_at = data.message.created_at;
       } else {
-        console.log('[DM] New conversation, reloading list from backend');
-        // If conversation doesn't exist, reload the list to get it from backend
-        await loadDmConversations();
+        console.log('[DM] ⚠️ Conversation not found in list after reload - this should not happen');
       }
       
       // Also send via WebSocket for real-time delivery
@@ -352,6 +380,7 @@ async function markConversationAsRead(userId: number) {
 
 // Go back to conversations list
 export function closeDmConversation() {
+  console.log('[DM] Closing active conversation');
   activeDmUserId = null;
   dmMessages = [];
   
@@ -364,7 +393,8 @@ export function closeDmConversation() {
     activeConv.style.display = 'none';
   }
   
-  // Reload conversations to update unread counts
+  // IMPORTANT: Reload conversations from backend to get updated list with any new messages
+  console.log('[DM] Reloading conversations list from backend');
   loadDmConversations();
 }
 
@@ -431,17 +461,30 @@ function getUserAvatarPath(userId: number, userAvatar?: string | null): string {
 }
 
 function getCurrentUserIdSync(): number {
-  // This should be implemented to get current user ID from localStorage or global state
-  const userDataStr = localStorage.getItem('userData');
-  if (userDataStr) {
-    try {
-      const userData = JSON.parse(userDataStr);
-      return userData.id || 0;
-    } catch {
-      return 0;
-    }
+  // Try to get user ID from token JWT
+  const token = localStorage.getItem('token');
+  if (!token) {
+    console.warn('[DM] No token found, cannot determine current user ID');
+    return 0;
   }
-  return 0;
+  
+  try {
+    // Decode JWT token to get user ID
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    
+    const payload = JSON.parse(jsonPayload);
+    const userId = payload.userId || payload.id || payload.sub;
+    
+    console.log('[DM] Current user ID from token:', userId);
+    return userId || 0;
+  } catch (error) {
+    console.error('[DM] Error decoding token:', error);
+    return 0;
+  }
 }
 
 // Make functions available globally

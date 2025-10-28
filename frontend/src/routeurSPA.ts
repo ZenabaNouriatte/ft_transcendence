@@ -324,10 +324,10 @@ function getChatOverlayHTML(): string {
         <!-- Header with Tabs -->
         <div class="chat-header flex-shrink-0">
           <div class="flex border-b border-orange-500">
-            <button id="chatTabGlobal" class="flex-1 px-4 py-3 font-bold text-white chat-tab-active">
+            <button id="chatTabGlobal" class="flex-1 px-4 py-3 font-bold chat-tab-active">
               Global
             </button>
-            <button id="chatTabMessages" class="flex-1 px-4 py-3 font-bold text-gray-400 hover:text-white transition-colors">
+            <button id="chatTabMessages" class="flex-1 px-4 py-3 font-bold chat-tab-inactive">
               Messages <span id="dmUnreadBadge" class="hidden ml-1 px-2 py-0.5 text-xs bg-red-500 text-white rounded-full">0</span>
             </button>
           </div>
@@ -359,34 +359,34 @@ function getChatOverlayHTML(): string {
         </div>
 
         <!-- Direct Messages View -->
-        <div id="dmView" class="flex-1 flex-col hidden min-h-0">
+        <div id="dmView" class="flex-1 flex-col hidden min-h-0 w-full">
           <!-- Conversations List -->
-          <div id="dmConversationsList" class="flex-1 overflow-y-auto min-h-0" style="background-color: rgba(241, 226, 191, 0.15);">
+          <div id="dmConversationsList" class="flex-1 overflow-y-auto min-h-0 w-full chat-messages-bg">
             <div class="p-4 text-center text-gray-400">
               Chargement des conversations...
             </div>
           </div>
 
           <!-- Active Conversation -->
-          <div id="dmActiveConversation" class="hidden h-full">
-            <div class="flex flex-col h-full">
+          <div id="dmActiveConversation" class="hidden h-full w-full">
+            <div class="flex flex-col h-full w-full">
             <!-- Conversation Header -->
-            <div class="p-3 border-b border-orange-500 flex items-center gap-3 flex-shrink-0" style="background-color: rgba(241, 226, 191, 0.15);">
+            <div class="p-3 border-b border-orange-500 flex items-center gap-3 flex-shrink-0 w-full chat-messages-bg">
               <button id="dmBackBtn" class="text-white hover:text-orange-400 text-xl font-bold">←</button>
-              <img id="dmActiveUserAvatar" src="" alt="" class="w-8 h-8 rounded-full border-2 border-orange-500">
+              <img id="dmActiveUserAvatar" src="" alt="" class="w-8 h-8 rounded-full" style="border: 2px solid #ff8c00;">
               <div class="flex-1">
-                <div id="dmActiveUserName" class="font-bold text-white"></div>
+                <div id="dmActiveUserName" class="font-bold" style="color: #ff8c00;"></div>
                 <div id="dmActiveUserStatus" class="text-xs text-gray-400"></div>
               </div>
             </div>
 
             <!-- Messages Container -->
-            <div id="dmMessages" class="flex-1 overflow-y-auto space-y-2 min-h-0 p-4" style="background-color: rgba(241, 226, 191, 0.15);">
+            <div id="dmMessages" class="flex-1 overflow-y-auto space-y-2 min-h-0 p-4 w-full chat-messages-bg">
               <!-- DM messages will be added here -->
             </div>
 
             <!-- Input Area -->
-            <div class="p-4 chat-input-area flex-shrink-0">
+            <div class="p-4 chat-input-area flex-shrink-0 w-full">
               <div class="flex gap-2 items-center justify-center">
                 <input 
                   id="dmInput" 
@@ -1447,10 +1447,16 @@ const routes: Record<string, Route> = {
       <!-- Contenu principal -->
       <div class="container mx-auto px-4 py-20">
         <div class="flex flex-col items-center">
-          <!-- Photo de profil avec image dynamique -->
-          <div class="profile-photo mb-4">
-            <img id="friendProfileAvatar" src="/images/1.JPG" alt="Profile Photo" 
-                 style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+          <!-- Photo de profil avec bouton chat à droite -->
+          <div class="relative mb-4">
+            <div class="profile-photo">
+              <img id="friendProfileAvatar" src="/images/1.JPG" alt="Profile Photo" 
+                   style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+            </div>
+            <!-- Bouton Chat positionné à droite de la photo -->
+            <button id="sendMessageBtn" class="retro-btn-round-profile absolute" style="right: -100px; top: 50%; transform: translateY(-50%);" title="Chat">
+              <img class="btn-icon-round" src="/images/chat-removebg-preview.png" alt="Chat">
+            </button>
           </div>
           <h1 id="friendProfileUsername" class="page-title-large page-title-blue text-center mb-4">${friendUsername}</h1>
           
@@ -1459,24 +1465,14 @@ const routes: Record<string, Route> = {
             <button id="addFriendFromProfile" class="add-friend-btn">
               ADD
             </button>
-            <button id="sendMessageBtn" class="message-round-btn" title="Envoyer un message">
-              💬
-            </button>
             <div id="friendStatusIndicator" class="status-offline-btn">
               <img src="/images/offline.png" alt="status" class="status-icon">
               OFFLINE
             </div>
           </div>
           
-          <!-- Bouton Block centré -->
-          <div class="mb-8 flex justify-center">
-            <button id="blockUserBtn" class="block-user-btn">
-              <span id="blockButtonText">BLOCK</span>
-            </button>
-          </div>
-          
           <!-- Statistiques -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 w-full max-w-6xl">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 w-full max-w-6xl mb-8">
             <!-- Statistiques globales -->
             <div class="form-box-blue">
               <h2 class="text-2xl mb-6 text-gray-800 text-center font-bold">Player Statistics</h2>
@@ -1511,6 +1507,13 @@ const routes: Record<string, Route> = {
                 <p class="text-center text-gray-600">Loading match history...</p>
               </div>
             </div>
+          </div>
+          
+          <!-- Bouton Block centré sous les statistiques -->
+          <div class="flex justify-center">
+            <button id="blockUserBtn" class="block-user-btn">
+              <span id="blockButtonText">BLOCK</span>
+            </button>
           </div>
         </div>
       </div>

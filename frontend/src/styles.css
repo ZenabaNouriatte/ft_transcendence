@@ -979,6 +979,36 @@ input.styled-input.logged-user-tournament:focus {
   transform: translateY(4px);
 }
 
+/* Bouton rond pour le chat sur la page friends-profile */
+.retro-btn-round-profile {
+  background-color: #f0e6d6;
+  color: #6d5a42;
+  font-size: 18px;
+  font-family: monospace, sans-serif;
+  padding: 16px;
+  border: 2px solid #254376; /* Bordure bleue comme la photo de profil */
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: none; /* Pas d'ombre */
+  transition: all 0.15s ease;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 69px;
+  height: 69px;
+}
+
+.retro-btn-round-profile:hover {
+  background-color: #e8dcc8;
+  transform: translateY(-2px);
+}
+
+.retro-btn-round-profile:active {
+  background-color: #d9c9ad;
+  transform: translateY(4px);
+}
+
 /* Largeur spécifique pour les boîtes de la page friends */
 .friends-page .user-item-box {
   min-width: 400px;
@@ -1163,16 +1193,16 @@ input.styled-input.logged-user-tournament:focus {
 .chat-window-container {
   background-color: rgba(251, 222, 156, 0.85); /* #fbde9c avec transparence */
   border: 3px solid #f99256;
-  box-shadow: 0 8px 32px rgba(249, 146, 86, 0.3);
   overflow: hidden; /* Empêche le débordement du conteneur */
+  border-radius: 0.5rem; /* Coins arrondis */
 }
 
 /* Header du chat */
 .chat-header {
   background-color: #f99256; /* Orange comme le bouton */
   border-bottom: 2px solid #e57a3d; /* Orange plus foncé pour la bordure */
-  border-radius: 0.5rem 0.5rem 0 0;
   position: relative; /* Pour le positionnement absolu du bouton X */
+  border-radius: 0.5rem 0.5rem 0 0; /* Coins arrondis en haut uniquement */
 }
 
 /* Zone des messages avec transparence */
@@ -1212,7 +1242,7 @@ input.styled-input.logged-user-tournament:focus {
 .chat-input-area {
   background-color: #fbde9c;
   border-top: 2px solid #f99256;
-  border-radius: 0 0 0.5rem 0.5rem;
+  border-radius: 0 0 0.5rem 0.5rem; /* Coins arrondis en bas uniquement */
 }
 
 .chat-input-field {
@@ -1246,6 +1276,15 @@ input.styled-input.logged-user-tournament:focus {
   color: white;
 }
 
+.chat-tab-inactive {
+  color: #d97838;
+  transition: color 0.2s ease;
+}
+
+.chat-tab-inactive:hover {
+  color: white;
+}
+
 /* DM Conversations */
 .dm-conversation-item {
   padding: 14px 16px;
@@ -1253,44 +1292,47 @@ input.styled-input.logged-user-tournament:focus {
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
-  background-color: rgba(241, 226, 191, 0.4);
-  border: 1px solid rgba(249, 146, 86, 0.2);
+  background-color: rgb(241, 226, 191);
+  border: 2px solid rgba(249, 146, 86, 0.3);
+  box-shadow: none;
 }
 
 .dm-conversation-item:hover {
-  background-color: rgba(241, 226, 191, 0.6);
-  border-color: rgba(249, 146, 86, 0.4);
+  background-color: #fbde9c;
+  border-color: #f99256;
+  border-width: 3px;
   transform: translateX(4px);
+  box-shadow: none;
 }
 
 .dm-conversation-item.unread {
   background-color: rgba(249, 146, 86, 0.2);
   border-color: #f99256;
-  border-width: 2px;
+  border-width: 3px;
 }
 
 .dm-conversation-avatar {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  border: 2px solid #f99256;
+  border: 2px solid #ff8c00;
   object-fit: cover;
 }
 
 .dm-conversation-name {
   font-weight: 600;
-  color: white;
+  color: #ff8c00;
   font-size: 15px;
 }
 
 .dm-conversation-time {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
+  color: #888;
 }
 
 .dm-conversation-preview {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.7);
+  color: #888;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1317,18 +1359,21 @@ input.styled-input.logged-user-tournament:focus {
 .dm-message-sent {
   background-color: #f99256;
   color: white;
-  padding: 8px 12px;
-  border-radius: 12px 12px 0 12px;
+  padding: 10px 14px;
+  border-radius: 16px 16px 4px 16px;
   max-width: 70%;
   margin-left: auto;
+  word-wrap: break-word;
 }
 
 .dm-message-received {
   background-color: rgb(241, 226, 191);
   color: #1a1a1a;
-  padding: 8px 12px;
-  border-radius: 12px 12px 12px 0;
+  padding: 10px 14px;
+  border-radius: 16px 16px 16px 4px;
   max-width: 70%;
+  margin-right: auto;
+  word-wrap: break-word;
 }
 
 .message-round-btn {
