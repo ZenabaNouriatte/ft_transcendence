@@ -16,9 +16,13 @@ scrape_configs:
     static_configs:
       - targets: ["prometheus:9090"]
 
-  - job_name: grafana
+  - job_name: 'grafana'
+    metrics_path: '/grafana/metrics'
+    scheme: https
     static_configs:
-      - targets: ["grafana:3000"]
+      - targets: ['proxy:443']
+    tls_config:
+      insecure_skip_verify: true
 
   - job_name: gateway
     static_configs:
