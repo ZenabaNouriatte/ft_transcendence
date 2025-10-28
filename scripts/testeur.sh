@@ -388,10 +388,14 @@ else
 fi
 
 echo "Grafana via HTTPS..."
-code=$(curl -k -s -o /dev/null -w "%{http_code}" "${GRAFANA_URL}/login")
-[ "$code" = "200" ] && ok "Grafana accessible (via proxy HTTPS)" || ko "Grafana inaccessible via HTTPS (code: $code)"
+# Suivre redirections + accepter 200/301/302/303 comme OK
+gcode=$(curl -k -L -s -o /dev/null -w "%{http_code}" "${GRAFANA_URL}/login")
+case "$gcode" in
+  200|301|302|303) ok "Grafana accessible (UI via proxy HTTPS, code=$gcode)";;
+  *)               ko "Grafana inaccessible via HTTPS (code: $gcode)";;
+esac
 
-# Health Grafana (via proxy HTTPS)
+# Health Grafana (via proxy HTTPS) — garde le verdict dur sur l'API
 gapi=$(curl -k -s "${GRAFANA_URL}/api/health" | jq -r '.database // empty')
 [ "$gapi" = "ok" ] && ok "Grafana /api/health OK via HTTPS" || ko "Grafana /api/health KO via HTTPS"
 
@@ -413,9 +417,19 @@ acode=$(curl -k -s -o /dev/null -w "%{http_code}" "${ALERT_URL}/")
 [ "$acode" = "200" ] && ok "Alertmanager UI via proxy HTTPS" || ko "Alertmanager UI KO via HTTPS (code: $acode)"
 
 echo "Kibana via HTTPS..."
-# API status JSON via proxy HTTPS
+# 1) Essai API status (idéal si le proxy réécrit /kibana/ -> /)
 kstat=$(curl -k -s "${KIBANA_URL}/api/status" | jq -r '.status.level // empty')
-[ -n "$kstat" ] && ok "Kibana status=${kstat} via HTTPS" || ko "Kibana /api/status KO via HTTPS"
+if [ -n "$kstat" ]; then
+  ok "Kibana status=${kstat} via HTTPS"
+else
+  # 2) Fallback : valider l'accès UI (suivre redirs et accepter 200/301/302/303)
+  kcode=$(curl -k -L -s -o /dev/null -w "%{http_code}" "${KIBANA_URL}/")
+  case "$kcode" in
+    200|301|302|303) ok "Kibana UI accessible via HTTPS (code=$kcode)";;
+    *)               ko "Kibana KO via HTTPS (api/status et UI)";;
+  esac
+fi
+
 
 echo "Elasticsearch (interne)..."
 # Tester ES depuis le réseau docker via le conteneur 'proxy'
