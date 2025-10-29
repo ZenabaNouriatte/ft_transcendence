@@ -128,24 +128,13 @@ services:
     volumes:
       - alertmanager-data:/alertmanager
     restart: unless-stopped
-
   grafana: 
     build: ./monitoring/grafana
     env_file: 
       - .env
-    environment:
-    - GF_SECURITY_ADMIN_USER=admin
-    - GF_SECURITY_ADMIN_PASSWORD=admin
-    - GF_AUTH_ANONYMOUS_ENABLED=false
-    - GF_USERS_ALLOW_SIGN_UP=false
-    - GF_SECURITY_SECRET_KEY=key_admin
-    - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
-    - GF_METRICS_ENABLED=true
-
-    expose:
-      - "3000"
+    ports: ["3000"]
     volumes:
-      - grafana-data:/var/lib/grafana           
+      - grafana-data:/var/lib/grafana          
     depends_on: [prometheus]
     restart: unless-stopped
 
@@ -165,8 +154,6 @@ services:
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
     expose:
           - "9200"
-#    ports:
-#      - "127.0.0.1:9200:9200"
     volumes:
       - esdata:/usr/share/elasticsearch/data
     healthcheck:
@@ -188,8 +175,6 @@ services:
       - ELASTICSEARCH_PASSWORD=${KIBANA_SYSTEM_PASSWORD}
     expose:
       - "5601"
-#    ports:
-#      - "127.0.0.1:5601:5601"
     restart: unless-stopped
 
   logstash:
@@ -200,8 +185,6 @@ services:
     env_file: [.env]
     expose:
       - "5000"
-#    ports:
-#      - "127.0.0.1:5000:5000"
     environment:
       - LS_JAVA_OPTS=-Xms256m -Xmx256m
       - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}

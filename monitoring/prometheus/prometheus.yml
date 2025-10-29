@@ -17,9 +17,10 @@ scrape_configs:
       - targets: ["prometheus:9090"]
 
   - job_name: 'grafana'
+    scheme: http
+    metrics_path: /grafana/metrics
     static_configs:
       - targets: ['grafana:3000']
-    metrics_path: '/metrics'
 
   - job_name: gateway
     static_configs:
