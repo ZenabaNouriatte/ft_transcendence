@@ -119,7 +119,10 @@ http {
     }
 
     # ── Grafana : https://localhost:8443/grafana/ ──
-    location = /grafana { return 301 /grafana/; }
+    # Redirige la racine Grafana vers le dashboard ft-core
+    location = /grafana/ {
+      return 302 https://$http_host/grafana/d/ft-core/ft-transcendance-e28093-core?orgId=1&refresh=10s;
+    }
 
     location /grafana/ {
       proxy_pass http://grafana:3000;
@@ -144,8 +147,6 @@ http {
     location = /grafana/metrics {
       return 403;
     }
-
-
 
 
     # ── Prometheus : https://localhost:8443/prometheus/ ──
