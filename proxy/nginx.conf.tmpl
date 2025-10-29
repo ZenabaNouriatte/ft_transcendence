@@ -121,7 +121,7 @@ http {
     # ── Grafana : https://localhost:8443/grafana/ ──
     # Redirige la racine Grafana vers le dashboard ft-core
     location = /grafana/ {
-      return 302 https://$http_host/grafana/d/ft-core/ft-transcendance-e28093-core?orgId=1&refresh=10s;
+      return 302 https://$http_host/grafana/d/bf2jrbxbv198gc/ft-e28093-core-overview?orgId=1&refresh=10s;
     }
 
     location /grafana/ {

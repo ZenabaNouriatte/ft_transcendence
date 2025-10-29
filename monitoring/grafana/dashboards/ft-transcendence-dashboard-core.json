@@ -1,944 +1,123 @@
 {
   "annotations": {
     "list": [
-      {
-        "type": "dashboard",
-        "name": "Annotations & Alerts",
-        "enable": true,
-        "hide": true
-      }
+      { "type": "dashboard", "name": "Annotations & Alerts", "enable": true, "hide": true }
     ]
   },
+  "uid": "bf2jrbxbv198gc",
+  "title": "FT – Core Overview",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": null,
-  "iteration": 1761758194900,
   "links": [],
   "liveNow": false,
-  "panels": [
-    {
-      "id": 1,
-      "type": "stat",
-      "title": "Service Availability (up=1)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 0
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "horizontal",
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "avg by (job) (up{job=~\"$job\"})",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 0
-      }
-    },
-    {
-      "id": 2,
-      "type": "timeseries",
-      "title": "Scrape Duration by Job",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth"
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (job) (rate(scrape_duration_seconds_sum{job=~\"$job\"}[5m])) or vector(0)",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 18,
-        "x": 6,
-        "y": 0
-      }
-    },
-    {
-      "id": 3,
-      "type": "stat",
-      "title": "HTTP RPS (all services)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 0
-              }
-            ]
-          },
-          "unit": "req/s"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "horizontal",
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum(rate(http_requests_total[5m])) or vector(0)",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 4
-      }
-    },
-    {
-      "id": 4,
-      "type": "timeseries",
-      "title": "HTTP RPS by Service",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (service) (rate(http_requests_total[5m])) or vector(0)",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 9,
-        "x": 6,
-        "y": 8
-      }
-    },
-    {
-      "id": 5,
-      "type": "timeseries",
-      "title": "HTTP P95 Latency (by route)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth"
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket[5m])))",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 9,
-        "x": 15,
-        "y": 8
-      }
-    },
-    {
-      "id": 6,
-      "type": "timeseries",
-      "title": "HTTP In-Flight (by route)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (route) (http_requests_in_flight) or vector(0)",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 0,
-        "y": 8
-      }
-    },
-    {
-      "id": 7,
-      "type": "stat",
-      "title": "Active WS Connections",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 0
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "horizontal",
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum(ws_connections{room=~\"$room\"}) or vector(0)",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 12
-      }
-    },
-    {
-      "id": 8,
-      "type": "timeseries",
-      "title": "WS Connections by Room",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (room) (ws_connections{room=~\"$room\"}) or vector(0)",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 9,
-        "x": 6,
-        "y": 16
-      }
-    },
-    {
-      "id": 9,
-      "type": "timeseries",
-      "title": "WS Messages /s by Type",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (type) (rate(ws_messages_total[5m])) or vector(0)",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 9,
-        "x": 15,
-        "y": 16
-      }
-    },
-    {
-      "id": 10,
-      "type": "timeseries",
-      "title": "WS Disconnects /s by Code",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (code) (rate(ws_disconnects_total[5m])) or vector(0)",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 0,
-        "y": 16
-      }
-    },
-    {
-      "id": 11,
-      "type": "stat",
-      "title": "Active Games",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 0
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "horizontal",
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum(games_active{mode=~\"$mode\"}) or vector(0)",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 20
-      }
-    },
-    {
-      "id": 12,
-      "type": "timeseries",
-      "title": "Players in Game",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum(players_in_game) or vector(0)",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 6,
-        "y": 24
-      }
-    },
-    {
-      "id": 13,
-      "type": "timeseries",
-      "title": "Chat Messages /s by Room",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (room) (rate(chat_messages_total[5m])) or vector(0)",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 24
-      }
-    },
-    {
-      "id": 14,
-      "type": "stat",
-      "title": "Users Online (rolling window)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 0
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "horizontal",
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "users_online or vector(0)",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 28
-      }
-    },
-    {
-      "id": 15,
-      "type": "timeseries",
-      "title": "SQLite Queries /s by Status",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (status) (rate(sqlite_queries_total[5m])) or vector(0)",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 6,
-        "y": 32
-      }
-    },
-    {
-      "id": 16,
-      "type": "timeseries",
-      "title": "SQLite Errors /s (Top 5 tables)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "topk(5, sum by (table) (rate(sqlite_errors_total[5m])))",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 18,
-        "y": 32
-      }
-    },
-    {
-      "id": 17,
-      "type": "timeseries",
-      "title": "Process CPU (by job)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth"
-          },
-          "unit": "s/s"
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (job) (rate(process_cpu_seconds_total[5m])) or vector(0)",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 36
-      }
-    },
-    {
-      "id": 18,
-      "type": "timeseries",
-      "title": "Process RSS Memory (bytes by job)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth"
-          },
-          "unit": "bytes"
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (job) (process_resident_memory_bytes)",
-          "legendFormat": "",
-          "range": true,
-          "editorMode": "code"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 36
-      }
-    }
-  ],
   "refresh": "10s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": [
-    "ft-transcendence",
-    "core"
-  ],
-"templating": {
-  "list": [
-    {
-      "name": "job",
-      "type": "query",
-      "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
-      "label": "Job",
-      "query": "label_values(up, job)",
-      "includeAll": true,
-      "allValue": ".*",
-      "refresh": 2,
-      "multi": true,
-      "sort": 1
-    },
-    {
-      "name": "service",
-      "type": "query",
-      "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
-      "label": "Service",
-      "query": "label_values(http_requests_total, service)",
-      "includeAll": true,
-      "allValue": ".*",
-      "refresh": 2,
-      "multi": true,
-      "sort": 1
-    },
-    {
-      "name": "route",
-      "type": "query",
-      "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
-      "label": "Route",
-      "query": "label_values(http_requests_total, route)",
-      "includeAll": true,
-      "allValue": ".*",
-      "refresh": 2,
-      "multi": true,
-      "sort": 1
-    },
-    {
-      "name": "room",
-      "type": "query",
-      "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
-      "label": "WS Room",
-      "query": "label_values(ws_connections, room)",
-      "includeAll": true,
-      "allValue": ".*",
-      "refresh": 2,
-      "multi": true,
-      "sort": 1
-    },
-    {
-      "name": "mode",
-      "type": "query",
-      "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
-      "label": "Game Mode",
-      "query": "label_values(games_active, mode)",
-      "includeAll": true,
-      "allValue": ".*",
-      "refresh": 2,
-      "multi": true,
-      "sort": 1
-    }
-  ]
-},
-  "time": {
-    "from": "now-6h",
-    "to": "now"
-  },
+  "tags": ["ft-transcendence", "core"],
   "timezone": "browser",
-  "title": "FT \u2013 Core Overview",
-  "version": 1,
-  "weekStart": ""
+  "time": { "from": "now-6h", "to": "now" },
+  "weekStart": "",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Containers Healthy",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
+      "targets": [{ "refId": "A", "expr": "sum(up)" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": 0 },
+            { "color": "green", "value": 1 }
+          ]}
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "horizontal",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "title": "CPU usage per container (%)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
+      "targets": [
+        { "refId": "A", "expr": "rate(container_cpu_usage_seconds_total[2m]) * 100" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 0 }
+    },
+    {
+      "id": 3,
+      "title": "Active WS Connections",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
+      "targets": [{ "refId": "A", "expr": "sum(ws_connections) or vector(0)" }],
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "horizontal",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 6 }
+    },
+    {
+      "id": 4,
+      "title": "Games in Progress",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
+      "targets": [{ "refId": "A", "expr": "sum(games_active) or vector(0)" }],
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "horizontal",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 6 }
+    },
+    {
+      "id": 5,
+      "title": "Chat Messages /s",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
+      "targets": [{ "refId": "A", "expr": "sum(rate(chat_messages_total[1m])) or vector(0)" }],
+      "fieldConfig": { "defaults": { "unit": "msgs/s" }, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 }
+    },
+    {
+      "id": 6,
+      "title": "Games Finished /s",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
+      "targets": [{ "refId": "A", "expr": "sum(rate(games_finished_total[1m])) or vector(0)" }],
+      "fieldConfig": { "defaults": { "unit": "games/s" }, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 }
+    }
+  ],
+  "templating": { "list": [] }
 }
