@@ -16,15 +16,13 @@ make restart  # Arrête tout, supprime les volumes et relance
 
 App : https://localhost:8443 (http://localhost:8080 est redirigé vers la précédente)
 
-WebSocket : https://localhost:8443/ws-test.html
+Grafana : https://localhost:8443/grafana/  (admin/admin123!)
 
-Grafana : http://localhost:3000 (admin/admin)
+Prometheus : https://localhost:8443/prometheus/ 
 
-Prometheus : http://localhost:9090
+Kibana : https://localhost:8443/kibana/
 
-Kibana : http://localhost:5601
-
-Alertmanager : http://localhost:9093
+Alertmanager : https://localhost:8443/alertmanager/
 
 ## Structure du projet
 
