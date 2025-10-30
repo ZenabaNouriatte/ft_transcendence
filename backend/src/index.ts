@@ -25,6 +25,7 @@ import {
   DirectMessageService,
 } from "./services/index.js";
 import { registerHttpTimingHooks, sendMetrics } from "./common/metrics.js";
+import { validateUsername, validateEmail as validatorValidateEmail } from "./common/validation.js";
 
 
 const JWT_SECRET: Secret = process.env.JWT_SECRET || "dev-secret";
@@ -1162,10 +1163,16 @@ app.post("/api/users/register", async (request, reply) => {
       let newAvatar: string | null = null;
       
       if (body.username) {
-        newUsername = sanitizeInput(body.username, 20);
-        if (newUsername.length < 3) {
-          return reply.code(400).send({ error: "username_too_short" });
+        try {
+          // Validation stricte avec les mêmes règles que la création de compte
+          newUsername = validateUsername(body.username);
+        } catch (error: any) {
+          return reply.code(400).send({ 
+            error: "invalid_username",
+            message: error.message || "Username must be 3-20 characters and contain only letters, numbers, underscore and dash"
+          });
         }
+
         // Vérifier si le username est déjà pris
         const existingUser = await UserService.findUserByUsername(newUsername);
         if (existingUser && existingUser.id !== userId) {

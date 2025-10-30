@@ -38,6 +38,13 @@ function loadChatMessagesFromStorage() {
   }
 }
 
+// Vider les messages du chat (appelé au logout ou clean)
+function clearChatMessages() {
+  chatMessages = [];
+  localStorage.removeItem('chatMessages');
+  console.log('[CHAT] Chat messages cleared');
+}
+
 // Sauvegarder les messages dans localStorage
 function saveChatMessagesToStorage() {
   try {
@@ -436,9 +443,10 @@ async function syncAuthFromBackend(): Promise<void> {
     });
 
     if (!r.ok) {
-      // token invalide → purge
+      // token invalide → purge tout
       localStorage.removeItem('token');
       localStorage.removeItem('currentUsername');
+      clearChatMessages();
       return;
     }
 
@@ -2932,6 +2940,17 @@ async function render() {
       const email = formData.get('email') as string;
       const password = formData.get('password') as string;
       
+      // Validation côté client avant d'envoyer
+      if (!username || username.length < 3 || username.length > 20) {
+        alert('Username must be between 3 and 20 characters');
+        return;
+      }
+      
+      if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+        alert('Username can only contain letters, numbers, underscore (_) and dash (-)');
+        return;
+      }
+      
       try {
         const response = await fetch('/api/users/register', {
           method: 'POST',
@@ -3186,7 +3205,10 @@ async function render() {
         localStorage.removeItem('token');
         localStorage.removeItem('currentUsername');
         
-        // 5. Rediriger vers l'accueil
+        // 5. Vider les messages du chat
+        clearChatMessages();
+        
+        // 6. Rediriger vers l'accueil
         location.hash = '';
         
         // Force le re-render pour mettre à jour l'interface
@@ -3200,6 +3222,7 @@ async function render() {
         Presence.clear();
         localStorage.removeItem('token');
         localStorage.removeItem('currentUsername');
+        clearChatMessages();
         location.hash = '';
         setTimeout(() => render(), 10);
       }
@@ -3347,6 +3370,22 @@ async function render() {
       const newEmail = (document.getElementById('newEmail') as HTMLInputElement).value.trim();
       const newPassword = (document.getElementById('newPassword') as HTMLInputElement).value;
       const confirmPassword = (document.getElementById('confirmPassword') as HTMLInputElement).value;
+      
+      // Validation du username (mêmes règles que la création de compte)
+      if (newUsername) {
+        if (newUsername.length < 3 || newUsername.length > 20) {
+          editProfileError.textContent = 'Username must be between 3 and 20 characters';
+          editProfileError.style.display = 'block';
+          return;
+        }
+        
+        // Vérifier que le username ne contient que des lettres, chiffres, underscore et tiret
+        if (!/^[a-zA-Z0-9_-]+$/.test(newUsername)) {
+          editProfileError.textContent = 'Username can only contain letters, numbers, underscore (_) and dash (-)';
+          editProfileError.style.display = 'block';
+          return;
+        }
+      }
       
       // Validation
       if (newPassword && newPassword !== confirmPassword) {
