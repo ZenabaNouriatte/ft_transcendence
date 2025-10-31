@@ -1,10 +1,12 @@
 {
-  "title": "FT – Core Overview (minimal)",
+  "uid": "bf2jrbxbv198gc", 
+  "title": "FT – Core Overview",
   "tags": ["ft-transcendence", "core"],
   "timezone": "browser",
   "refresh": "10s",
   "schemaVersion": 38,
   "style": "dark",
+  "version": 1,
   "time": { "from": "now-15m", "to": "now" },
   "panels": [
     {
