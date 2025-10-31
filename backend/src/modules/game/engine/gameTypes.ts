@@ -45,7 +45,7 @@ export interface PlayerAction {
 }
 
 export interface GameMessage {
-  type: 'game_state' | 'player_joined' | 'player_left' | 'game_ended' | 'paddle_move' | 'error';
+  type: 'game_state' | 'game.started' | 'player_joined' | 'player_left' | 'game_ended' | 'paddle_move' | 'error';
   gameId: string;
   data: any;
   timestamp: number;

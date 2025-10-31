@@ -14,7 +14,7 @@ export class GameClient {
   private isTogglingPause: boolean = false; // anti double-clic pendant l'appel fetch
   private pausedGameState: GameState | null = null; // État sauvegardé pendant la pause
   private animationId: number | null = null;
-  private pollingInterval: number | null = null;
+  private pollingInterval: ReturnType<typeof setInterval> | null = null;
 
   // États des touches pour les contrôles
   private keys: { [key: string]: boolean } = {};

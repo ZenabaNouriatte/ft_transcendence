@@ -140,22 +140,25 @@ export class GameRoomInstance {
       id: userId,
       username,
       paddle,
-      connected: true
+      connected: true,
+      ready: false
     };
 
     this.players.set(userId, player);
     console.log(`👤 [Backend] Player ${username} (${userId}) joined game ${this.gameId} as ${paddle} paddle`);
 
-    // Si on a 2 joueurs, démarrer la partie
-    if (this.players.size === 2) {
-      this.startGame();
-    }
-
-    // Notifier les autres joueurs
+    // Notifier les autres joueurs avec la liste complète
     this.broadcastMessage({
       type: 'player_joined',
       gameId: this.gameId,
-      data: { player },
+      data: {
+        players: Array.from(this.players.values()).map(p => ({
+          id: p.id,
+          username: p.username,
+          paddle: p.paddle,
+          ready: p.ready || false
+        }))
+      },
       timestamp: Date.now()
     });
 
@@ -173,13 +176,63 @@ export class GameRoomInstance {
     player.ready = ready;
     console.log(`[Backend] Player ${player.username} (${userId}) ready status set to ${ready} in room ${this.gameId}`);
     
+    // Diffuser la mise à jour du statut ready
+    this.broadcastMessage({
+      type: 'player_joined',
+      gameId: this.gameId,
+      data: {
+        players: Array.from(this.players.values()).map(p => ({
+          id: p.id,
+          username: p.username,
+          paddle: p.paddle,
+          ready: p.ready
+        }))
+      },
+      timestamp: Date.now()
+    });
+    
     // Vérifier si tous les joueurs sont prêts
     const allPlayersReady = Array.from(this.players.values()).every(p => p.ready === true);
     const hasEnoughPlayers = this.players.size >= 2;
     
     if (allPlayersReady && hasEnoughPlayers && this.status === 'waiting') {
-      console.log(`[Backend] All players ready in room ${this.gameId}, starting game automatically`);
-      setTimeout(() => this.startGame(), 1000); // Petit délai pour que les joueurs voient le statut
+      console.log(`[Backend] All players ready in room ${this.gameId}, starting countdown`);
+      
+      // Countdown de 3 secondes
+      this.broadcastMessage({
+        type: 'game_state',
+        gameId: this.gameId,
+        data: { countdown: 3 },
+        timestamp: Date.now()
+      });
+      
+      setTimeout(() => {
+        this.broadcastMessage({
+          type: 'game_state',
+          gameId: this.gameId,
+          data: { countdown: 2 },
+          timestamp: Date.now()
+        });
+      }, 1000);
+      
+      setTimeout(() => {
+        this.broadcastMessage({
+          type: 'game_state',
+          gameId: this.gameId,
+          data: { countdown: 1 },
+          timestamp: Date.now()
+        });
+      }, 2000);
+      
+      setTimeout(() => {
+        this.broadcastMessage({
+          type: 'game_state',
+          gameId: this.gameId,
+          data: { countdown: 0 },
+          timestamp: Date.now()
+        });
+        this.startGame();
+      }, 3000);
     }
     
     return true;
@@ -204,6 +257,21 @@ export class GameRoomInstance {
     this.status = 'playing';
     this.engine.startGame();
     console.log(`[Backend] Game ${this.gameId} started!`);
+    
+    // Diffuser le message de démarrage aux clients
+    this.broadcastMessage({
+      type: 'game.started',
+      gameId: this.gameId,
+      data: {
+        players: Array.from(this.players.values()).map(p => ({
+          id: p.id,
+          username: p.username,
+          paddle: p.paddle,
+          ready: p.ready
+        }))
+      },
+      timestamp: Date.now()
+    });
   }
 
   // Mettre à jour (appelé par la boucle 60 FPS)
@@ -248,21 +316,41 @@ export class GameRoomInstance {
   // Terminer la partie
   private async endGame(): Promise<void> {
     this.status = 'ended';
-    const winner = this.engine.getWinner();
+    const winnerPaddle = this.engine.getWinner();
     const finalState = this.engine.getGameState();
 
-    console.log(`[Backend] Game ${this.gameId} ended. Winner: ${winner}`);
+    console.log(`[Backend] Game ${this.gameId} ended. Winner paddle: ${winnerPaddle}`);
 
-    // Sauvegarder le jeu en base pour les statistiques (seulement si on a un gagnant)
-    if (winner) {
-      await this.saveGameToDB(winner, finalState);
+    // Trouver le joueur gagnant avec son nom complet
+    let winnerPlayer = null;
+    if (winnerPaddle) {
+      // Convertir "player1"/"player2" en "left"/"right"
+      const winnerSide = winnerPaddle === 'player1' ? 'left' : 'right';
+      
+      // Trouver le joueur qui a ce paddle
+      for (const player of this.players.values()) {
+        if (player.paddle === winnerSide) {
+          winnerPlayer = {
+            id: player.id,
+            name: player.username,
+            paddle: player.paddle
+          };
+          console.log(`[Backend] Winner found: ${player.username} (${player.id})`);
+          break;
+        }
+      }
+    }
+
+    // Sauvegarder le jeu en base pour les statistiques
+    if (winnerPaddle) {
+      await this.saveGameToDB(winnerPaddle, finalState);
     }
 
     this.broadcastMessage({
       type: 'game_ended',
       gameId: this.gameId,
       data: { 
-        winner,
+        winner: winnerPlayer,  // Objet complet au lieu d'une simple string
         finalState
       },
       timestamp: Date.now()
