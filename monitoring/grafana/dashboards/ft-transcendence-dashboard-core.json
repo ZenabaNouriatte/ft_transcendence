@@ -1,13 +1,8 @@
 {
-  "annotations": {
-    "list": [
-      { "type": "dashboard", "name": "Annotations & Alerts", "enable": true, "hide": true }
-    ]
-  },
+  "annotations": { "list": [ { "type": "dashboard", "name": "Annotations & Alerts", "enable": true, "hide": true } ] },
   "uid": "bf2jrbxbv198gc",
   "title": "FT – Core Overview",
   "editable": true,
-  "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": null,
   "links": [],
@@ -25,42 +20,25 @@
       "title": "Containers Healthy",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
-      "targets": [{ "refId": "A", "expr": "sum(up)" }],
+      "targets": [ { "refId": "A", "expr": "sum(up)" } ],
       "fieldConfig": {
         "defaults": {
           "unit": "none",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "red", "value": 0 },
-              { "color": "green", "value": 1 }
-            ]
-          }
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": 0 }, { "color": "green", "value": 1 } ] }
         },
         "overrides": []
       },
-      "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "orientation": "horizontal",
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center"
-      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "horizontal", "colorMode": "value", "graphMode": "none", "justifyMode": "center" },
       "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 }
     },
     {
       "id": 2,
-      "title": "CPU usage per container (%)",
+      "title": "CPU usage per service (%)",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
-      "targets": [
-        { "refId": "A", "expr": "rate(container_cpu_usage_seconds_total[2m]) * 100" }
-      ],
+      "targets": [ { "refId": "A", "expr": "sum by (job) (rate(process_cpu_seconds_total[2m])) * 100" } ],
       "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
-      "options": {
-        "legend": { "displayMode": "table", "placement": "bottom" },
-        "tooltip": { "mode": "single", "sort": "none" }
-      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
       "gridPos": { "h": 8, "w": 16, "x": 8, "y": 0 }
     },
     {
@@ -68,17 +46,9 @@
       "title": "Active WS Connections",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
-      "targets": [
-        { "refId": "A", "expr": "sum(ws_connections{job=\"gateway\"}) or on() vector(0)" }
-      ],
+      "targets": [ { "refId": "A", "expr": "sum(ws_connections{job=\"gateway\"}) or on() vector(0)" } ],
       "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
-      "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "orientation": "horizontal",
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center"
-      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "horizontal", "colorMode": "value", "graphMode": "none", "justifyMode": "center" },
       "gridPos": { "h": 6, "w": 8, "x": 0, "y": 6 }
     },
     {
@@ -86,47 +56,29 @@
       "title": "Users Online (DB)",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
-      "targets": [
-        { "refId": "A", "expr": "sum(users_online) or on() vector(0)" }
-      ],
+      "targets": [ { "refId": "A", "expr": "sum(users_online) or on() vector(0)" } ],
       "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
-      "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "orientation": "horizontal",
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center"
-      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "horizontal", "colorMode": "value", "graphMode": "none", "justifyMode": "center" },
       "gridPos": { "h": 6, "w": 8, "x": 8, "y": 6 }
     },
     {
       "id": 5,
-      "title": "Chat Messages /s",
-      "type": "timeseries",
+      "title": "Chat Messages (last 5m, DB)",
+      "type": "stat",
       "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
-      "targets": [
-        { "refId": "A", "expr": "sum(rate(chat_messages_total[1m])) or on() vector(0)" }
-      ],
-      "fieldConfig": { "defaults": { "unit": "msgs/s" }, "overrides": [] },
-      "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "single", "sort": "none" }
-      },
+      "targets": [ { "refId": "A", "expr": "sum(chat_total_last_5m) or on() vector(0)" } ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "horizontal", "colorMode": "value", "graphMode": "none", "justifyMode": "center" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 }
     },
     {
       "id": 6,
-      "title": "Games Finished /s",
+      "title": "Chat Messages /s (handlers-instrumented only)",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
-      "targets": [
-        { "refId": "A", "expr": "sum(rate(games_finished_total[1m])) or on() vector(0)" }
-      ],
-      "fieldConfig": { "defaults": { "unit": "games/s" }, "overrides": [] },
-      "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "single", "sort": "none" }
-      },
+      "targets": [ { "refId": "A", "expr": "sum(rate(chat_messages_total[1m])) or on() vector(0)" } ],
+      "fieldConfig": { "defaults": { "unit": "msgs/s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 }
     }
   ],
