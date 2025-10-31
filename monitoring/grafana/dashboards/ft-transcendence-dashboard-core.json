@@ -29,10 +29,13 @@
       "fieldConfig": {
         "defaults": {
           "unit": "none",
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "red", "value": 0 },
-            { "color": "green", "value": 1 }
-          ]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "green", "value": 1 }
+            ]
+          }
         },
         "overrides": []
       },
@@ -65,7 +68,9 @@
       "title": "Active WS Connections",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
-      "targets": [{ "refId": "A", "expr": "sum(ws_connections) or vector(0)" }],
+      "targets": [
+        { "refId": "A", "expr": "sum(ws_connections{job=\"gateway\"}) or on() vector(0)" }
+      ],
       "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
@@ -78,10 +83,12 @@
     },
     {
       "id": 4,
-      "title": "Games in Progress",
+      "title": "Users Online (DB)",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
-      "targets": [{ "refId": "A", "expr": "sum(games_active) or vector(0)" }],
+      "targets": [
+        { "refId": "A", "expr": "sum(users_online) or on() vector(0)" }
+      ],
       "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
@@ -97,7 +104,9 @@
       "title": "Chat Messages /s",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
-      "targets": [{ "refId": "A", "expr": "sum(rate(chat_messages_total[1m])) or vector(0)" }],
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(chat_messages_total[1m])) or on() vector(0)" }
+      ],
       "fieldConfig": { "defaults": { "unit": "msgs/s" }, "overrides": [] },
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom" },
@@ -110,7 +119,9 @@
       "title": "Games Finished /s",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
-      "targets": [{ "refId": "A", "expr": "sum(rate(games_finished_total[1m])) or vector(0)" }],
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(games_finished_total[1m])) or on() vector(0)" }
+      ],
       "fieldConfig": { "defaults": { "unit": "games/s" }, "overrides": [] },
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom" },
