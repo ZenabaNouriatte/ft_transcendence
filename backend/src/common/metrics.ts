@@ -1,7 +1,9 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import * as client from "prom-client";
+import sqlite3 from "sqlite3";
 
 /* ───────── Registry & default ───────── */
+let lastDbOk = false;
 const register = client.register;
 client.collectDefaultMetrics({ register, eventLoopMonitoringPrecision: 10 });
 
@@ -65,78 +67,264 @@ export const dbConnectionStatus = new client.Gauge({
   help: "1 if DB polling works, 0 otherwise",
 });
 
-/* ───────── SQLite open (lazy + robust) ───────── */
-let db: any = null;
+/* ───────── SQLite polling (avec sqlite3 standard) ───────── */
+let db: sqlite3.Database | null = null;
 const wantDb = process.env.ENABLE_SQLITE_METRICS === "true";
 const dbPath = process.env.DB_PATH || "/data/app.sqlite";
 
-let qUsersOnline: any = null;
-let qChat5m: any = null;
+let initAttempts = 0;
+const MAX_INIT_ATTEMPTS = 5;
+let isPolling = false;
 
-function tryOpenDb() {
-  if (!wantDb || db) return;
+interface UsersOnlineResult {
+  n: number;
+}
+
+interface ChatMessagesResult {
+  n: number;
+}
+
+/**
+ * Promisify sqlite3 get method
+ */
+function dbGet<T>(db: sqlite3.Database, sql: string): Promise<T | undefined> {
+  return new Promise((resolve, reject) => {
+    db.get(sql, (err: Error | null, row: T) => {
+      if (err) reject(err);
+      else resolve(row);
+    });
+  });
+}
+
+/**
+ * Tente d'ouvrir la connexion SQLite
+ * Retourne true si réussi, false sinon
+ */
+function tryOpenDb(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (!wantDb) {
+      console.log("[metrics] ENABLE_SQLITE_METRICS != true — DB polling disabled");
+      resolve(false);
+      return;
+    }
+
+    if (db) {
+      resolve(true); // Déjà ouverte
+      return;
+    }
+
+    try {
+      initAttempts++;
+      console.log(`[metrics] 🔄 Attempting to open DB at ${dbPath} (attempt ${initAttempts}/${MAX_INIT_ATTEMPTS})`);
+      
+      // Mode OPEN_READONLY pour éviter les locks
+      db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
+        if (err) {
+          console.error(`[metrics] ❌ SQLite open failed (attempt ${initAttempts}):`, err.message);
+          db = null;
+          dbConnectionStatus.set(0);
+          resolve(false);
+          return;
+        }
+
+        console.log("[metrics] ✅ SQLite connection opened successfully");
+
+        // Configuration pragma pour optimiser la lecture
+        db!.serialize(() => {
+          db!.run("PRAGMA query_only = ON");
+          db!.run("PRAGMA journal_mode = WAL");
+        });
+
+        // Test immédiat de connexion
+        db!.get("SELECT 1 as test", (testErr, row: any) => {
+          if (testErr) {
+            console.error("[metrics] ❌ Connection test failed:", testErr.message);
+            db = null;
+            dbConnectionStatus.set(0);
+            resolve(false);
+            return;
+          }
+
+          console.log("[metrics] ✅ Connection test successful");
+          
+          // Test des métriques initiales
+          testInitialMetrics()
+            .then(() => {
+              dbConnectionStatus.set(1);
+              resolve(true);
+            })
+            .catch((testMetricsErr) => {
+              console.warn("[metrics] ⚠️  Initial metrics test failed:", testMetricsErr.message);
+              // On continue quand même, les tables peuvent ne pas être prêtes
+              dbConnectionStatus.set(1);
+              resolve(true);
+            });
+        });
+      });
+
+    } catch (e: any) {
+      console.error(`[metrics] ❌ Exception during DB open:`, e?.message || e);
+      db = null;
+      dbConnectionStatus.set(0);
+      resolve(false);
+    }
+  });
+}
+
+/**
+ * Test les métriques initiales pour vérifier que les tables existent
+ */
+async function testInitialMetrics(): Promise<void> {
+  if (!db) throw new Error("DB not initialized");
+
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const BetterSqlite3 = require("better-sqlite3");
-    // Pas de fileMustExist: le gateway crée la DB via initDb() juste après le boot
-    db = new BetterSqlite3(dbPath, { readonly: true });
-    db.pragma("journal_mode = WAL");
-    db.pragma("synchronous = NORMAL");
-    db.pragma("foreign_keys = ON");
-    db.pragma("busy_timeout = 2000");
-    console.log(`[metrics] DB_PATH=${dbPath} — polling enabled`);
-    dbConnectionStatus.set(1);
-
-    qUsersOnline = db.prepare(`SELECT COUNT(*) AS n FROM users WHERE status='online'`);
-    qChat5m = db.prepare(`
-      SELECT
-        (SELECT COUNT(*) FROM chat_messages   WHERE created_at >= datetime('now','-5 minutes')) +
+    const usersResult = await dbGet<UsersOnlineResult>(
+      db,
+      `SELECT COUNT(*) AS n FROM users WHERE status='online'`
+    );
+    
+    const chatResult = await dbGet<ChatMessagesResult>(
+      db,
+      `SELECT
+        (SELECT COUNT(*) FROM chat_messages WHERE created_at >= datetime('now','-5 minutes')) +
         (SELECT COUNT(*) FROM direct_messages WHERE created_at >= datetime('now','-5 minutes'))
-      AS n
-    `);
-  } catch (e: any) {
-    console.warn("[metrics] SQLite open failed:", e?.message || e);
-    db = null;
-    dbConnectionStatus.set(0);
+      AS n`
+    );
+
+    console.log(`[metrics] ✅ Initial metrics: users_online=${usersResult?.n ?? 0}, chat_last_5m=${chatResult?.n ?? 0}`);
+  } catch (err: any) {
+    console.warn(`[metrics] ⚠️  Initial metrics query failed: ${err.message}`);
+    throw err;
   }
 }
 
-function pollOnce() {
-  if (!db) {
-    tryOpenDb();
-    if (!db) return; // on réessaiera au tick suivant
-  }
-  try {
-    const u = qUsersOnline.get();
-    usersOnline.set(u?.n ?? 0);
-  } catch (err: any) {
-    console.warn("[metrics] users_online failed:", err?.message || err);
-    dbConnectionStatus.set(0);
-    // force re-open au prochain tick (utile si schéma pas prêt au premier tour)
-    db = null;
+/**
+ * Exécute un cycle de polling des métriques DB
+ */
+async function pollOnce(): Promise<void> {
+  if (isPolling) {
+    console.log("[metrics] ⚠️  Previous poll still running, skipping...");
+    return;
   }
 
+  isPolling = true;
+
   try {
-    const c = qChat5m.get();
-    chatTotalLast5m.set(c?.n ?? 0);
+    if (!db) {
+      const opened = await tryOpenDb();
+      if (!opened) {
+        if (initAttempts >= MAX_INIT_ATTEMPTS) {
+          console.log(`[metrics] ⏸️  Max init attempts reached (${MAX_INIT_ATTEMPTS}), will retry silently`);
+        }
+        isPolling = false;
+        return;
+      }
+    }
+
+    // Poll users_online
+    try {
+      const usersResult = await dbGet<UsersOnlineResult>(
+        db!,
+        `SELECT COUNT(*) AS n FROM users WHERE status='online'`
+      );
+      const count = usersResult?.n ?? 0;
+      usersOnline.set(count);
+      console.log(`[metrics] 👥 users_online: ${count}`);
+    } catch (err: any) {
+      console.error(`[metrics] ❌ users_online query failed:`, err.message);
+    }
+
+    // Poll chat_total_last_5m
+    try {
+      const chatResult = await dbGet<ChatMessagesResult>(
+        db!,
+        `SELECT
+          (SELECT COUNT(*) FROM chat_messages WHERE created_at >= datetime('now','-5 minutes')) +
+          (SELECT COUNT(*) FROM direct_messages WHERE created_at >= datetime('now','-5 minutes'))
+        AS n`
+      );
+      const count = chatResult?.n ?? 0;
+      chatTotalLast5m.set(count);
+      console.log(`[metrics] 💬 chat_total_last_5m: ${count}`);
+    } catch (err: any) {
+      console.error(`[metrics] ❌ chat_total_last_5m query failed:`, err.message);
+    }
+
+    // Marquer comme opérationnel
+    dbConnectionStatus.set(1);
+    lastDbOk = true;
+
   } catch (err: any) {
-    console.warn("[metrics] chat_total_last_5m failed:", err?.message || err);
+    console.error(`[metrics] ❌ Polling error:`, err?.message || err);
     dbConnectionStatus.set(0);
-    db = null;
+    lastDbOk = false;
+
+    // Fermer et réinitialiser pour tenter une reconnexion
+    if (db) {
+      db.close((closeErr) => {
+        if (closeErr) {
+          console.error("[metrics] Error closing DB:", closeErr.message);
+        }
+      });
+      db = null;
+    }
+  } finally {
+    isPolling = false;
   }
 }
 
-// Première exécution différée (laisse le temps à initDb() d’appliquer le schéma)
-if (wantDb) {
+/**
+ * Initialise le système de polling avec retry progressif
+ */
+function initPolling(): void {
+  if (!wantDb) {
+    console.log("[metrics] 🔕 DB metrics disabled (ENABLE_SQLITE_METRICS != true)");
+    dbConnectionStatus.set(0);
+    return;
+  }
+
+  console.log("[metrics] 🚀 Starting DB metrics polling system");
+  console.log(`[metrics] 📍 DB_PATH: ${dbPath}`);
+  console.log(`[metrics] ⏱️  Poll interval: 10s`);
+  console.log(`[metrics] ⏳ Initial delay: 5s (waiting for DB initialization)`);
+
+  // Premier essai après 5s (laisse le temps à initDb() de créer le schéma)
   setTimeout(() => {
-    tryOpenDb();
-    pollOnce();
-    setInterval(pollOnce, 10_000);
+    console.log("[metrics] 🔄 First polling attempt...");
+    pollOnce().catch((err) => {
+      console.error("[metrics] First poll failed:", err);
+    });
+
+    // Polling régulier toutes les 10s
+    const interval = setInterval(() => {
+      pollOnce().catch((err) => {
+        console.error("[metrics] Poll cycle failed:", err);
+      });
+    }, 10_000);
+
+    // Cleanup au shutdown
+    const cleanup = () => {
+      console.log("[metrics] 🛑 Shutting down, stopping polling");
+      clearInterval(interval);
+      if (db) {
+        db.close((err) => {
+          if (err) {
+            console.error("[metrics] Error closing DB:", err.message);
+          } else {
+            console.log("[metrics] ✅ DB closed gracefully");
+          }
+        });
+      }
+    };
+
+    process.on("SIGTERM", cleanup);
+    process.on("SIGINT", cleanup);
+
   }, 5_000);
-} else {
-  console.log("[metrics] ENABLE_SQLITE_METRICS != true — DB polling disabled");
-  dbConnectionStatus.set(0);
 }
+
+// Démarrage automatique du polling
+initPolling();
 
 /* ───────── Fastify hooks ───────── */
 export function registerHttpTimingHooks(app: FastifyInstance) {
@@ -171,4 +359,19 @@ export function registerHttpTimingHooks(app: FastifyInstance) {
 export async function sendMetrics(reply: FastifyReply) {
   reply.header("Content-Type", register.contentType);
   return await register.metrics();
+}
+
+/* ───────── Health check helper ───────── */
+export function getDbHealthStatus(): {
+  connected: boolean;
+  attempts: number;
+  path: string;
+  enabled: boolean;
+} {
+  return {
+    connected: lastDbOk && db !== null,
+    attempts: initAttempts,
+    path: dbPath,
+    enabled: wantDb,
+  };
 }
