@@ -1,3 +1,4 @@
+// backend/src/common/metrics.ts
 import type { FastifyInstance, FastifyReply } from "fastify";
 import * as client from "prom-client";
 
@@ -7,7 +8,7 @@ import * as client from "prom-client";
 const register = client.register;
 client.collectDefaultMetrics({
   register,
-  eventLoopMonitoringPrecision: 10, // pour nodejs_eventloop_lag_seconds
+  eventLoopMonitoringPrecision: 10, // nodejs_eventloop_lag_seconds
 });
 
 /* ----------------------------------------------------------
@@ -76,6 +77,11 @@ export const gamesActive = new client.Gauge({
   labelNames: ["mode"],
 });
 
+export const gamesFinishedTotal = new client.Counter({
+  name: "games_finished_total",
+  help: "Cumulative number of finished games (DB-derived)",
+});
+
 export const playersInGame = new client.Gauge({
   name: "players_in_game",
   help: "Players currently in game",
@@ -108,30 +114,51 @@ export const sqliteErrorsTotal = new client.Counter({
 });
 
 /* ----------------------------------------------------------
-   USERS ONLINE METRIC
+   USERS ONLINE (DB-DERIVED)
 ----------------------------------------------------------- */
 export const usersOnline = new client.Gauge({
   name: "users_online",
   help: "Users considered online (last_seen within X minutes)",
 });
 
-// --- Lazy load de better-sqlite3 pour éviter l'erreur de build ---
+/* ----------------------------------------------------------
+   DB ACCESS (lazy require better-sqlite3)
+----------------------------------------------------------- */
 let db: any = null;
 if (process.env.ENABLE_SQLITE_METRICS === "true") {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const BetterSqlite3 = require("better-sqlite3");
     const dbPath = process.env.DB_PATH;
-    if (dbPath) db = new BetterSqlite3(dbPath);
+    if (dbPath) {
+      db = new BetterSqlite3(dbPath);
+    } else {
+      console.warn("[metrics] DB_PATH not set; SQLite metrics disabled");
+    }
   } catch (e: any) {
     console.warn("[metrics] SQLite metrics disabled:", e?.message || e);
   }
 }
 
-// Mettre à jour users_online seulement si db est OK
+/* ----------------------------------------------------------
+   PERIODIC POLLING (users_online, games_active, games_finished_total)
+----------------------------------------------------------- */
 if (db) {
   const minutes = Number(process.env.USERS_ONLINE_WINDOW_MIN || 5);
-  setInterval(() => {
+  const POLL_MS = 10_000;
+
+  // Initialise le cumul "finished" pour éviter un gros pic au démarrage
+  let lastFinishedTotal = 0;
+  try {
+    const initFinished = db
+      .prepare(`SELECT COUNT(*) AS c FROM games WHERE status='finished'`)
+      .get();
+    lastFinishedTotal = initFinished?.c ?? 0;
+  } catch (err: any) {
+    console.warn("[metrics] init finished count failed:", err?.message || err);
+  }
+
+  function pollUsersOnline() {
     try {
       const row = db
         .prepare(
@@ -142,9 +169,38 @@ if (db) {
         .get(`-${minutes} minutes`);
       usersOnline.set(row?.n || 0);
     } catch (err: any) {
-      console.error("[metrics] users_online failed:", err?.message || err);
+      console.warn("[metrics] users_online failed:", err?.message || err);
     }
-  }, 10_000);
+  }
+
+  function pollGames() {
+    try {
+      // games_active: parties en cours
+      const rowPlaying = db
+        .prepare(`SELECT COUNT(*) AS c FROM games WHERE status='playing'`)
+        .get();
+      gamesActive.set(rowPlaying?.c ?? 0);
+
+      // games_finished_total: compteur cumulatif (delta depuis la DB)
+      const rowFinished = db
+        .prepare(`SELECT COUNT(*) AS c FROM games WHERE status='finished'`)
+        .get();
+      const totalFinished = rowFinished?.c ?? 0;
+      const delta = totalFinished - lastFinishedTotal;
+      if (delta > 0) {
+        gamesFinishedTotal.inc(delta);
+      }
+      lastFinishedTotal = totalFinished;
+    } catch (err: any) {
+      console.warn("[metrics] games polling failed:", err?.message || err);
+    }
+  }
+
+  // Première passe immédiate + intervalle
+  pollUsersOnline();
+  pollGames();
+  setInterval(pollUsersOnline, POLL_MS);
+  setInterval(pollGames, POLL_MS);
 }
 
 /* ----------------------------------------------------------
@@ -161,9 +217,7 @@ export function registerHttpTimingHooks(app: FastifyInstance) {
   });
 
   app.addHook("onResponse", (req, reply, done) => {
-    const m = (req as any)._metrics as
-      | { t0?: bigint; route?: string }
-      | undefined;
+    const m = (req as any)._metrics as { t0?: bigint; route?: string } | undefined;
     const route = m?.route || normalizeRoute(req, reply);
 
     // in-flight--
@@ -179,7 +233,7 @@ export function registerHttpTimingHooks(app: FastifyInstance) {
           route,
           method: req.method,
           code: String(reply.statusCode),
-        })
+        } as any)
         .inc();
     } catch {}
 
@@ -187,9 +241,7 @@ export function registerHttpTimingHooks(app: FastifyInstance) {
     if (m?.t0) {
       const seconds = Number(process.hrtime.bigint() - m.t0) / 1e9;
       try {
-        httpDuration
-          .labels(req.method, route, String(reply.statusCode))
-          .observe(seconds);
+        httpDuration.labels(req.method, route, String(reply.statusCode)).observe(seconds);
       } catch {}
     }
     done();
