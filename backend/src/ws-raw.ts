@@ -9,6 +9,7 @@ import {
   wsRateLimitedTotal 
 } from "./common/metrics.js";
 import { UserService } from "./services/index.js";
+import { handleDirectMessage } from "./ws-dm-handler.js";
 
 // Global GameRoomManager instance (set by index.ts)
 let gameRoomManager: any = null;
@@ -18,6 +19,9 @@ const gameConnections = new Map<string, Set<WebSocket>>();
 
 // Store WebSocket connections for chat broadcasting
 const chatConnections = new Set<WebSocket>();
+
+// Store WebSocket connections for direct messages by userId
+const dmConnections = new Map<number, WebSocket>();
 
 // Broadcast a message to all connections in a specific game
 function broadcastToGame(gameId: string, message: any) {
@@ -60,10 +64,32 @@ function broadcastToChat(message: any) {
   console.log('[chat] Broadcast complete');
 }
 
+// Send a direct message to a specific user
+function sendDirectMessage(userId: number, message: any) {
+  const ws = dmConnections.get(userId);
+  if (ws && ws.readyState === ws.OPEN) {
+    const messageStr = JSON.stringify(message);
+    console.log('[dm] Sending DM to user', userId, ':', messageStr);
+    ws.send(messageStr, (err?: Error) => {
+      if (err) console.error("[dm] Error sending direct message:", err);
+      else console.log('[dm] ✅ DM sent successfully to user', userId);
+    });
+    return true;
+  } else {
+    console.log('[dm] User', userId, 'not connected or WebSocket not open');
+    return false;
+  }
+}
+
 // Function to set the GameRoomManager instance
 export function setGameRoomManager(manager: any) {
   gameRoomManager = manager;
   console.log("🎮 GameRoomManager connected to WebSocket system");
+}
+
+// Export sendDirectMessage for external use
+export function sendDirectMessageToUser(userId: number, message: any): boolean {
+  return sendDirectMessage(userId, message);
 }
 
 // Fonction de sanitization si le module n'existe pas
@@ -89,7 +115,7 @@ type Ctx = {
   rate: { windowStart: number; count: number };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────
 // Limits & timings
 // ─────────────────────────────────────────────────────────────────────────────
 const MAX_MSG_BYTES = 64 * 1024;
@@ -268,6 +294,12 @@ export function registerRawWs(app: FastifyInstance) {
       console.log('[chat] Added WebSocket to chatConnections. Total:', chatConnections.size);
     }
 
+    // Add to DM connections if user is authenticated
+    if (ws.ctx?.userId) {
+      dmConnections.set(ws.ctx.userId, ws);
+      console.log('[dm] Registered user', ws.ctx.userId, 'for direct messages. Total DM connections:', dmConnections.size);
+    }
+
     // 2.d) Safe send utility
     const safeSend = (objOrString: any) => {
       const payload = typeof objOrString === "string" ? objOrString : JSON.stringify(objOrString);
@@ -289,6 +321,12 @@ export function registerRawWs(app: FastifyInstance) {
       if ((ws as any)._channel === "chat") {
         chatConnections.delete(ws);
         console.log('[chat] Removed WebSocket from chatConnections. Total:', chatConnections.size);
+      }
+
+      // Clean up DM connections
+      if (ws.ctx?.userId) {
+        dmConnections.delete(ws.ctx.userId);
+        console.log('[dm] Unregistered user', ws.ctx.userId, 'from direct messages. Total DM connections:', dmConnections.size);
       }
 
       let left = -1;
@@ -484,24 +522,28 @@ export function registerRawWs(app: FastifyInstance) {
               })
                 .then(userResponse => {
                   let username = `User${userId}`;
+                  let avatar: string | null = null;
                   
                   if (userResponse.ok) {
                     return userResponse.json().then(userData => {
                       if (userData.user && userData.user.username) {
                         username = userData.user.username;
+                        avatar = userData.user.avatar || null;
                       }
-                      return username;
+                      return { username, avatar };
                     });
                   } else {
-                    return username;
+                    return { username, avatar };
                   }
                 })
-                .then(username => {
+                .then(({ username, avatar }) => {
                   // Broadcast the message to all chat connections
-                  console.log('[chat] About to broadcast message with username:', username);
+                  console.log('[chat] About to broadcast message with username:', username, 'avatar:', avatar);
                   broadcastToChat({
                     type: "chat.message",
+                    userId: userId,
                     username: username,
+                    avatar: avatar,
                     message: messageContent,
                     timestamp: new Date().toISOString()
                   });
@@ -513,7 +555,9 @@ export function registerRawWs(app: FastifyInstance) {
                   // Still broadcast with fallback username
                   broadcastToChat({
                     type: "chat.message",
+                    userId: userId,
                     username: `User${userId}`,
+                    avatar: null,
                     message: messageContent,
                     timestamp: new Date().toISOString()
                   });
@@ -526,6 +570,28 @@ export function registerRawWs(app: FastifyInstance) {
                 requestId 
               });
             }
+            break;
+          }
+
+          case "dm.message": {
+            // Direct message handler
+            if (!ws.ctx?.userId) {
+              safeSend({ 
+                type: "error", 
+                data: { message: "authentication_required" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            // Handle DM using dedicated handler
+            handleDirectMessage(msg.data, requestId, {
+              senderId: ws.ctx.userId,
+              token: (ws as any)._token || '',
+              safeSend,
+              sendDirectMessage,
+              app
+            });
             break;
           }
 

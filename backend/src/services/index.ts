@@ -676,11 +676,43 @@ export class FriendshipService {
   }
 
   static async block(selfId: number, targetId: number) {
+    // Supprimer toutes les amitiés existantes entre les deux utilisateurs
     await run(
-      `INSERT OR REPLACE INTO friendships (user_id, friend_id, status)
+      `DELETE FROM friendships WHERE 
+       (user_id = ? AND friend_id = ?) OR 
+       (user_id = ? AND friend_id = ?)`,
+      [selfId, targetId, targetId, selfId]
+    );
+    
+    // Ajouter le blocage
+    await run(
+      `INSERT INTO friendships (user_id, friend_id, status)
        VALUES (?, ?, 'blocked')`,
       [selfId, targetId]
     );
+  }
+
+  static async unblock(selfId: number, targetId: number) {
+    await run(
+      `DELETE FROM friendships WHERE user_id = ? AND friend_id = ? AND status = 'blocked'`,
+      [selfId, targetId]
+    );
+  }
+
+  static async getBlockedUsers(userId: number): Promise<number[]> {
+    const results = await all(
+      `SELECT friend_id FROM friendships WHERE user_id = ? AND status = 'blocked'`,
+      [userId]
+    );
+    return results.map((r: any) => r.friend_id);
+  }
+
+  static async isBlocked(userId: number, targetId: number): Promise<boolean> {
+    const result = await get(
+      `SELECT 1 FROM friendships WHERE user_id = ? AND friend_id = ? AND status = 'blocked'`,
+      [targetId, userId]
+    );
+    return !!result;
   }
 
   static async getFriendshipStatus(userId: number, targetId: number): Promise<string | null> {
@@ -740,6 +772,176 @@ export class FriendshipService {
        ORDER BY u.username`,
       [userId, userId, userId]
     );
+  }
+}
+
+// Direct Message Service
+export class DirectMessageService {
+  /**
+   * Envoyer un message direct
+   */
+  static async sendMessage(senderId: number, receiverId: number, message: string): Promise<any> {
+    // Vérifier que les deux utilisateurs existent
+    const sender = await get(`SELECT id FROM users WHERE id = ?`, [senderId]);
+    const receiver = await get(`SELECT id FROM users WHERE id = ?`, [receiverId]);
+    
+    if (!sender || !receiver) {
+      throw new Error('Sender or receiver not found');
+    }
+    
+    // Vérifier que l'utilisateur n'est pas bloqué
+    const isBlocked = await FriendshipService.isBlocked(senderId, receiverId);
+    if (isBlocked) {
+      throw new Error('Cannot send message to blocked user');
+    }
+    
+    await run(
+      `INSERT INTO direct_messages (sender_id, receiver_id, message) VALUES (?, ?, ?)`,
+      [senderId, receiverId, message]
+    );
+    
+    const result = await get<{ id: number }>(`SELECT last_insert_rowid() AS id`);
+    const messageId = result?.id ?? 0;
+    
+    return {
+      id: messageId,
+      sender_id: senderId,
+      receiver_id: receiverId,
+      message,
+      read_at: null,
+      created_at: new Date().toISOString()
+    };
+  }
+  
+  /**
+   * Récupérer la conversation entre deux utilisateurs
+   */
+  static async getConversation(userId: number, otherUserId: number, limit = 50): Promise<any[]> {
+    return all(
+      `SELECT dm.*, 
+              sender.username as sender_username, 
+              sender.avatar as sender_avatar,
+              receiver.username as receiver_username,
+              receiver.avatar as receiver_avatar
+       FROM direct_messages dm
+       JOIN users sender ON sender.id = dm.sender_id
+       JOIN users receiver ON receiver.id = dm.receiver_id
+       WHERE (dm.sender_id = ? AND dm.receiver_id = ?) 
+          OR (dm.sender_id = ? AND dm.receiver_id = ?)
+       ORDER BY dm.created_at DESC
+       LIMIT ?`,
+      [userId, otherUserId, otherUserId, userId, limit]
+    );
+  }
+  
+  /**
+   * Récupérer la liste des conversations (avec le dernier message et le nombre de non-lus)
+   */
+  static async getConversations(userId: number): Promise<any[]> {
+    // Récupérer toutes les personnes avec qui on a échangé des messages
+    const conversationUsers = await all(
+      `SELECT DISTINCT
+         CASE 
+           WHEN sender_id = ? THEN receiver_id 
+           ELSE sender_id 
+         END as other_user_id
+       FROM direct_messages
+       WHERE sender_id = ? OR receiver_id = ?`,
+      [userId, userId, userId]
+    );
+    
+    // Pour chaque utilisateur, récupérer les détails et le dernier message
+    const conversations = [];
+    for (const conv of conversationUsers) {
+      const otherUserId = conv.other_user_id;
+      
+      // Récupérer les infos de l'autre utilisateur
+      const user = await get(
+        `SELECT id, username, avatar, status FROM users WHERE id = ?`,
+        [otherUserId]
+      );
+      
+      if (!user) continue;
+      
+      // Récupérer le dernier message
+      const lastMsg = await get(
+        `SELECT message, created_at, sender_id
+         FROM direct_messages
+         WHERE (sender_id = ? AND receiver_id = ?)
+            OR (sender_id = ? AND receiver_id = ?)
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [userId, otherUserId, otherUserId, userId]
+      );
+      
+      // Compter les messages non lus
+      const unreadResult = await get(
+        `SELECT COUNT(*) as count
+         FROM direct_messages
+         WHERE receiver_id = ? AND sender_id = ? AND read_at IS NULL`,
+        [userId, otherUserId]
+      );
+      
+      conversations.push({
+        other_user_id: otherUserId,
+        other_username: user.username,
+        other_avatar: user.avatar,
+        other_status: user.status || 'offline',
+        last_message: lastMsg?.message || '',
+        last_message_at: lastMsg?.created_at || new Date().toISOString(),
+        last_sender_id: lastMsg?.sender_id || null,
+        unread_count: unreadResult?.count || 0
+      });
+    }
+    
+    // Trier par date du dernier message
+    conversations.sort((a, b) => {
+      return new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime();
+    });
+    
+    return conversations;
+  }
+  
+  /**
+   * Marquer les messages comme lus
+   */
+  static async markAsRead(userId: number, otherUserId: number): Promise<void> {
+    await run(
+      `UPDATE direct_messages 
+       SET read_at = CURRENT_TIMESTAMP 
+       WHERE receiver_id = ? AND sender_id = ? AND read_at IS NULL`,
+      [userId, otherUserId]
+    );
+  }
+  
+  /**
+   * Obtenir le nombre de messages non lus
+   */
+  static async getUnreadCount(userId: number): Promise<number> {
+    const result = await get(
+      `SELECT COUNT(*) as count 
+       FROM direct_messages 
+       WHERE receiver_id = ? AND read_at IS NULL`,
+      [userId]
+    );
+    return result?.count || 0;
+  }
+  
+  /**
+   * Supprimer un message (optionnel)
+   */
+  static async deleteMessage(messageId: number, userId: number): Promise<boolean> {
+    await run(
+      `DELETE FROM direct_messages 
+       WHERE id = ? AND sender_id = ?`,
+      [messageId, userId]
+    );
+    // Vérifier si le message existait
+    const check = await get(
+      `SELECT 1 FROM direct_messages WHERE id = ?`,
+      [messageId]
+    );
+    return !check; // Si le message n'existe plus, la suppression a réussi
   }
 }
 

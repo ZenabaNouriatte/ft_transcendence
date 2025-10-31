@@ -824,6 +824,74 @@ input.styled-input.logged-user-tournament:focus {
   vertical-align: middle;
 }
 
+/* Bouton Block User - Style rouge avec effet hover */
+.block-user-btn {
+  background-color: #f87171;
+  color: #9b2c2c;
+  font-size: 14px;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
+  padding: 8px 16px;
+  border: 2px solid #e11d48;
+  border-radius: 20px;
+  cursor: pointer;
+  box-shadow: 0px 3px 0px #c53030;
+  transition: all 0.15s ease;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  min-width: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.block-user-btn:hover {
+  background-color: #fd4f4f;
+  transform: translateY(-1px);
+  box-shadow: 0px 4px 0px #c53030;
+}
+
+.block-user-btn:active {
+  background-color: #fa3f3f;
+  box-shadow: 0px 1px 0px #c53030;
+  transform: translateY(2px);
+}
+
+/* Bouton Unblock User - Style vert avec effet hover */
+.unblock-user-btn {
+  background-color: #22c58e;
+  color: #086f56;
+  font-size: 14px;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
+  padding: 8px 16px;
+  border: 2px solid #059669;
+  border-radius: 20px;
+  cursor: pointer;
+  box-shadow: 0px 3px 0px #047857;
+  transition: all 0.15s ease;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  min-width: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.unblock-user-btn:hover {
+  background-color: #1da97a;
+  transform: translateY(-1px);
+  box-shadow: 0px 4px 0px #047857;
+}
+
+.unblock-user-btn:active {
+  background-color: #16a972;
+  box-shadow: 0px 1px 0px #047857;
+  transform: translateY(2px);
+}
+
 /* Boutons Accept/Decline pour les demandes d'amis */
 .accept-request-btn {
   background-color: #22c58e;
@@ -908,6 +976,36 @@ input.styled-input.logged-user-tournament:focus {
 .retro-btn-round:active {
   background-color: #d9c9ad; /* Beige un peu plus foncé */
   box-shadow: 0px 2px 0px #4a3c2a;
+  transform: translateY(4px);
+}
+
+/* Bouton rond pour le chat sur la page friends-profile */
+.retro-btn-round-profile {
+  background-color: #f0e6d6;
+  color: #6d5a42;
+  font-size: 18px;
+  font-family: monospace, sans-serif;
+  padding: 16px;
+  border: 2px solid #254376; /* Bordure bleue comme la photo de profil */
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: none; /* Pas d'ombre */
+  transition: all 0.15s ease;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 69px;
+  height: 69px;
+}
+
+.retro-btn-round-profile:hover {
+  background-color: #e8dcc8;
+  transform: translateY(-2px);
+}
+
+.retro-btn-round-profile:active {
+  background-color: #d9c9ad;
   transform: translateY(4px);
 }
 
@@ -1095,19 +1193,22 @@ input.styled-input.logged-user-tournament:focus {
 .chat-window-container {
   background-color: rgba(251, 222, 156, 0.85); /* #fbde9c avec transparence */
   border: 3px solid #f99256;
-  box-shadow: 0 8px 32px rgba(249, 146, 86, 0.3);
+  overflow: hidden; /* Empêche le débordement du conteneur */
+  border-radius: 0.5rem; /* Coins arrondis */
 }
 
 /* Header du chat */
 .chat-header {
   background-color: #f99256; /* Orange comme le bouton */
   border-bottom: 2px solid #e57a3d; /* Orange plus foncé pour la bordure */
-  border-radius: 0.5rem 0.5rem 0 0;
+  position: relative; /* Pour le positionnement absolu du bouton X */
+  border-radius: 0.5rem 0.5rem 0 0; /* Coins arrondis en haut uniquement */
 }
 
 /* Zone des messages avec transparence */
 .chat-messages-bg {
   background-color: rgba(251, 222, 156, 0.6); /* Plus transparent pour contraster avec les messages */
+  overflow-y: auto; /* Force le scroll vertical */
 }
 
 /* Messages individuels - opaques */
@@ -1141,7 +1242,7 @@ input.styled-input.logged-user-tournament:focus {
 .chat-input-area {
   background-color: #fbde9c;
   border-top: 2px solid #f99256;
-  border-radius: 0 0 0.5rem 0.5rem;
+  border-radius: 0 0 0.5rem 0.5rem; /* Coins arrondis en bas uniquement */
 }
 
 .chat-input-field {
@@ -1166,5 +1267,139 @@ input.styled-input.logged-user-tournament:focus {
   background-color: #e57a3d;
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(249, 146, 86, 0.3);
+}
+
+/* Chat Tabs */
+.chat-tab-active {
+  background-color: #f99256;
+  border-bottom: 3px solid #d97838;
+  color: white;
+}
+
+.chat-tab-inactive {
+  color: #d97838;
+  transition: color 0.2s ease;
+}
+
+.chat-tab-inactive:hover {
+  color: white;
+}
+
+/* DM Conversations */
+.dm-conversation-item {
+  padding: 14px 16px;
+  margin: 8px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: rgb(241, 226, 191);
+  border: 2px solid rgba(249, 146, 86, 0.3);
+  box-shadow: none;
+}
+
+.dm-conversation-item:hover {
+  background-color: #fbde9c;
+  border-color: #f99256;
+  border-width: 3px;
+  transform: translateX(4px);
+  box-shadow: none;
+}
+
+.dm-conversation-item.unread {
+  background-color: rgba(249, 146, 86, 0.2);
+  border-color: #f99256;
+  border-width: 3px;
+}
+
+.dm-conversation-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid #ff8c00;
+  object-fit: cover;
+}
+
+.dm-conversation-name {
+  font-weight: 600;
+  color: #ff8c00;
+  font-size: 15px;
+}
+
+.dm-conversation-time {
+  font-size: 11px;
+  color: #888;
+}
+
+.dm-conversation-preview {
+  font-size: 13px;
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 250px;
+}
+
+.dm-unread-badge {
+  background-color: #f99256;
+  color: white;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: bold;
+  min-width: 20px;
+  text-align: center;
+}
+
+.dm-message-time {
+  font-size: 10px;
+  margin-top: 4px;
+  opacity: 0.7;
+}
+
+.dm-message-sent {
+  background-color: #f99256;
+  color: white;
+  padding: 10px 14px;
+  border-radius: 16px 16px 4px 16px;
+  max-width: 70%;
+  margin-left: auto;
+  word-wrap: break-word;
+}
+
+.dm-message-received {
+  background-color: rgb(241, 226, 191);
+  color: #1a1a1a;
+  padding: 10px 14px;
+  border-radius: 16px 16px 16px 4px;
+  max-width: 70%;
+  margin-right: auto;
+  word-wrap: break-word;
+}
+
+.message-round-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background-color: #f99256;
+  color: white;
+  font-size: 24px;
+  border: 3px solid #e57a3d;
+  cursor: pointer;
+  box-shadow: 0 4px 6px rgba(249, 146, 86, 0.4);
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.message-round-btn:hover {
+  background-color: #e57a3d;
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 6px 12px rgba(249, 146, 86, 0.5);
+}
+
+.message-round-btn:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 2px 4px rgba(249, 146, 86, 0.3);
 }
 

@@ -12,11 +12,52 @@
 // - "#/victory" : Page de victoire avec affichage du gagnant et score final
 
 import { GameClient } from './gameClient.js';
+import * as DM from './dm.js';
 console.log('[build] routeurSPA loaded @', new Date().toISOString());
 
 // ===== Variables globales du Chat =====
 let isChatOpen = false;
-let chatMessages: Array<{username: string, message: string, timestamp: Date}> = [];
+let chatMessages: Array<{userId: number, username: string, avatar: string | null, message: string, timestamp: Date}> = [];
+
+// Charger les messages depuis localStorage au démarrage
+function loadChatMessagesFromStorage() {
+  try {
+    const stored = localStorage.getItem('chatMessages');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Convertir les timestamps de string à Date
+      chatMessages = parsed.map((msg: any) => ({
+        ...msg,
+        timestamp: new Date(msg.timestamp)
+      }));
+      console.log('[CHAT] Loaded', chatMessages.length, 'messages from localStorage');
+    }
+  } catch (error) {
+    console.error('[CHAT] Error loading messages from localStorage:', error);
+    chatMessages = [];
+  }
+}
+
+// Vider les messages du chat (appelé au logout ou clean)
+function clearChatMessages() {
+  chatMessages = [];
+  localStorage.removeItem('chatMessages');
+  console.log('[CHAT] Chat messages cleared');
+}
+
+// Sauvegarder les messages dans localStorage
+function saveChatMessagesToStorage() {
+  try {
+    // Garder seulement les 100 derniers messages pour ne pas surcharger localStorage
+    const messagesToSave = chatMessages.slice(-100);
+    localStorage.setItem('chatMessages', JSON.stringify(messagesToSave));
+  } catch (error) {
+    console.error('[CHAT] Error saving messages to localStorage:', error);
+  }
+}
+
+// Charger les messages au démarrage
+loadChatMessagesFromStorage();
 
 // ===== Presence WS (singleton) =====
 const Presence = (() => {
@@ -54,13 +95,29 @@ const Presence = (() => {
           console.log('[CHAT] Message reçu:', data);
           // Nouveau message de chat reçu
           const newMessage = {
+            userId: data.userId || 0,
             username: data.username || 'Anonyme',
+            avatar: data.avatar || null,
             message: data.message || '',
             timestamp: new Date()
           };
-          chatMessages.push(newMessage);
-          console.log('[CHAT] Total messages:', chatMessages.length);
-          updateChatDisplay();
+          
+          // Ne pas afficher les messages des utilisateurs bloqués
+          if (!isUserBlocked(newMessage.userId)) {
+            chatMessages.push(newMessage);
+            saveChatMessagesToStorage(); // Sauvegarder dans localStorage
+            console.log('[CHAT] Total messages:', chatMessages.length);
+            updateChatDisplay();
+          } else {
+            console.log('[CHAT] Message from blocked user ignored:', newMessage.username);
+          }
+        } else if (data.type === 'dm.message' && data.data) {
+          console.log('[DM] Message direct reçu:', data);
+          // Message direct reçu
+          DM.handleIncomingDm(data.data);
+        } else if (data.type === 'dm.sent') {
+          console.log('[DM] Message envoyé confirmé:', data);
+          // Confirmation que notre message a été envoyé
         }
       } catch (error) {
         console.warn('[chat] Erreur parsing message:', error);
@@ -128,13 +185,30 @@ function updateChatDisplay() {
 
   const html = chatMessages
     .slice(-50) // Garde seulement les 50 derniers messages
-    .map(msg => `
-      <div class="chat-message">
-        <span class="chat-username">${escapeHtml(msg.username)}:</span>
-        <span class="chat-text">${escapeHtml(msg.message)}</span>
-        <span class="chat-time">${msg.timestamp.toLocaleTimeString()}</span>
-      </div>
-    `).join('');
+    .map(msg => {
+      // Obtenir le chemin de l'avatar de l'utilisateur (personnalisé ou par défaut)
+      const avatarPath = getUserAvatarPath(msg.userId, msg.avatar);
+      
+      // Formater l'heure sans les secondes (HH:MM)
+      const timeString = msg.timestamp.toLocaleTimeString('fr-FR', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+      
+      return `
+        <div class="chat-message" style="display: flex; align-items: center; gap: 4px; padding: 8px 12px;">
+          <div class="chat-avatar" style="width: 32px; height: 32px; border-radius: 50%; border: 2px solid #ff8c00; overflow: hidden; flex-shrink: 0; background-image: url('${avatarPath}'); background-size: cover; background-position: center;"></div>
+          <div style="flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px;">
+            <span class="chat-username" style="cursor: pointer; font-weight: bold; color: #ff8c00; text-decoration: none; transition: all 0.2s; flex-shrink: 0;" 
+                  onmouseover="this.style.opacity='0.7'; this.style.textDecoration='underline';" 
+                  onmouseout="this.style.opacity='1'; this.style.textDecoration='none';"
+                  onclick="localStorage.setItem('viewingFriendUserId', '${msg.userId}'); localStorage.setItem('viewingFriendUsername', '${escapeHtml(msg.username)}'); location.hash = '#/friends-profile';">${escapeHtml(msg.username)}:</span>
+            <span class="chat-text" style="flex: 1; min-width: 0; word-break: break-word;">${escapeHtml(msg.message)}</span>
+            <span class="chat-time" style="font-size: 0.85em; color: #888; flex-shrink: 0; margin-right: 8px;">${timeString}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
   
   console.log('[CHAT] Generated HTML length:', html.length);
   chatMessagesContainer.innerHTML = html;
@@ -165,7 +239,82 @@ function toggleChat() {
   const chatOverlay = document.getElementById('chatOverlay');
   if (chatOverlay) {
     chatOverlay.style.display = isChatOpen ? 'flex' : 'none';
+    // Afficher les messages quand on ouvre le chat
+    if (isChatOpen) {
+      updateChatDisplay();
+    }
   }
+}
+
+// Injecter le chat overlay dans le DOM s'il n'existe pas déjà
+function ensureChatOverlayExists() {
+  if (!document.getElementById('chatOverlay')) {
+    const chatContainer = document.createElement('div');
+    chatContainer.innerHTML = getChatOverlayHTML();
+    document.body.appendChild(chatContainer.firstElementChild as HTMLElement);
+    console.log('[CHAT] Chat overlay injected into DOM');
+    // Attacher les event listeners après injection
+    attachChatEventListeners();
+  }
+}
+
+// Fonction pour attacher les event listeners du chat
+function attachChatEventListeners() {
+  console.log('[CHAT] Attaching event listeners');
+  
+  document.getElementById("closeChatBtn")?.addEventListener("click", () => {
+    toggleChat();
+  });
+  
+  document.getElementById("sendChatBtn")?.addEventListener("click", () => {
+    const input = document.getElementById("chatInput") as HTMLInputElement;
+    if (input && input.value.trim()) {
+      sendChatMessage(input.value);
+      input.value = '';
+    }
+  });
+
+  document.getElementById("chatInput")?.addEventListener("keypress", (e) => {
+    if (e.key === 'Enter') {
+      const input = e.target as HTMLInputElement;
+      if (input && input.value.trim()) {
+        sendChatMessage(input.value);
+        input.value = '';
+      }
+    }
+  });
+
+  document.getElementById("chatTabGlobal")?.addEventListener("click", () => {
+    DM.switchToGlobalTab();
+  });
+
+  document.getElementById("chatTabMessages")?.addEventListener("click", () => {
+    DM.switchToDmTab();
+  });
+
+  document.getElementById("dmBackBtn")?.addEventListener("click", () => {
+    DM.closeDmConversation();
+  });
+
+  document.getElementById("sendDmBtn")?.addEventListener("click", () => {
+    const input = document.getElementById("dmInput") as HTMLInputElement;
+    const activeDmUserId = DM.getActiveDmUserId();
+    if (input && input.value.trim() && activeDmUserId) {
+      DM.sendDirectMessage(activeDmUserId, input.value);
+      input.value = '';
+    }
+  });
+
+  document.getElementById("dmInput")?.addEventListener("keypress", (e) => {
+    if (e.key === 'Enter') {
+      const input = e.target as HTMLInputElement;
+      const activeDmUserId = DM.getActiveDmUserId();
+      if (input && input.value.trim() && activeDmUserId) {
+        DM.sendDirectMessage(activeDmUserId, input.value);
+        input.value = '';
+      }
+    }
+  });
 }
 
 function escapeHtml(text: string): string {
@@ -178,31 +327,87 @@ function getChatOverlayHTML(): string {
   return `
     <!-- Chat Overlay -->
     <div id="chatOverlay" class="fixed inset-0 bg-black bg-opacity-50 z-50" style="display: none;">
-      <div class="fixed right-4 top-4 bottom-4 w-96 rounded-lg flex flex-col chat-window-container">
-        <!-- Header -->
-        <div class="flex justify-between items-center p-4 chat-header">
-          <h3 class="font-bold text-xl text-white">💬 Chat Global</h3>
-          <button id="closeChatBtn" class="text-white hover:text-red-200 text-2xl font-bold">&times;</button>
-        </div>
-        
-        <!-- Messages Container -->
-        <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-2 chat-messages-bg">
-          <!-- Messages will be added here dynamically -->
-        </div>
-        
-        <!-- Input Area -->
-        <div class="p-4 chat-input-area">
-          <div class="flex gap-2 items-center justify-center">
-            <input 
-              id="chatInput" 
-              type="text" 
-              placeholder="Tapez votre message..." 
-              class="flex-1 px-3 py-2 rounded focus:outline-none chat-input-field"
-              maxlength="500"
-            >
-            <button id="sendChatBtn" class="px-6 py-2 rounded font-bold chat-send-btn whitespace-nowrap">
-              Envoyer
+      <div class="fixed right-4 top-4 bottom-4 w-[500px] rounded-lg flex flex-col chat-window-container" style="max-height: calc(100vh - 32px);">
+        <!-- Header with Tabs -->
+        <div class="chat-header flex-shrink-0">
+          <div class="flex border-b border-orange-500">
+            <button id="chatTabGlobal" class="flex-1 px-4 py-3 font-bold chat-tab-active">
+              Global
             </button>
+            <button id="chatTabMessages" class="flex-1 px-4 py-3 font-bold chat-tab-inactive">
+              Messages <span id="dmUnreadBadge" class="hidden ml-1 px-2 py-0.5 text-xs bg-red-500 text-white rounded-full">0</span>
+            </button>
+          </div>
+          <button id="closeChatBtn" class="absolute top-2 right-2 text-white hover:text-red-200 text-2xl font-bold">&times;</button>
+        </div>
+        
+        <!-- Global Chat View -->
+        <div id="globalChatView" class="flex-1 flex flex-col min-h-0">
+          <!-- Messages Container -->
+          <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-2 chat-messages-bg min-h-0">
+            <!-- Messages will be added here dynamically -->
+          </div>
+          
+          <!-- Input Area -->
+          <div class="p-4 chat-input-area flex-shrink-0">
+            <div class="flex gap-2 items-center justify-center">
+              <input 
+                id="chatInput" 
+                type="text" 
+                placeholder="Tapez votre message..." 
+                class="flex-1 px-3 py-2 rounded focus:outline-none chat-input-field"
+                maxlength="500"
+              >
+              <button id="sendChatBtn" class="px-6 py-2 rounded font-bold chat-send-btn whitespace-nowrap">
+                Envoyer
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Direct Messages View -->
+        <div id="dmView" class="flex-1 flex-col hidden min-h-0 w-full">
+          <!-- Conversations List -->
+          <div id="dmConversationsList" class="flex-1 overflow-y-auto min-h-0 w-full chat-messages-bg">
+            <div class="p-4 text-center text-gray-400">
+              Chargement des conversations...
+            </div>
+          </div>
+
+          <!-- Active Conversation -->
+          <div id="dmActiveConversation" class="hidden h-full w-full">
+            <div class="flex flex-col h-full w-full">
+            <!-- Conversation Header -->
+            <div class="p-3 border-b border-orange-500 flex items-center gap-3 flex-shrink-0 w-full chat-messages-bg">
+              <button id="dmBackBtn" class="text-white hover:text-orange-400 text-xl font-bold">←</button>
+              <img id="dmActiveUserAvatar" src="" alt="" class="w-8 h-8 rounded-full" style="border: 2px solid #ff8c00;">
+              <div class="flex-1">
+                <div id="dmActiveUserName" class="font-bold" style="color: #ff8c00;"></div>
+                <div id="dmActiveUserStatus" class="text-xs text-gray-400"></div>
+              </div>
+            </div>
+
+            <!-- Messages Container -->
+            <div id="dmMessages" class="flex-1 overflow-y-auto space-y-2 min-h-0 p-4 w-full chat-messages-bg">
+              <!-- DM messages will be added here -->
+            </div>
+
+            <!-- Input Area -->
+            <div class="p-4 chat-input-area flex-shrink-0 w-full">
+              <div class="flex gap-2 items-center justify-center">
+                <input 
+                  id="dmInput" 
+                  type="text" 
+                  placeholder="Tapez votre message direct..." 
+                  class="flex-1 px-3 py-2 rounded focus:outline-none chat-input-field"
+                  maxlength="500"
+                >
+                <button id="sendDmBtn" class="px-6 py-2 rounded font-bold chat-send-btn whitespace-nowrap">
+                  Envoyer
+                </button>
+              </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -212,7 +417,11 @@ function getChatOverlayHTML(): string {
 
 function bootPresenceFromStorage() {
   const t = localStorage.getItem('token');
-  if (t) Presence.connect(t);
+  if (t) {
+    Presence.connect(t);
+    // Charger la liste des utilisateurs bloqués
+    loadBlockedUsers();
+  }
   // Fermer proprement la WS quand l’onglet se ferme (ne touche pas au token)
   window.addEventListener('beforeunload', () => {
     try { Presence.disconnect(); } catch {}
@@ -234,9 +443,10 @@ async function syncAuthFromBackend(): Promise<void> {
     });
 
     if (!r.ok) {
-      // token invalide → purge
+      // token invalide → purge tout
       localStorage.removeItem('token');
       localStorage.removeItem('currentUsername');
+      clearChatMessages();
       return;
     }
 
@@ -449,7 +659,7 @@ async function getUserProfile(userId: number): Promise<any> {
 }
 
 // ===== FUNCTIONS AMIS =====
-async function sendFriendRequest(targetId: number): Promise<{success: boolean, status?: string, error?: string}> {
+async function sendFriendRequest(targetId: number): Promise<{success: boolean, status?: string, error?: string, message?: string}> {
   try {
     const token = localStorage.getItem('token');
     const response = await fetch('/api/friends/request', {
@@ -465,7 +675,7 @@ async function sendFriendRequest(targetId: number): Promise<{success: boolean, s
     if (response.ok) {
       return { success: true, status: data.status };
     } else {
-      return { success: false, error: data.error };
+      return { success: false, error: data.error, message: data.message };
     }
   } catch (error) {
     return { success: false, error: 'network_error' };
@@ -544,6 +754,80 @@ async function declineFriendRequest(requestId: number): Promise<boolean> {
   } catch (error) {
     return false;
   }
+}
+
+// ===== FONCTIONS DE BLOCAGE =====
+let blockedUserIds: number[] = [];
+
+async function loadBlockedUsers(): Promise<void> {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch('/api/friends/blocked', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      blockedUserIds = data.blockedUsers || [];
+      console.log('[BLOCK] Loaded blocked users:', blockedUserIds);
+    }
+  } catch (error) {
+    console.error('Error loading blocked users:', error);
+  }
+}
+
+async function blockUser(targetId: number): Promise<boolean> {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch('/api/friends/block', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ targetId })
+    });
+
+    if (response.ok) {
+      blockedUserIds.push(targetId);
+      console.log('[BLOCK] User blocked:', targetId);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error blocking user:', error);
+    return false;
+  }
+}
+
+async function unblockUser(targetId: number): Promise<boolean> {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch('/api/friends/unblock', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ targetId })
+    });
+
+    if (response.ok) {
+      blockedUserIds = blockedUserIds.filter(id => id !== targetId);
+      console.log('[BLOCK] User unblocked:', targetId);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error unblocking user:', error);
+    return false;
+  }
+}
+
+function isUserBlocked(userId: number): boolean {
+  return blockedUserIds.indexOf(userId) !== -1;
 }
 
 // Référence à l'écouteur de clavier pour pouvoir le nettoyer
@@ -669,6 +953,20 @@ const routes: Record<string, Route> = {
             <button id="startOnlineBtn" class="retro-btn hover-green flex-1 hidden" disabled>
               Launch Game
             </button>
+          </div>
+        </div>
+        
+        <!-- Players list (hidden until connected) -->
+        <div id="playersInfo" class="hidden mb-6 p-4 bg-gray-800 rounded-lg">
+          <h3 class="text-lg font-bold mb-2">Players:</h3>
+          <div id="playersList" class="text-gray-300">
+            No players connected
+          </div>
+          <div id="readyStatus" class="mt-4 p-3 bg-gray-700 rounded-lg hidden">
+            <h4 class="text-md font-bold mb-2 text-center">Ready Status:</h4>
+            <div class="text-sm text-center">
+              <span class="text-orange-400">Both players must be ready to start the game</span>
+            </div>
           </div>
         </div>
         
@@ -1157,15 +1455,21 @@ const routes: Record<string, Route> = {
       <!-- Contenu principal -->
       <div class="container mx-auto px-4 py-20">
         <div class="flex flex-col items-center">
-          <!-- Photo de profil avec image dynamique -->
-          <div class="profile-photo mb-4">
-            <img id="friendProfileAvatar" src="/images/1.JPG" alt="Profile Photo" 
-                 style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+          <!-- Photo de profil avec bouton chat à droite -->
+          <div class="relative mb-4">
+            <div class="profile-photo">
+              <img id="friendProfileAvatar" src="/images/1.JPG" alt="Profile Photo" 
+                   style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+            </div>
+            <!-- Bouton Chat positionné à droite de la photo -->
+            <button id="sendMessageBtn" class="retro-btn-round-profile absolute" style="right: -100px; top: 50%; transform: translateY(-50%);" title="Chat">
+              <img class="btn-icon-round" src="/images/chat-removebg-preview.png" alt="Chat">
+            </button>
           </div>
           <h1 id="friendProfileUsername" class="page-title-large page-title-blue text-center mb-4">${friendUsername}</h1>
           
           <!-- Boutons Ajouter et Statut -->
-          <div class="mb-8 flex gap-3 items-center">
+          <div class="mb-4 flex gap-3 items-center">
             <button id="addFriendFromProfile" class="add-friend-btn">
               ADD
             </button>
@@ -1176,7 +1480,7 @@ const routes: Record<string, Route> = {
           </div>
           
           <!-- Statistiques -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 w-full max-w-6xl">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 w-full max-w-6xl mb-8">
             <!-- Statistiques globales -->
             <div class="form-box-blue">
               <h2 class="text-2xl mb-6 text-gray-800 text-center font-bold">Player Statistics</h2>
@@ -1211,6 +1515,13 @@ const routes: Record<string, Route> = {
                 <p class="text-center text-gray-600">Loading match history...</p>
               </div>
             </div>
+          </div>
+          
+          <!-- Bouton Block centré sous les statistiques -->
+          <div class="flex justify-center">
+            <button id="blockUserBtn" class="block-user-btn">
+              <span id="blockButtonText">BLOCK</span>
+            </button>
           </div>
         </div>
       </div>
@@ -1283,6 +1594,13 @@ async function render() {
   // AFFICHAGE DE LA PAGE
   root.innerHTML = routes[route]();
 
+  // Injecter le chat overlay si l'utilisateur est connecté et qu'il n'existe pas déjà
+  const currentUsername = localStorage.getItem('currentUsername');
+  const isLoggedIn = currentUsername && currentUsername !== 'Guest';
+  if (isLoggedIn) {
+    ensureChatOverlayExists();
+  }
+
   // GESTION DES ÉVÉNEMENTS PAR PAGE
   if (route === "") {
     // --- PAGE D'ACCUEIL ---
@@ -1299,9 +1617,7 @@ async function render() {
       location.hash = "#/tournament";
     });
     
-    // Vérifier si un utilisateur est connecté pour adapter les événements
-    const currentUsername = localStorage.getItem('currentUsername');
-    const isLoggedIn = currentUsername && currentUsername !== 'Guest';
+    // Note: isLoggedIn already declared above, no need to redeclare
     
     if (isLoggedIn) {
       // Bouton Chat
@@ -1349,33 +1665,9 @@ async function render() {
     }
     
     // Event listeners du Chat (toujours actifs si user connecté)
-    if (isLoggedIn) {
-      document.getElementById("closeChatBtn")?.addEventListener("click", () => {
-        toggleChat();
-      });
-      
-      document.getElementById("sendChatBtn")?.addEventListener("click", () => {
-        console.log('[CHAT] Send button clicked');
-        const input = document.getElementById("chatInput") as HTMLInputElement;
-        console.log('[CHAT] Input element:', input);
-        console.log('[CHAT] Input value:', input?.value);
-        if (input && input.value.trim()) {
-          sendChatMessage(input.value);
-          input.value = '';
-        }
-      });
-
-      // Envoyer message avec Entrée
-      document.getElementById("chatInput")?.addEventListener("keypress", (e) => {
-        if (e.key === 'Enter') {
-          console.log('[CHAT] Enter key pressed');
-          const input = e.target as HTMLInputElement;
-          if (input && input.value.trim()) {
-            sendChatMessage(input.value);
-            input.value = '';
-          }
-        }
-      });
+    // Attachés via attachChatEventListeners() ou directement si chat déjà dans DOM
+    if (isLoggedIn && document.getElementById('chatOverlay')) {
+      attachChatEventListeners();
     }
     
   } else if (route === "#/classic") {
@@ -2648,6 +2940,17 @@ async function render() {
       const email = formData.get('email') as string;
       const password = formData.get('password') as string;
       
+      // Validation côté client avant d'envoyer
+      if (!username || username.length < 3 || username.length > 20) {
+        alert('Username must be between 3 and 20 characters');
+        return;
+      }
+      
+      if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+        alert('Username can only contain letters, numbers, underscore (_) and dash (-)');
+        return;
+      }
+      
       try {
         const response = await fetch('/api/users/register', {
           method: 'POST',
@@ -2902,7 +3205,10 @@ async function render() {
         localStorage.removeItem('token');
         localStorage.removeItem('currentUsername');
         
-        // 5. Rediriger vers l'accueil
+        // 5. Vider les messages du chat
+        clearChatMessages();
+        
+        // 6. Rediriger vers l'accueil
         location.hash = '';
         
         // Force le re-render pour mettre à jour l'interface
@@ -2916,6 +3222,7 @@ async function render() {
         Presence.clear();
         localStorage.removeItem('token');
         localStorage.removeItem('currentUsername');
+        clearChatMessages();
         location.hash = '';
         setTimeout(() => render(), 10);
       }
@@ -3063,6 +3370,22 @@ async function render() {
       const newEmail = (document.getElementById('newEmail') as HTMLInputElement).value.trim();
       const newPassword = (document.getElementById('newPassword') as HTMLInputElement).value;
       const confirmPassword = (document.getElementById('confirmPassword') as HTMLInputElement).value;
+      
+      // Validation du username (mêmes règles que la création de compte)
+      if (newUsername) {
+        if (newUsername.length < 3 || newUsername.length > 20) {
+          editProfileError.textContent = 'Username must be between 3 and 20 characters';
+          editProfileError.style.display = 'block';
+          return;
+        }
+        
+        // Vérifier que le username ne contient que des lettres, chiffres, underscore et tiret
+        if (!/^[a-zA-Z0-9_-]+$/.test(newUsername)) {
+          editProfileError.textContent = 'Username can only contain letters, numbers, underscore (_) and dash (-)';
+          editProfileError.style.display = 'block';
+          return;
+        }
+      }
       
       // Validation
       if (newPassword && newPassword !== confirmPassword) {
@@ -3313,7 +3636,13 @@ async function render() {
                 target.disabled = true;
                 console.log(`Friend request sent to ${username}`);
               } else {
-                // Erreur - remettre le bouton à l'état initial
+                // Erreur - afficher le message et remettre le bouton à l'état initial
+                if (result.message) {
+                  alert(result.message);
+                } else if (result.error) {
+                  alert(`Error: ${result.error}`);
+                }
+                
                 target.disabled = false;
                 target.textContent = 'ADD';
                 
@@ -3563,7 +3892,12 @@ async function render() {
           button.disabled = true;
           console.log(`Friend request sent to ${friendUsername}`);
         } else {
-          // Erreur - recharger le statut correct
+          // Erreur - afficher le message et recharger le statut correct
+          if (result.message) {
+            alert(result.message);
+          } else if (result.error) {
+            alert(`Error: ${result.error}`);
+          }
           await loadFriendButtonStatus();
           console.error('Error sending friend request:', result.error);
         }
@@ -3573,6 +3907,108 @@ async function render() {
         console.error('Network error sending friend request:', error);
       }
     });
+
+    // Gestion du bouton Send Message
+    document.getElementById('sendMessageBtn')?.addEventListener('click', () => {
+      console.log('[DM] Send Message button clicked');
+      console.log('[DM] DM module:', DM);
+      console.log('[DM] friendUserIdNum:', friendUserIdNum);
+      
+      // Ouvrir le chat et basculer vers l'onglet Messages
+      isChatOpen = true;
+      const chatOverlay = document.getElementById('chatOverlay');
+      if (chatOverlay) {
+        chatOverlay.style.display = 'flex';
+        console.log('[DM] Chat overlay opened');
+      } else {
+        console.error('[DM] Chat overlay not found!');
+      }
+      
+      // Basculer vers l'onglet DM
+      if (DM && DM.switchToDmTab) {
+        console.log('[DM] Switching to DM tab');
+        DM.switchToDmTab();
+      } else {
+        console.error('[DM] DM.switchToDmTab not available!');
+      }
+      
+      // Ouvrir la conversation avec cet utilisateur
+      if (DM && DM.openDmConversation) {
+        console.log('[DM] Opening conversation with user:', friendUserIdNum);
+        DM.openDmConversation(friendUserIdNum);
+      } else {
+        console.error('[DM] DM.openDmConversation not available!');
+      }
+    });
+
+    
+    // Gestion du bouton Block/Unblock
+    document.getElementById('blockUserBtn')?.addEventListener('click', async () => {
+      const button = document.getElementById('blockUserBtn') as HTMLButtonElement;
+      const buttonText = document.getElementById('blockButtonText') as HTMLSpanElement;
+      
+      // Vérifier si l'utilisateur est déjà bloqué
+      const isBlocked = isUserBlocked(friendUserIdNum);
+      
+      if (isBlocked) {
+        // Débloquer l'utilisateur
+        if (confirm(`Are you sure you want to unblock ${friendUsername}?`)) {
+          button.disabled = true;
+          buttonText.textContent = 'UNBLOCKING...';
+          
+          const success = await unblockUser(friendUserIdNum);
+          
+          if (success) {
+            buttonText.textContent = 'BLOCK';
+            button.className = 'block-user-btn';
+            console.log(`${friendUsername} has been unblocked`);
+            
+            // Recharger le statut du bouton ADD
+            await loadFriendButtonStatus();
+          } else {
+            buttonText.textContent = 'UNBLOCK';
+            console.error('Error unblocking user');
+          }
+          
+          button.disabled = false;
+        }
+      } else {
+        // Bloquer l'utilisateur
+        if (confirm(`Are you sure you want to block ${friendUsername}? They won't be able to send you friend requests and you won't see their chat messages.`)) {
+          button.disabled = true;
+          buttonText.textContent = 'BLOCKING...';
+          
+          const success = await blockUser(friendUserIdNum);
+          
+          if (success) {
+            buttonText.textContent = 'UNBLOCK';
+            button.className = 'unblock-user-btn';
+            console.log(`${friendUsername} has been blocked`);
+            
+            // Recharger le statut du bouton ADD (ils ne sont plus amis)
+            await loadFriendButtonStatus();
+          } else {
+            buttonText.textContent = 'BLOCK';
+            console.error('Error blocking user');
+          }
+          
+          button.disabled = false;
+        }
+      }
+    });
+    
+    // Charger l'état initial du bouton Block
+    // D'abord recharger la liste des utilisateurs bloqués depuis le serveur
+    await loadBlockedUsers();
+    
+    const isBlockedInitial = isUserBlocked(friendUserIdNum);
+    const blockButton = document.getElementById('blockUserBtn') as HTMLButtonElement;
+    const blockButtonText = document.getElementById('blockButtonText') as HTMLSpanElement;
+    
+    if (isBlockedInitial) {
+      blockButtonText.textContent = 'UNBLOCK';
+      blockButton.className = 'unblock-user-btn';
+    }
   } else if (route === "#/friend-requests") {
     // --- PAGE DEMANDES D'AMIS ---
     
