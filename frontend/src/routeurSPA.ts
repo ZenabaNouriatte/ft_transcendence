@@ -1681,7 +1681,7 @@ async function render() {
       const player1Name = player1Input?.value.trim();
       const player2Name = player2Input?.value.trim();
       
-      // Validation : noms non vides
+      // Validation UX basique uniquement (le backend validera tout)
       if (!player1Name || player1Name.length === 0) {
         alert("Please enter Player 1's name!");
         player1Input?.focus();
@@ -1694,41 +1694,13 @@ async function render() {
         return;
       }
       
-      // Validation : noms uniques
       if (player1Name.toLowerCase() === player2Name.toLowerCase()) {
         alert("Players must have different names!");
         player2Input?.focus();
         return;
       }
       
-      // ✅ Vérifier que les pseudos ne sont pas réservés (avant la redirection)
-      const currentUsername = localStorage.getItem('currentUsername');
-      const playersToCheck = [player1Name, player2Name].filter(name => 
-        // Exclure l'utilisateur actuellement connecté
-        !currentUsername || name.toLowerCase() !== currentUsername.toLowerCase()
-      );
-      
-      // Vérifier chaque pseudo (sauf celui de l'utilisateur connecté)
-      for (const playerName of playersToCheck) {
-        try {
-          const checkResponse = await fetch(`/api/users/search?q=${encodeURIComponent(playerName)}&limit=1`);
-          if (checkResponse.ok) {
-            const data = await checkResponse.json();
-            // Vérifier si un utilisateur avec ce pseudo exact existe
-            const exactMatch = data.users?.find((u: any) => 
-              u.username.toLowerCase() === playerName.toLowerCase()
-            );
-            if (exactMatch) {
-              alert(`Le pseudo "${playerName}" est réservé par un utilisateur authentifié. Veuillez en choisir un autre.`);
-              return;
-            }
-          }
-        } catch (error) {
-          console.error('Error checking username:', error);
-        }
-      }
-      
-      // Créer le jeu en base de données
+      // Créer le jeu en base de données (le backend validera les pseudos réservés)
       const gameId = await createGame(player1Name, player2Name);
       
       // Stocker les informations du jeu dans localStorage
@@ -2615,48 +2587,13 @@ async function render() {
         }
       });
       
+      // Validation UX basique uniquement (le backend validera tout)
       if (players.length !== 4) {
         alert("Please enter all 4 player names!");
         return;
       }
       
-      // Vérifier l'unicité des noms (insensible à la casse)
-      const lowercaseNames = players.map(name => name.toLowerCase());
-      const uniqueNames = new Set(lowercaseNames);
-      
-      if (uniqueNames.size !== players.length) {
-        alert("All players must have different names!");
-        return;
-      }
-      
-      // ✅ Vérifier que les pseudos ne sont pas réservés (avant la redirection)
-      const currentUsername = localStorage.getItem('currentUsername');
-      const playersToCheck = players.filter(name => 
-        // Exclure l'utilisateur actuellement connecté
-        !currentUsername || name.toLowerCase() !== currentUsername.toLowerCase()
-      );
-      
-      // Vérifier chaque pseudo (sauf celui de l'utilisateur connecté)
-      for (const playerName of playersToCheck) {
-        try {
-          const checkResponse = await fetch(`/api/users/search?q=${encodeURIComponent(playerName)}&limit=1`);
-          if (checkResponse.ok) {
-            const data = await checkResponse.json();
-            // Vérifier si un utilisateur avec ce pseudo exact existe
-            const exactMatch = data.users?.find((u: any) => 
-              u.username.toLowerCase() === playerName.toLowerCase()
-            );
-            if (exactMatch) {
-              alert(`Le pseudo "${playerName}" est réservé par un utilisateur authentifié. Veuillez en choisir un autre.`);
-              return;
-            }
-          }
-        } catch (error) {
-          console.error('Error checking username:', error);
-        }
-      }
-      
-      // Créer le tournoi via l'API backend
+      // Créer le tournoi via l'API backend (qui fera toutes les validations)
       try {
         // Récupérer le token s'il existe (pour que le backend puisse autoriser l'utilisateur connecté)
         const token = localStorage.getItem('token');
@@ -2966,14 +2903,9 @@ async function render() {
       const email = formData.get('email') as string;
       const password = formData.get('password') as string;
       
-      // Validation côté client avant d'envoyer
-      if (!username || username.length < 3 || username.length > 20) {
-        alert('Username must be between 3 and 20 characters');
-        return;
-      }
-      
-      if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
-        alert('Username can only contain letters, numbers, underscore (_) and dash (-)');
+      // Validation UX basique uniquement (le backend validera tout)
+      if (!username || !email || !password) {
+        alert('All fields are required');
         return;
       }
       
@@ -3397,31 +3329,9 @@ async function render() {
       const newPassword = (document.getElementById('newPassword') as HTMLInputElement).value;
       const confirmPassword = (document.getElementById('confirmPassword') as HTMLInputElement).value;
       
-      // Validation du username (mêmes règles que la création de compte)
-      if (newUsername) {
-        if (newUsername.length < 3 || newUsername.length > 20) {
-          editProfileError.textContent = 'Username must be between 3 and 20 characters';
-          editProfileError.style.display = 'block';
-          return;
-        }
-        
-        // Vérifier que le username ne contient que des lettres, chiffres, underscore et tiret
-        if (!/^[a-zA-Z0-9_-]+$/.test(newUsername)) {
-          editProfileError.textContent = 'Username can only contain letters, numbers, underscore (_) and dash (-)';
-          editProfileError.style.display = 'block';
-          return;
-        }
-      }
-      
-      // Validation
+      // Validation UX basique uniquement (le backend validera tout)
       if (newPassword && newPassword !== confirmPassword) {
         editProfileError.textContent = 'Passwords do not match';
-        editProfileError.style.display = 'block';
-        return;
-      }
-      
-      if (newPassword && newPassword.length < 8) {
-        editProfileError.textContent = 'Password must be at least 8 characters';
         editProfileError.style.display = 'block';
         return;
       }
