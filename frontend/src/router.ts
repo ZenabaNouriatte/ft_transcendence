@@ -1,0 +1,168 @@
+// ROUTER SPA - Version modulaire
+// Ce fichier orchestre la navigation et l'affichage des pages
+
+import { 
+  getHomeHTML, attachHomeEvents,
+  getLoginHTML, attachLoginEvents,
+  getSignUpHTML, attachSignUpEvents,
+  getClassicHTML, attachClassicEvents,
+  getTournamentHTML, attachTournamentEvents,
+  getTournamentTransitionHTML, attachTournamentTransitionEvents,
+  getVictoryHTML, attachVictoryEvents,
+  getGameHTML, attachGameEvents, cleanupGameClient,
+  getOnlineHTML, attachOnlineEvents, cleanupOnline,
+  getProfileHTML, attachProfileEvents,
+  getFriendsHTML, attachFriendsEvents,
+  getFriendsProfileHTML, attachFriendsProfileEvents,
+  getFriendRequestsHTML, attachFriendRequestsEvents
+} from './pages/index.js';
+
+import { syncAuthFromBackend } from './auth.js';
+import { Presence } from './websocket.js';
+import { handleChatMessage } from './chat/state.js';
+import { updateChatDisplay, ensureChatOverlayExists } from './chat/ui.js';
+import { isUserBlocked } from './blocking/index.js';
+
+// Type pour les routes
+type PageRenderer = {
+  getHTML: () => string;
+  attachEvents: () => void;
+  cleanup?: () => void;
+};
+
+// Objet contenant toutes les routes
+const routes: Record<string, PageRenderer> = {
+  '': {
+    getHTML: getHomeHTML,
+    attachEvents: attachHomeEvents
+  },
+  '#/login': {
+    getHTML: getLoginHTML,
+    attachEvents: attachLoginEvents
+  },
+  '#/sign-up': {
+    getHTML: getSignUpHTML,
+    attachEvents: attachSignUpEvents
+  },
+  '#/classic': {
+    getHTML: getClassicHTML,
+    attachEvents: attachClassicEvents
+  },
+  '#/tournament': {
+    getHTML: getTournamentHTML,
+    attachEvents: attachTournamentEvents
+  },
+  '#/tournament-transition': {
+    getHTML: getTournamentTransitionHTML,
+    attachEvents: attachTournamentTransitionEvents
+  },
+  '#/victory': {
+    getHTML: getVictoryHTML,
+    attachEvents: attachVictoryEvents
+  },
+  '#/game': {
+    getHTML: getGameHTML,
+    attachEvents: attachGameEvents,
+    cleanup: cleanupGameClient
+  },
+  '#/online': {
+    getHTML: getOnlineHTML,
+    attachEvents: attachOnlineEvents,
+    cleanup: cleanupOnline
+  },
+  '#/profile': {
+    getHTML: getProfileHTML,
+    attachEvents: attachProfileEvents
+  },
+  '#/friends': {
+    getHTML: getFriendsHTML,
+    attachEvents: attachFriendsEvents
+  },
+  '#/friends-profile': {
+    getHTML: getFriendsProfileHTML,
+    attachEvents: attachFriendsProfileEvents
+  },
+  '#/friend-requests': {
+    getHTML: getFriendRequestsHTML,
+    attachEvents: attachFriendRequestsEvents
+  }
+};
+
+// Variable pour garder trace de la page actuelle
+let currentRoute: string = '';
+
+/**
+ * Fonction principale de rendu
+ */
+async function render() {
+  const root = document.getElementById('app');
+  if (!root) return;
+
+  const route = location.hash || '';
+
+  // Nettoyer la page précédente si elle a une fonction cleanup
+  if (currentRoute && routes[currentRoute]?.cleanup) {
+    routes[currentRoute].cleanup!();
+  }
+
+  // Mettre à jour la route actuelle
+  currentRoute = route;
+
+  // Récupérer le renderer de la page
+  const pageRenderer = routes[route];
+  
+  if (!pageRenderer) {
+    // Route non trouvée, rediriger vers l'accueil
+    location.hash = '';
+    return;
+  }
+
+  // Afficher le HTML de la page
+  root.innerHTML = pageRenderer.getHTML();
+
+  // Injecter le chat overlay si l'utilisateur est connecté
+  const currentUsername = localStorage.getItem('currentUsername');
+  const isLoggedIn = currentUsername && currentUsername !== 'Guest';
+  if (isLoggedIn) {
+    ensureChatOverlayExists();
+  }
+
+  // Attacher les event listeners
+  pageRenderer.attachEvents();
+}
+
+/**
+ * Initialisation de l'application
+ */
+async function initializeApp() {
+  try {
+    // Synchroniser l'authentification avec le backend
+    await syncAuthFromBackend();
+  } catch (error) {
+    console.error('[Router] Error during auth sync:', error);
+  }
+
+  // Connecter le WebSocket si un token existe
+  const token = localStorage.getItem('token');
+  if (token) {
+    Presence.connect(token);
+    
+    // Enregistrer le handler pour les messages de chat
+    Presence.on('chat.message', (data: any) => {
+      handleChatMessage(data, isUserBlocked, updateChatDisplay);
+    });
+  } else {
+    // Pas d'authentification, nettoyer l'UI locale
+    localStorage.removeItem('currentUsername');
+  }
+
+  // Premier rendu
+  render();
+}
+
+// Écouter les événements de navigation
+window.addEventListener('DOMContentLoaded', initializeApp);
+window.addEventListener('hashchange', render);
+
+// Exporter la fonction render pour utilisation externe si nécessaire
+export { render };

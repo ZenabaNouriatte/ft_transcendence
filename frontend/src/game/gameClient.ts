@@ -1,4 +1,4 @@
-import { GameState, Vector2 } from './types.js';
+import { GameState, Vector2 } from '../types.js';
 
 // Client de jeu qui communique avec le backend via HTTP
 export class GameClient {

@@ -1,0 +1,259 @@
+// UI DU SYSTÈME DE CHAT
+
+import { chatMessages, isChatOpen, setIsChatOpen, addChatMessage, saveChatMessagesToStorage } from './state.js';
+import { escapeHtml, getUserAvatarPath } from '../utils/helpers.js';
+import { Presence } from '../websocket.js';
+import * as DM from './dm.js';
+
+/**
+ * Met à jour l'affichage du chat avec les derniers messages
+ */
+export function updateChatDisplay() {
+  console.log('[CHAT] updateChatDisplay called');
+  const chatMessagesContainer = document.getElementById('chatMessages');
+  console.log('[CHAT] Container found:', !!chatMessagesContainer);
+  console.log('[CHAT] Messages to display:', chatMessages.length);
+  
+  if (!chatMessagesContainer) {
+    console.error('[CHAT] Container #chatMessages not found!');
+    return;
+  }
+
+  const html = chatMessages
+    .slice(-50) // Garde seulement les 50 derniers messages
+    .map(msg => {
+      // Obtenir le chemin de l'avatar de l'utilisateur (personnalisé ou par défaut)
+      const avatarPath = getUserAvatarPath(msg.userId, msg.avatar);
+      
+      // Formater l'heure sans les secondes (HH:MM)
+      const timeString = msg.timestamp.toLocaleTimeString('fr-FR', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+      
+      return `
+        <div class="chat-message" style="display: flex; align-items: center; gap: 4px; padding: 8px 12px;">
+          <div class="chat-avatar" style="width: 32px; height: 32px; border-radius: 50%; border: 2px solid #ff8c00; overflow: hidden; flex-shrink: 0; background-image: url('${avatarPath}'); background-size: cover; background-position: center;"></div>
+          <div style="flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px;">
+            <span class="chat-username" style="cursor: pointer; font-weight: bold; color: #ff8c00; text-decoration: none; transition: all 0.2s; flex-shrink: 0;" 
+                  onmouseover="this.style.opacity='0.7'; this.style.textDecoration='underline';" 
+                  onmouseout="this.style.opacity='1'; this.style.textDecoration='none';"
+                  onclick="localStorage.setItem('viewingFriendUserId', '${msg.userId}'); localStorage.setItem('viewingFriendUsername', '${escapeHtml(msg.username)}'); location.hash = '#/friends-profile';">${escapeHtml(msg.username)}:</span>
+            <span class="chat-text" style="flex: 1; min-width: 0; word-break: break-word;">${escapeHtml(msg.message)}</span>
+            <span class="chat-time" style="font-size: 0.85em; color: #888; flex-shrink: 0; margin-right: 8px;">${timeString}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  
+  console.log('[CHAT] Generated HTML length:', html.length);
+  chatMessagesContainer.innerHTML = html;
+  
+  // Scroll automatique vers le bas
+  chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+}
+
+/**
+ * Envoie un message de chat global via WebSocket
+ */
+export function sendChatMessage(message: string) {
+  console.log('[CHAT] sendChatMessage called with:', message);
+  if (!message.trim()) {
+    console.log('[CHAT] Message empty, not sending');
+    return;
+  }
+  
+  const payload = {
+    type: 'chat.message',
+    data: {
+      message: message.trim()
+    }
+  };
+  console.log('[CHAT] Sending payload:', payload);
+  Presence.send(payload);
+}
+
+/**
+ * Toggle l'ouverture/fermeture du chat overlay
+ */
+export function toggleChat() {
+  setIsChatOpen(!isChatOpen);
+  const chatOverlay = document.getElementById('chatOverlay');
+  if (chatOverlay) {
+    chatOverlay.style.display = isChatOpen ? 'flex' : 'none';
+    // Afficher les messages quand on ouvre le chat
+    if (isChatOpen) {
+      updateChatDisplay();
+    }
+  }
+}
+
+/**
+ * Injecte le chat overlay dans le DOM s'il n'existe pas déjà
+ */
+export function ensureChatOverlayExists() {
+  if (!document.getElementById('chatOverlay')) {
+    const chatContainer = document.createElement('div');
+    chatContainer.innerHTML = getChatOverlayHTML();
+    document.body.appendChild(chatContainer.firstElementChild as HTMLElement);
+    console.log('[CHAT] Chat overlay injected into DOM');
+    // Attacher les event listeners après injection
+    attachChatEventListeners();
+  }
+}
+
+/**
+ * Attache tous les event listeners du chat
+ */
+export function attachChatEventListeners() {
+  console.log('[CHAT] Attaching event listeners');
+  
+  document.getElementById("closeChatBtn")?.addEventListener("click", () => {
+    toggleChat();
+  });
+  
+  document.getElementById("sendChatBtn")?.addEventListener("click", () => {
+    const input = document.getElementById("chatInput") as HTMLInputElement;
+    if (input && input.value.trim()) {
+      sendChatMessage(input.value);
+      input.value = '';
+    }
+  });
+
+  document.getElementById("chatInput")?.addEventListener("keypress", (e) => {
+    if (e.key === 'Enter') {
+      const input = e.target as HTMLInputElement;
+      if (input && input.value.trim()) {
+        sendChatMessage(input.value);
+        input.value = '';
+      }
+    }
+  });
+
+  document.getElementById("chatTabGlobal")?.addEventListener("click", () => {
+    DM.switchToGlobalTab();
+  });
+
+  document.getElementById("chatTabMessages")?.addEventListener("click", () => {
+    DM.switchToDmTab();
+  });
+
+  document.getElementById("dmBackBtn")?.addEventListener("click", () => {
+    DM.closeDmConversation();
+  });
+
+  document.getElementById("sendDmBtn")?.addEventListener("click", () => {
+    const input = document.getElementById("dmInput") as HTMLInputElement;
+    const activeDmUserId = DM.getActiveDmUserId();
+    if (input && input.value.trim() && activeDmUserId) {
+      DM.sendDirectMessage(activeDmUserId, input.value);
+      input.value = '';
+    }
+  });
+
+  document.getElementById("dmInput")?.addEventListener("keypress", (e) => {
+    if (e.key === 'Enter') {
+      const input = e.target as HTMLInputElement;
+      const activeDmUserId = DM.getActiveDmUserId();
+      if (input && input.value.trim() && activeDmUserId) {
+        DM.sendDirectMessage(activeDmUserId, input.value);
+        input.value = '';
+      }
+    }
+  });
+}
+
+/**
+ * Retourne le HTML complet du chat overlay
+ */
+export function getChatOverlayHTML(): string {
+  return `
+    <!-- Chat Overlay -->
+    <div id="chatOverlay" class="fixed inset-0 bg-black bg-opacity-50 z-50" style="display: none;">
+      <div class="fixed right-4 top-4 bottom-4 w-[500px] rounded-lg flex flex-col chat-window-container" style="max-height: calc(100vh - 32px);">
+        <!-- Header with Tabs -->
+        <div class="chat-header flex-shrink-0">
+          <div class="flex border-b border-orange-500">
+            <button id="chatTabGlobal" class="flex-1 px-4 py-3 font-bold chat-tab-active">
+              Global
+            </button>
+            <button id="chatTabMessages" class="flex-1 px-4 py-3 font-bold chat-tab-inactive">
+              Messages <span id="dmUnreadBadge" class="hidden ml-1 px-2 py-0.5 text-xs bg-red-500 text-white rounded-full">0</span>
+            </button>
+          </div>
+          <button id="closeChatBtn" class="absolute top-2 right-2 text-white hover:text-red-200 text-2xl font-bold">&times;</button>
+        </div>
+        
+        <!-- Global Chat View -->
+        <div id="globalChatView" class="flex-1 flex flex-col min-h-0">
+          <!-- Messages Container -->
+          <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-2 chat-messages-bg min-h-0">
+            <!-- Messages will be added here dynamically -->
+          </div>
+          
+          <!-- Input Area -->
+          <div class="p-4 chat-input-area flex-shrink-0">
+            <div class="flex gap-2 items-center justify-center">
+              <input 
+                id="chatInput" 
+                type="text" 
+                placeholder="Tapez votre message..." 
+                class="flex-1 px-3 py-2 rounded focus:outline-none chat-input-field"
+                maxlength="500"
+              >
+              <button id="sendChatBtn" class="px-6 py-2 rounded font-bold chat-send-btn whitespace-nowrap">
+                Envoyer
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Direct Messages View -->
+        <div id="dmView" class="flex-1 flex-col hidden min-h-0 w-full">
+          <!-- Conversations List -->
+          <div id="dmConversationsList" class="flex-1 overflow-y-auto min-h-0 w-full chat-messages-bg">
+            <div class="p-4 text-center text-gray-400">
+              Chargement des conversations...
+            </div>
+          </div>
+
+          <!-- Active Conversation -->
+          <div id="dmActiveConversation" class="hidden h-full w-full">
+            <div class="flex flex-col h-full w-full">
+            <!-- Conversation Header -->
+            <div class="p-3 border-b border-orange-500 flex items-center gap-3 flex-shrink-0 w-full chat-messages-bg">
+              <button id="dmBackBtn" class="text-white hover:text-orange-400 text-xl font-bold">←</button>
+              <img id="dmActiveUserAvatar" src="" alt="" class="w-8 h-8 rounded-full" style="border: 2px solid #ff8c00;">
+              <div class="flex-1">
+                <div id="dmActiveUserName" class="font-bold" style="color: #ff8c00;"></div>
+                <div id="dmActiveUserStatus" class="text-xs text-gray-400"></div>
+              </div>
+            </div>
+
+            <!-- Messages Container -->
+            <div id="dmMessages" class="flex-1 overflow-y-auto space-y-2 min-h-0 p-4 w-full chat-messages-bg">
+              <!-- DM messages will be added here -->
+            </div>
+
+            <!-- Input Area -->
+            <div class="p-4 chat-input-area flex-shrink-0 w-full">
+              <div class="flex gap-2 items-center justify-center">
+                <input 
+                  id="dmInput" 
+                  type="text" 
+                  placeholder="Tapez votre message direct..." 
+                  class="flex-1 px-3 py-2 rounded focus:outline-none chat-input-field"
+                  maxlength="500"
+                >
+                <button id="sendDmBtn" class="px-6 py-2 rounded font-bold chat-send-btn whitespace-nowrap">
+                  Envoyer
+                </button>
+              </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
