@@ -20,7 +20,7 @@ ps:
 	docker compose ps
 
 clean:
-	PUBLIC_HOST="$(PUBLIC_HOST)" FRONT_ORIGINS="$(FRONT_ORIGINS)" docker compose down -v
+	PUBLIC_HOST="$(PUBLIC_HOST)" FRONT_ORIGINS="$(FRONT_ORIGINS)" docker compose down -v --rmi all
 
 build:
 	docker compose build --no-cache --pull
