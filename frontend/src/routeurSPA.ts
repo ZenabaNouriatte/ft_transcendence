@@ -2052,6 +2052,38 @@ async function render() {
           }
           
           if (roomIdInput && currentRoomId) roomIdInput.value = currentRoomId;
+          
+          // Check if there's a pending game invitation to send
+          const pendingInvitation = sessionStorage.getItem('pendingGameInvitation');
+          if (pendingInvitation) {
+            console.log('[Online-DEBUG] 🎮 Room created! Now sending pending invitation...');
+            try {
+              const invitationData = JSON.parse(pendingInvitation);
+              console.log('[Online-DEBUG] 🎮 Invitation data:', invitationData);
+              
+              // Send invitation via Presence WebSocket
+              (window as any).Presence?.send({
+                type: 'game.invitation',
+                data: {
+                  receiverId: invitationData.receiverId,
+                  gameId: invitationData.gameId,
+                  senderUsername: invitationData.senderUsername
+                }
+              });
+              
+              console.log('[Online-DEBUG] 🎮 ✅ Invitation sent!');
+              
+              // Show notification to sender
+              updateStatus(`🎮 Invitation sent to ${invitationData.receiverUsername}!`, 'text-purple-400');
+              
+              // Clear the pending invitation
+              sessionStorage.removeItem('pendingGameInvitation');
+              
+            } catch (err) {
+              console.error('[Online-DEBUG] 🎮 Error sending invitation:', err);
+            }
+          }
+          
           break;
           
         case 'game.joined':

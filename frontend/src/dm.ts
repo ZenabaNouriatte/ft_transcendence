@@ -515,40 +515,26 @@ export async function inviteToGame(userId: number, username: string) {
     const data = await response.json();
     const currentUsername = data.user.username;
     
-    // Send invitation via WebSocket
-    console.log('[DM-DEBUG] 🔍 About to send invitation...');
-    console.log('[DM-DEBUG] 🔍 window.Presence exists?', !!(window as any).Presence);
-    console.log('[DM-DEBUG] 🔍 Presence.send exists?', typeof (window as any).Presence?.send);
-    console.log('[DM-DEBUG] 🔍 Invitation data:', {
-      type: 'game.invitation',
-      data: {
-        receiverId: userId,
-        gameId: gameId,
-        senderUsername: currentUsername
-      }
-    });
+    console.log('[DM-DEBUG] 🔍 Step 1: Navigating to online page and creating room...');
     
-    (window as any).Presence?.send({
-      type: 'game.invitation',
-      data: {
-        receiverId: userId,
-        gameId: gameId,
-        senderUsername: currentUsername
-      }
-    });
+    // FIRST: Navigate to online page and trigger room creation
+    // Store invitation data in sessionStorage to send after room is created
+    sessionStorage.setItem('pendingGameInvitation', JSON.stringify({
+      receiverId: userId,
+      receiverUsername: username,
+      gameId: gameId,
+      senderUsername: currentUsername
+    }));
     
-    console.log('[DM-DEBUG] ✅ Invitation sent via Presence.send()');
+    console.log('[DM-DEBUG] 🔍 Step 2: Stored pending invitation in sessionStorage');
+    console.log('[DM-DEBUG] 🔍 Step 3: Redirecting to online page with create=true...');
     
-    // Show confirmation
-    const confirmMsg = `Invitation envoyée à ${username} ! 🎮\n\nVous allez être redirigé vers la salle de jeu.`;
-    alert(confirmMsg);
-    
-    // Redirect to online game room
+    // Redirect to online game room with create=true
     location.hash = `#/online?roomId=${gameId}&create=true`;
     
   } catch (error) {
-    console.error('[DM] Error sending game invitation:', error);
-    alert('Erreur lors de l\'envoi de l\'invitation');
+    console.error('[DM] Error preparing game invitation:', error);
+    alert('Erreur lors de la préparation de l\'invitation');
   }
 }
 
@@ -560,18 +546,133 @@ export function handleGameInvitation(data: any) {
   
   console.log(`[DM-DEBUG] 🎮 Parsed invitation - senderId: ${senderId}, senderUsername: ${senderUsername}, gameId: ${gameId}`);
   
-  // Show confirmation dialog
-  const accept = confirm(`🎮 ${senderUsername} vous invite à une partie !\n\nVoulez-vous accepter l'invitation ?`);
-  
-  console.log('[DM-DEBUG] 🎮 User response:', accept ? 'ACCEPTED' : 'DECLINED');
-  
-  if (accept) {
-    // Join the game room
-    console.log('[DM-DEBUG] 🎮 Redirecting to:', `#/online?roomId=${gameId}`);
-    location.hash = `#/online?roomId=${gameId}`;
-  } else {
-    console.log('[DM-DEBUG] 🎮 Game invitation declined by user');
+  // Create a custom invitation overlay instead of confirm() which gets blocked on inactive tabs
+  showGameInvitationDialog(senderUsername, gameId);
+}
+
+// Show a custom game invitation dialog
+function showGameInvitationDialog(senderUsername: string, gameId: string) {
+  // Remove any existing invitation dialog
+  const existingDialog = document.getElementById('gameInvitationDialog');
+  if (existingDialog) {
+    existingDialog.remove();
   }
+  
+  // Create the dialog overlay
+  const dialog = document.createElement('div');
+  dialog.id = 'gameInvitationDialog';
+  dialog.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: fadeIn 0.3s ease-in-out;
+  `;
+  
+  dialog.innerHTML = `
+    <div style="
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+      max-width: 400px;
+      text-align: center;
+      animation: slideIn 0.3s ease-out;
+    ">
+      <div style="font-size: 60px; margin-bottom: 20px;">🎮</div>
+      <h2 style="color: white; font-size: 24px; margin-bottom: 15px; font-weight: bold;">
+        Game Invitation!
+      </h2>
+      <p style="color: #e0e0e0; font-size: 18px; margin-bottom: 25px;">
+        <strong>${escapeHtml(senderUsername)}</strong> invites you to play!
+      </p>
+      <div style="display: flex; gap: 15px; justify-content: center;">
+        <button id="acceptInvitation" style="
+          background: #10b981;
+          color: white;
+          border: none;
+          padding: 12px 30px;
+          border-radius: 8px;
+          font-size: 16px;
+          font-weight: bold;
+          cursor: pointer;
+          transition: transform 0.2s, background 0.2s;
+        ">
+          ✅ Accept
+        </button>
+        <button id="declineInvitation" style="
+          background: #ef4444;
+          color: white;
+          border: none;
+          padding: 12px 30px;
+          border-radius: 8px;
+          font-size: 16px;
+          font-weight: bold;
+          cursor: pointer;
+          transition: transform 0.2s, background 0.2s;
+        ">
+          ❌ Decline
+        </button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(dialog);
+  
+  // Add hover effects via event listeners
+  const acceptBtn = document.getElementById('acceptInvitation');
+  const declineBtn = document.getElementById('declineInvitation');
+  
+  if (acceptBtn) {
+    acceptBtn.addEventListener('mouseenter', () => {
+      acceptBtn.style.transform = 'scale(1.05)';
+      acceptBtn.style.background = '#059669';
+    });
+    acceptBtn.addEventListener('mouseleave', () => {
+      acceptBtn.style.transform = 'scale(1)';
+      acceptBtn.style.background = '#10b981';
+    });
+    acceptBtn.addEventListener('click', () => {
+      console.log('[DM-DEBUG] 🎮 User ACCEPTED invitation');
+      dialog.remove();
+      location.hash = `#/online?roomId=${gameId}`;
+    });
+  }
+  
+  if (declineBtn) {
+    declineBtn.addEventListener('mouseenter', () => {
+      declineBtn.style.transform = 'scale(1.05)';
+      declineBtn.style.background = '#dc2626';
+    });
+    declineBtn.addEventListener('mouseleave', () => {
+      declineBtn.style.transform = 'scale(1)';
+      declineBtn.style.background = '#ef4444';
+    });
+    declineBtn.addEventListener('click', () => {
+      console.log('[DM-DEBUG] 🎮 User DECLINED invitation');
+      dialog.remove();
+    });
+  }
+  
+  // Add CSS animations
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes slideIn {
+      from { transform: translateY(-50px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
 }
 
 // Make functions available globally
