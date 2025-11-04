@@ -20,8 +20,8 @@ const gameConnections = new Map<string, Set<WebSocket>>();
 // Store WebSocket connections for chat broadcasting
 const chatConnections = new Set<WebSocket>();
 
-// Store WebSocket connections for direct messages by userId
-const dmConnections = new Map<number, WebSocket>();
+// Store WebSocket connections for direct messages by userId (can have multiple connections per user)
+const dmConnections = new Map<number, Set<WebSocket>>();
 
 // Broadcast a message to all connections in a specific game
 function broadcastToGame(gameId: string, message: any) {
@@ -64,21 +64,43 @@ function broadcastToChat(message: any) {
   console.log('[chat] Broadcast complete');
 }
 
-// Send a direct message to a specific user
+// Envoyer une annonce système dans le chat global
+export function sendSystemChatMessage(message: string) {
+  console.log('[chat] Sending system message:', message);
+  broadcastToChat({
+    type: "chat.message",
+    userId: 0, // 0 = message système
+    username: "🤖 System",
+    avatar: null,
+    message: message,
+    timestamp: new Date().toISOString(),
+    isSystem: true
+  });
+}
+
+// Send a direct message to a specific user (all their connections)
 function sendDirectMessage(userId: number, message: any) {
-  const ws = dmConnections.get(userId);
-  if (ws && ws.readyState === ws.OPEN) {
-    const messageStr = JSON.stringify(message);
-    console.log('[dm] Sending DM to user', userId, ':', messageStr);
-    ws.send(messageStr, (err?: Error) => {
-      if (err) console.error("[dm] Error sending direct message:", err);
-      else console.log('[dm] ✅ DM sent successfully to user', userId);
-    });
-    return true;
-  } else {
-    console.log('[dm] User', userId, 'not connected or WebSocket not open');
+  const connections = dmConnections.get(userId);
+  if (!connections || connections.size === 0) {
+    console.log('[dm] User', userId, 'has no active connections');
     return false;
   }
+  
+  const messageStr = JSON.stringify(message);
+  console.log('[dm] Sending DM to user', userId, '(', connections.size, 'connections ):', messageStr);
+  
+  let sentCount = 0;
+  connections.forEach((ws) => {
+    if (ws.readyState === ws.OPEN) {
+      ws.send(messageStr, (err?: Error) => {
+        if (err) console.error("[dm] Error sending direct message:", err);
+        else console.log('[dm] ✅ DM sent successfully to user', userId);
+      });
+      sentCount++;
+    }
+  });
+  
+  return sentCount > 0;
 }
 
 // Function to set the GameRoomManager instance
@@ -294,10 +316,13 @@ export function registerRawWs(app: FastifyInstance) {
       console.log('[chat] Added WebSocket to chatConnections. Total:', chatConnections.size);
     }
 
-    // Add to DM connections if user is authenticated
+    // Add to DM connections if user is authenticated (can have multiple connections per user)
     if (ws.ctx?.userId) {
-      dmConnections.set(ws.ctx.userId, ws);
-      console.log('[dm] Registered user', ws.ctx.userId, 'for direct messages. Total DM connections:', dmConnections.size);
+      if (!dmConnections.has(ws.ctx.userId)) {
+        dmConnections.set(ws.ctx.userId, new Set());
+      }
+      dmConnections.get(ws.ctx.userId)!.add(ws);
+      console.log('[dm] Registered user', ws.ctx.userId, 'for direct messages. User has', dmConnections.get(ws.ctx.userId)!.size, 'connection(s)');
     }
 
     // 2.d) Safe send utility
@@ -323,10 +348,19 @@ export function registerRawWs(app: FastifyInstance) {
         console.log('[chat] Removed WebSocket from chatConnections. Total:', chatConnections.size);
       }
 
-      // Clean up DM connections
+      // Clean up DM connections (remove this specific connection from the user's set)
       if (ws.ctx?.userId) {
-        dmConnections.delete(ws.ctx.userId);
-        console.log('[dm] Unregistered user', ws.ctx.userId, 'from direct messages. Total DM connections:', dmConnections.size);
+        const userConnections = dmConnections.get(ws.ctx.userId);
+        if (userConnections) {
+          userConnections.delete(ws);
+          console.log('[dm] Removed connection for user', ws.ctx.userId, '. User has', userConnections.size, 'connection(s) remaining');
+          
+          // If no more connections, remove the user from the map
+          if (userConnections.size === 0) {
+            dmConnections.delete(ws.ctx.userId);
+            console.log('[dm] User', ws.ctx.userId, 'has no more connections');
+          }
+        }
       }
 
       let left = -1;
@@ -393,7 +427,10 @@ export function registerRawWs(app: FastifyInstance) {
 
       try {
         const raw = buf.toString("utf8");
+        console.log('[DEBUG-BACKEND] 📨 Received raw message:', raw);
+        
         const msg = JSON.parse(raw);
+        console.log('[DEBUG-BACKEND] 📨 Parsed message:', msg);
         
         if (!msg || typeof msg !== "object" || Array.isArray(msg)) {
           throw new Error("Invalid message structure");
@@ -414,6 +451,7 @@ export function registerRawWs(app: FastifyInstance) {
         }
         
         type = msg.type.trim();
+        console.log('[DEBUG-BACKEND] 📨 Message type:', type);
         
         if (type.length > 50) {
           throw new Error("Message type too long");
@@ -421,14 +459,16 @@ export function registerRawWs(app: FastifyInstance) {
 
         const ALLOWED_TYPES = [
           "ws.ping",
-          "chat.message", 
+          "chat.message",
+          "dm.message",
           "game.input",
           "game.pause",
           "game.resume",
           "game.create",
           "game.join",
           "game.ready",
-          "game.start"
+          "game.start",
+          "game.invitation"
         ];
         
         if (!ALLOWED_TYPES.includes(type)) {
@@ -592,6 +632,80 @@ export function registerRawWs(app: FastifyInstance) {
               sendDirectMessage,
               app
             });
+            break;
+          }
+
+          case "game.invitation": {
+            console.log('[DEBUG-BACKEND] 🎮🎮🎮 game.invitation case triggered!');
+            console.log('[DEBUG-BACKEND] 🎮 msg.data:', msg.data);
+            
+            // Invitation à une partie online
+            if (!ws.ctx?.userId) {
+              console.log('[DEBUG-BACKEND] 🎮 ❌ No userId in ws.ctx');
+              safeSend({ 
+                type: "error", 
+                data: { message: "authentication_required" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            console.log('[DEBUG-BACKEND] 🎮 Sender userId:', ws.ctx.userId);
+            
+            const { receiverId, gameId, senderUsername } = msg.data || {};
+            
+            console.log('[DEBUG-BACKEND] 🎮 Extracted - receiverId:', receiverId, 'gameId:', gameId, 'senderUsername:', senderUsername);
+            
+            if (!receiverId || typeof receiverId !== "number") {
+              console.log('[DEBUG-BACKEND] 🎮 ❌ Invalid receiverId:', receiverId);
+              safeSend({ 
+                type: "error", 
+                data: { message: "invalid_receiver_id" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            if (!gameId || typeof gameId !== "string") {
+              console.log('[DEBUG-BACKEND] 🎮 ❌ Invalid gameId:', gameId);
+              safeSend({ 
+                type: "error", 
+                data: { message: "invalid_game_id" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            console.log('[DEBUG-BACKEND] 🎮 Validation passed, sending invitation...');
+            
+            // Envoyer l'invitation au destinataire
+            const sent = sendDirectMessage(receiverId, {
+              type: "game.invitation",
+              data: {
+                senderId: ws.ctx.userId,
+                senderUsername: senderUsername || `User${ws.ctx.userId}`,
+                gameId: gameId,
+                timestamp: new Date().toISOString()
+              }
+            });
+            
+            console.log('[DEBUG-BACKEND] 🎮 sendDirectMessage returned:', sent);
+            
+            if (sent) {
+              safeSend({ 
+                type: "game.invitation.sent", 
+                data: { receiverId, gameId },
+                requestId 
+              });
+              console.log(`[DEBUG-BACKEND] 🎮 ✅ Invitation sent from ${ws.ctx.userId} to ${receiverId} for game ${gameId}`);
+            } else {
+              safeSend({ 
+                type: "error", 
+                data: { message: "user_not_connected" }, 
+                requestId 
+              });
+              console.log(`[DEBUG-BACKEND] 🎮 ⚠️ User ${receiverId} not connected`);
+            }
             break;
           }
 

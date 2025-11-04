@@ -487,9 +487,97 @@ function getCurrentUserIdSync(): number {
   }
 }
 
+// Invite user to an online game
+export async function inviteToGame(userId: number, username: string) {
+  console.log(`[DM] Inviting user ${userId} (${username}) to game`);
+  
+  try {
+    // Create a new online game room
+    const gameId = `game_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    
+    // Get current user info
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Vous devez être connecté pour inviter à une partie');
+      return;
+    }
+    
+    const currentUserId = getCurrentUserIdSync();
+    const response = await fetch('/api/users/me', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (!response.ok) {
+      alert('Erreur lors de la récupération de vos informations');
+      return;
+    }
+    
+    const data = await response.json();
+    const currentUsername = data.user.username;
+    
+    // Send invitation via WebSocket
+    console.log('[DM-DEBUG] 🔍 About to send invitation...');
+    console.log('[DM-DEBUG] 🔍 window.Presence exists?', !!(window as any).Presence);
+    console.log('[DM-DEBUG] 🔍 Presence.send exists?', typeof (window as any).Presence?.send);
+    console.log('[DM-DEBUG] 🔍 Invitation data:', {
+      type: 'game.invitation',
+      data: {
+        receiverId: userId,
+        gameId: gameId,
+        senderUsername: currentUsername
+      }
+    });
+    
+    (window as any).Presence?.send({
+      type: 'game.invitation',
+      data: {
+        receiverId: userId,
+        gameId: gameId,
+        senderUsername: currentUsername
+      }
+    });
+    
+    console.log('[DM-DEBUG] ✅ Invitation sent via Presence.send()');
+    
+    // Show confirmation
+    const confirmMsg = `Invitation envoyée à ${username} ! 🎮\n\nVous allez être redirigé vers la salle de jeu.`;
+    alert(confirmMsg);
+    
+    // Redirect to online game room
+    location.hash = `#/online?roomId=${gameId}&create=true`;
+    
+  } catch (error) {
+    console.error('[DM] Error sending game invitation:', error);
+    alert('Erreur lors de l\'envoi de l\'invitation');
+  }
+}
+
+// Handle incoming game invitation
+export function handleGameInvitation(data: any) {
+  console.log('[DM-DEBUG] 🎮🎮🎮 handleGameInvitation called with data:', data);
+  
+  const { senderId, senderUsername, gameId } = data;
+  
+  console.log(`[DM-DEBUG] 🎮 Parsed invitation - senderId: ${senderId}, senderUsername: ${senderUsername}, gameId: ${gameId}`);
+  
+  // Show confirmation dialog
+  const accept = confirm(`🎮 ${senderUsername} vous invite à une partie !\n\nVoulez-vous accepter l'invitation ?`);
+  
+  console.log('[DM-DEBUG] 🎮 User response:', accept ? 'ACCEPTED' : 'DECLINED');
+  
+  if (accept) {
+    // Join the game room
+    console.log('[DM-DEBUG] 🎮 Redirecting to:', `#/online?roomId=${gameId}`);
+    location.hash = `#/online?roomId=${gameId}`;
+  } else {
+    console.log('[DM-DEBUG] 🎮 Game invitation declined by user');
+  }
+}
+
 // Make functions available globally
 (window as any).openDmConversation = openDmConversation;
 (window as any).closeDmConversation = closeDmConversation;
+(window as any).inviteToGame = inviteToGame;
 
 // Export activeDmUserId getter
 export function getActiveDmUserId(): number | null {

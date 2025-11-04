@@ -80,16 +80,18 @@ const Presence = (() => {
 
     sock.onopen = () => console.log('[presence]✅ WebSocket opened');
     sock.onmessage = (e) => {
-      console.log('[WS] Message received:', e.data);
+      console.log('[WS-DEBUG] 📨 RAW Message received:', e.data);
       
       // Ignorer les messages non-JSON comme "hello: connected"
       if (!e.data.startsWith('{')) {
+        console.log('[WS-DEBUG] 📨 Non-JSON message, ignoring');
         return;
       }
       
       try {
         const data = JSON.parse(e.data);
-        console.log('[WS] Parsed data type:', data.type);
+        console.log('[WS-DEBUG] 📨 Parsed message type:', data.type);
+        console.log('[WS-DEBUG] 📨 Full parsed data:', data);
         
         if (data.type === 'chat.message') {
           console.log('[CHAT] Message reçu:', data);
@@ -116,8 +118,21 @@ const Presence = (() => {
           // Message direct reçu
           DM.handleIncomingDm(data.data);
         } else if (data.type === 'dm.sent') {
-          console.log('[DM] Message envoyé confirmé:', data);
+          console.log('[WS-DEBUG] 📨 DM sent confirmation:', data);
           // Confirmation que notre message a été envoyé
+        } else if (data.type === 'game.invitation') {
+          console.log('[WS-DEBUG] 🎮🎮🎮 GAME INVITATION DETECTED!');
+          console.log('[WS-DEBUG] 🎮 Full invitation data:', data);
+          console.log('[WS-DEBUG] 🎮 data.data exists?', !!data.data);
+          
+          if (data.data) {
+            console.log('[WS-DEBUG] 🎮 Calling DM.handleGameInvitation...');
+            DM.handleGameInvitation(data.data);
+          } else {
+            console.error('[WS-DEBUG] 🎮 ERROR: data.data is missing!');
+          }
+        } else {
+          console.log('[WS-DEBUG] 📨 Unknown message type:', data.type);
         }
       } catch (error) {
         console.warn('[chat] Erreur parsing message:', error);
@@ -153,18 +168,28 @@ const Presence = (() => {
   }
 
   function send(message: any) {
-    console.log('[Presence] send called, sock state:', sock?.readyState);
-    console.log('[Presence] WebSocket.OPEN constant:', WebSocket.OPEN);
+    console.log('[Presence-DEBUG] 📤 send() called');
+    console.log('[Presence-DEBUG] 📤 Message to send:', message);
+    console.log('[Presence-DEBUG] 📤 sock exists?', !!sock);
+    console.log('[Presence-DEBUG] 📤 sock.readyState:', sock?.readyState);
+    console.log('[Presence-DEBUG] 📤 WebSocket.OPEN =', WebSocket.OPEN);
+    
     if (sock && sock.readyState === WebSocket.OPEN) {
-      console.log('[Presence] Sending message:', JSON.stringify(message));
-      sock.send(JSON.stringify(message));
+      const jsonStr = JSON.stringify(message);
+      console.log('[Presence-DEBUG] 📤 ✅ Sending JSON:', jsonStr);
+      sock.send(jsonStr);
+      console.log('[Presence-DEBUG] 📤 ✅ Message sent successfully!');
     } else {
-      console.error('[presence] Cannot send message: WebSocket not connected. State:', sock?.readyState);
+      console.error('[Presence-DEBUG] 📤 ❌ Cannot send - WebSocket not connected!');
+      console.error('[Presence-DEBUG] 📤 ❌ State:', sock?.readyState);
     }
   }
 
   return { connect, disconnect, clear, send };
 })();
+
+// Expose Presence globally for use in other modules
+(window as any).Presence = Presence;
 
 window.addEventListener('beforeunload', () => {
   console.log('[presence] 🚪 Page closing, disconnecting WebSocket...');
@@ -315,6 +340,16 @@ function attachChatEventListeners() {
       }
     }
   });
+
+  // Bouton d'invitation à une partie
+  document.getElementById("inviteToGameBtn")?.addEventListener("click", () => {
+    const activeDmUserId = DM.getActiveDmUserId();
+    if (activeDmUserId) {
+      const usernameEl = document.getElementById("dmActiveUserName");
+      const username = usernameEl?.textContent || `User ${activeDmUserId}`;
+      DM.inviteToGame(activeDmUserId, username);
+    }
+  });
 }
 
 function escapeHtml(text: string): string {
@@ -385,6 +420,9 @@ function getChatOverlayHTML(): string {
                 <div id="dmActiveUserName" class="font-bold" style="color: #ff8c00;"></div>
                 <div id="dmActiveUserStatus" class="text-xs text-gray-400"></div>
               </div>
+              <button id="inviteToGameBtn" class="px-3 py-1 rounded text-sm font-bold bg-green-600 hover:bg-green-700 text-white" title="Inviter à une partie">
+                🎮 Inviter
+              </button>
             </div>
 
             <!-- Messages Container -->
@@ -1574,7 +1612,9 @@ async function render() {
   const root = document.getElementById("app");
   if (!root) return;
 
-  const route = location.hash || "";
+  const fullHash = location.hash || "";
+  // Extract base route without query parameters
+  const route = fullHash.split('?')[0];
 
   // Nettoyer le jeu précédent si on quitte la page de jeu
   if (currentGameClient && route !== "#/game") {
@@ -2356,6 +2396,18 @@ async function render() {
         ctx.fillText(`${gameState.score1}`, canvas.width / 4, 40);
         ctx.fillText(`${gameState.score2}`, (canvas.width * 3) / 4, 40);
       }
+    }
+    
+    // Auto-connect if roomId is provided in URL
+    const urlParams = new URLSearchParams(fullHash.split('?')[1] || '');
+    const roomIdFromUrl = urlParams.get('roomId');
+    const shouldCreate = urlParams.get('create') === 'true';
+    
+    if (roomIdFromUrl) {
+      console.log(`[Online] Auto-connecting to room: ${roomIdFromUrl}, create: ${shouldCreate}`);
+      setTimeout(() => {
+        connectToGame(roomIdFromUrl, shouldCreate);
+      }, 100);
     }
     
     // Event listeners pour les boutons

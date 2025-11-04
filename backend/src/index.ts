@@ -968,6 +968,16 @@ app.post("/api/users/register", async (request, reply) => {
 
       request.log.info({ tournamentId, players: bracketsData.shuffledPlayers }, "Local tournament created (in-memory)");
 
+      // 🏆 ANNONCE DANS LE CHAT GLOBAL - Début du tournoi
+      try {
+        const { sendSystemChatMessage } = await import("./ws-raw.js");
+        const playersList = bracketsData.shuffledPlayers.join(", ");
+        const creatorName = bracketsData.shuffledPlayers[0] || "Unknown";
+        sendSystemChatMessage(`🏆 Tournament started by ${creatorName}! Players: ${playersList}`);
+      } catch (err) {
+        request.log.warn(err, "Failed to send tournament announcement to chat");
+      }
+
       return reply.code(201).send({
         tournamentId,
         tournament,
@@ -1048,6 +1058,22 @@ app.post("/api/users/register", async (request, reply) => {
       }
 
       localTournaments.set(tournamentId, tournament);
+
+      // 🎮 ANNONCE DANS LE CHAT GLOBAL - Prochain match ou fin du tournoi
+      try {
+        const { sendSystemChatMessage } = await import("./ws-raw.js");
+        if (processedData.finished) {
+          sendSystemChatMessage(`🏆 Tournament finished! Winner: ${processedData.winner}! 🎉`);
+        } else if (processedData.nextMatch) {
+          const matchType = processedData.nextMatch.type === 'semifinal' 
+            ? `Semifinal ${processedData.nextMatch.number}` 
+            : 'Final';
+          const players = processedData.nextMatch.players.join(" vs ");
+          sendSystemChatMessage(`⚔️ Next match - ${matchType}: ${players}`);
+        }
+      } catch (err) {
+        request.log.warn(err, "Failed to send match announcement to chat");
+      }
 
       request.log.info({ tournamentId, winner, currentMatch: tournament.currentMatch }, "Match result processed");
       return reply.send({ tournament, nextMatch: processedData.nextMatch });
