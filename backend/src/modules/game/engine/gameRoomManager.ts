@@ -440,30 +440,34 @@ export class GameRoomInstance {
     try {
       console.log(`[Backend] Saving local game ${this.gameId} to database for stats`);
       
-      // Récupérer les joueurs
+      // Récupérer les joueurs par leur paddle (left = player1, right = player2)
       const playersArray = Array.from(this.players.values());
       if (playersArray.length !== 2) {
         console.warn(`[Backend] Game ${this.gameId} has ${playersArray.length} players, skipping DB save`);
         return;
       }
 
-      const player1 = playersArray.find(p => p.id === 'player1');
-      const player2 = playersArray.find(p => p.id === 'player2');
+      // Trouver les joueurs par leur paddle assigné (left/right)
+      const playerLeft = playersArray.find(p => p.paddle === 'left');
+      const playerRight = playersArray.find(p => p.paddle === 'right');
       
-      if (!player1 || !player2) {
-        console.warn(`[Backend] Could not find both players in game ${this.gameId}, skipping DB save`);
+      if (!playerLeft || !playerRight) {
+        console.warn(`[Backend] Could not find both paddles in game ${this.gameId}, skipping DB save`);
         return;
       }
 
+      console.log(`[Backend] Game players: LEFT=${playerLeft.username} (${playerLeft.id}), RIGHT=${playerRight.username} (${playerRight.id})`);
+
       // Trouver ou créer les joueurs en base
-      let player1Info = await this.findOrCreatePlayer(player1.username);
-      let player2Info = await this.findOrCreatePlayer(player2.username);
+      let player1Info = await this.findOrCreatePlayer(playerLeft.username);
+      let player2Info = await this.findOrCreatePlayer(playerRight.username);
 
       // Déterminer le gagnant - le moteur retourne "Player 1" ou "Player 2"
+      // Player 1 = left paddle, Player 2 = right paddle
       const winnerInfo = winner === 'Player 1' ? player1Info : player2Info;
-      const winnerUsername = winner === 'Player 1' ? player1.username : player2.username;
+      const winnerUsername = winner === 'Player 1' ? playerLeft.username : playerRight.username;
       
-      console.log(`[Backend] Game winner: ${winner}, mapping to ${winnerInfo.type} ID: ${winnerInfo.id} (${winnerUsername})`);
+      console.log(`[Backend] Game winner from engine: ${winner}, mapping to ${winnerInfo.type} ID: ${winnerInfo.id} (${winnerUsername})`);
 
       // Calculer les scores et la durée
       const player1Score = finalState.score1;
@@ -472,8 +476,8 @@ export class GameRoomInstance {
 
       // Créer le jeu en base avec la nouvelle méthode
       const gameId = await GameService.createGameFromUsernames({
-        player1_username: player1.username,
-        player2_username: player2.username,
+        player1_username: playerLeft.username,
+        player2_username: playerRight.username,
         winner_username: winnerUsername,
         player1_score: player1Score,
         player2_score: player2Score,
@@ -498,10 +502,11 @@ export class GameRoomInstance {
       let user = await UserService.findUserByUsername(username);
       
       if (user) {
+        console.log(`[Backend] Using authenticated user ${username} with ID ${user.id}`);
         return { id: user.id!, type: 'user' };
       }
 
-      // Si pas trouvé, créer ou récupérer un joueur local
+      // Si pas trouvé dans les users, créer ou récupérer un joueur local
       const { LocalPlayerService } = await import('../../../services/localPlayerService.js');
       const localPlayer = await LocalPlayerService.findOrCreateByUsername(username);
       

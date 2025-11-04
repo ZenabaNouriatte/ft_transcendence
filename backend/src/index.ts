@@ -241,14 +241,6 @@ if (ROLE === "gateway") {
     return null;
   }
 
-  const safeUser = (u: any) => {
-    if (!u) return null;
-    const { password, ...rest } = u;
-    // Ne pas ajouter de fallback Dicebear côté backend
-    // Le frontend gérera les avatars par défaut depuis /images/
-    return rest;
-  };
-
   // ===================== AUTH =====================
 
 app.post("/api/users/register", async (request, reply) => {
@@ -901,7 +893,6 @@ app.post("/api/users/register", async (request, reply) => {
     return reply.send({ users: safe });
   });
 
-  // ===================== TOURNOIS LOCAUX (in-memory) =====================
   const localTournaments = new Map<string, any>();
 
 // --- LOCAL TOURNAMENT: 4 players, all in memory ---
@@ -909,65 +900,78 @@ app.post("/api/users/register", async (request, reply) => {
     try {
       const { players } = request.body as { players: string[] };
 
-      // Sanitize + basic validation
+      // Sanitize les noms
       const safePlayers = Array.isArray(players)
         ? players
             .map((p) => sanitizeInput(p, 20))
-            .filter((p) => p.length > 0 && /^[a-zA-Z0-9 _-]{1,20}$/.test(p))
+            .filter((p) => p.length > 0)
         : [];
 
-      if (safePlayers.length !== 4) {
-        return reply.code(400).send({ error: "Exactly 4 valid players required" });
-      }
-
-      const uniqueNames = new Set(safePlayers.map((n) => n.toLowerCase()));
-      if (uniqueNames.size !== safePlayers.length) {
-        return reply.code(400).send({ error: "All players must have different names" });
-      }
-
-      // ✅ Vérifier que les pseudos ne sont pas déjà utilisés par des utilisateurs authentifiés
-      // Sauf si c'est l'utilisateur actuellement connecté qui utilise son propre pseudo
+      // Récupérer les pseudos réservés (utilisateurs authentifiés sauf l'utilisateur actuel)
       const userId = await getUserFromToken(request);
       let currentUserUsername: string | null = null;
+      const reservedUsernames: string[] = [];
+
       if (userId) {
         const currentUser = await UserService.findUserById(userId);
         currentUserUsername = currentUser?.username || null;
       }
 
+      // Construire la liste des pseudos réservés (tous sauf celui de l'utilisateur connecté)
       for (const playerName of safePlayers) {
         const existingUser = await UserService.findUserByUsername(playerName);
-        // Vérifier seulement si ce n'est PAS l'utilisateur connecté
         if (existingUser && existingUser.username !== currentUserUsername) {
-          return reply.code(400).send({ 
-            error: "username_reserved", 
-            message: `Le pseudo "${playerName}" est réservé par un utilisateur authentifié. Veuillez en choisir un autre.`,
-            field: "players"
-          });
+          reservedUsernames.push(existingUser.username);
         }
       }
 
+      // ========== APPEL AU MICROSERVICE TOURNAMENT ==========
+      // 1. Valider les joueurs
+      const validationResponse = await fetch("http://tournament:8104/validate-tournament", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ players: safePlayers, reservedUsernames }),
+      });
+
+      if (!validationResponse.ok) {
+        const error = await validationResponse.json();
+        return reply.code(validationResponse.status).send(error);
+      }
+
+      const validationData = await validationResponse.json();
+
+      // 2. Générer les brackets
+      const bracketsResponse = await fetch("http://tournament:8104/generate-brackets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ players: validationData.players }),
+      });
+
+      if (!bracketsResponse.ok) {
+        const error = await bracketsResponse.json();
+        return reply.code(bracketsResponse.status).send(error);
+      }
+
+      const bracketsData = await bracketsResponse.json();
+
+      // ========== PERSISTENCE EN MÉMOIRE (GATEWAY) ==========
       const tournamentId = `local_${Date.now()}`;
-      const shuffledPlayers = [...safePlayers].sort(() => Math.random() - 0.5);
-
-      const semifinal1 = { player1: shuffledPlayers[0], player2: shuffledPlayers[1] };
-      const semifinal2 = { player1: shuffledPlayers[2], player2: shuffledPlayers[3] };
-
       const tournament = {
         id: tournamentId,
-        players: shuffledPlayers, // ← noms conservés en mémoire
-        bracket: { semifinals: [semifinal1, semifinal2], final: null, winner: null },
+        players: bracketsData.shuffledPlayers,
+        bracket: bracketsData.bracket,
         currentMatch: "semifinal1",
         createdAt: new Date().toISOString(),
       };
 
       localTournaments.set(tournamentId, tournament);
 
-      request.log.info({ tournamentId, players: shuffledPlayers }, "Local tournament created (in-memory)");
+      request.log.info({ tournamentId, players: bracketsData.shuffledPlayers }, "Local tournament created (in-memory)");
 
       return reply.code(201).send({
         tournamentId,
         tournament,
-        nextMatch: { type: "semifinal", number: 1, players: [semifinal1.player1, semifinal1.player2] },
+        nextMatch: bracketsData.firstMatch,
       });
     } catch (error) {
       request.log.error(error, "Local tournament creation error");
@@ -988,122 +992,65 @@ app.post("/api/users/register", async (request, reply) => {
     }
   });
 
-// Remplace ta route existante par CE bloc
+  // Traiter le résultat d'un match de tournoi
   app.post("/api/tournaments/local/:id/match-result", async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const tournamentId = (request.params as any).id;
       const tournament = localTournaments.get(tournamentId);
       if (!tournament) return reply.code(404).send({ error: "Tournament not found" });
 
-      // --- Read & sanitize body -------------------------------------------------
       const body = request.body as {
         winner: string;
         loser: string;
         scores: { winner: number; loser: number };
       };
 
-      const NAME_RX = /^[a-zA-Z0-9 _-]{1,20}$/;
-
-      // Clean names (trim + escape + cut) and coerce scores to integers in [0..99]
+      // Sanitize les noms
       const winner = sanitizeInput(body?.winner, 20);
-      const loser  = sanitizeInput(body?.loser, 20);
-      const scores = {
-        winner: Math.max(0, Math.min(99, Number(body?.scores?.winner ?? 0) | 0)),
-        loser:  Math.max(0, Math.min(99, Number(body?.scores?.loser  ?? 0) | 0)),
-      };
+      const loser = sanitizeInput(body?.loser, 20);
 
-      // Basic guards on names format
-      if (!NAME_RX.test(winner) || !NAME_RX.test(loser)) {
-        return reply.code(400).send({ error: "invalid_names" });
+      // ========== APPEL AU MICROSERVICE TOURNAMENT ==========
+      const processResponse = await fetch("http://tournament:8104/process-match-result", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tournament,
+          winner,
+          loser,
+          scores: body.scores,
+        }),
+      });
+
+      if (!processResponse.ok) {
+        const error = await processResponse.json();
+        return reply.code(processResponse.status).send(error);
       }
 
-      // Optional: ensure names belong to this local tournament’s player list
-      if (!tournament.players.includes(winner) || !tournament.players.includes(loser)) {
-        return reply.code(400).send({ error: "names_not_in_tournament" });
-      }
+      const processedData = await processResponse.json();
 
-      // Optional: ensure winner != loser
-      if (winner.toLowerCase() === loser.toLowerCase()) {
-        return reply.code(400).send({ error: "winner_equals_loser" });
-      }
-
-      // --- Business logic: progress bracket ------------------------------------
-      let nextMatch: any = null;
-
-      if (tournament.currentMatch === "semifinal1") {
-        // (Optional) Check that names match the expected semifinal 1 pairing
-        const sf1 = tournament.bracket.semifinals[0];
-        const expected = new Set([sf1.player1, sf1.player2]);
-        if (!expected.has(winner) || !expected.has(loser)) {
-          return reply.code(400).send({ error: "names_do_not_match_semifinal1" });
-        }
-
-        sf1.winner = winner;
-        sf1.loser  = loser;
-        sf1.scores = scores;
-
-        tournament.currentMatch = "semifinal2";
-        nextMatch = {
-          type: "semifinal",
-          number: 2,
-          players: [tournament.bracket.semifinals[1].player1, tournament.bracket.semifinals[1].player2],
-        };
-
-      } else if (tournament.currentMatch === "semifinal2") {
-        const sf2 = tournament.bracket.semifinals[1];
-        const expected = new Set([sf2.player1, sf2.player2]);
-        if (!expected.has(winner) || !expected.has(loser)) {
-          return reply.code(400).send({ error: "names_do_not_match_semifinal2" });
-        }
-
-        sf2.winner = winner;
-        sf2.loser  = loser;
-        sf2.scores = scores;
-
-        const finalist1 = tournament.bracket.semifinals[0].winner;
-        const finalist2 = tournament.bracket.semifinals[1].winner;
-
-        tournament.bracket.final = { player1: finalist1, player2: finalist2 };
-        tournament.currentMatch = "final";
-        nextMatch = { type: "final", number: 1, players: [finalist1, finalist2] };
-
-      } else if (tournament.currentMatch === "final") {
-        const f = tournament.bracket.final;
-        if (!f) return reply.code(400).send({ error: "final_not_ready" });
-
-        const expected = new Set([f.player1, f.player2]);
-        if (!expected.has(winner) || !expected.has(loser)) {
-          return reply.code(400).send({ error: "names_do_not_match_final" });
-        }
-
-        f.winner = winner;
-        f.loser  = loser;
-        f.scores = scores;
-
-        tournament.bracket.winner = winner;
-        tournament.currentMatch = "finished";
+      // ========== MISE À JOUR EN MÉMOIRE (GATEWAY) ==========
+      tournament.bracket = processedData.bracket;
+      tournament.currentMatch = processedData.currentMatch;
+      
+      if (processedData.finished) {
         tournament.finishedAt = new Date().toISOString();
-        nextMatch = { type: "finished", winner };
-
-        // Mettre à jour les statistiques de victoire de tournoi
+        
+        // Mettre à jour les statistiques si c'est un utilisateur authentifié
         try {
-          const winnerUser = await UserService.findUserByUsername(winner);
+          const winnerUser = await UserService.findUserByUsername(processedData.winner);
           if (winnerUser) {
             await StatsService.updateTournamentWin(winnerUser.id!);
-            console.log(`[Tournament] Updated tournament win stats for ${winner} (ID: ${winnerUser.id})`);
+            console.log(`[Tournament] Updated tournament win stats for ${processedData.winner} (ID: ${winnerUser.id})`);
           }
         } catch (error) {
-          console.error(`[Tournament] Failed to update tournament win stats for ${winner}:`, error);
+          console.error(`[Tournament] Failed to update tournament win stats:`, error);
         }
-      } else {
-        return reply.code(400).send({ error: "tournament_already_finished_or_invalid_state" });
       }
 
-      // Persist back in memory (Map)
       localTournaments.set(tournamentId, tournament);
 
       request.log.info({ tournamentId, winner, currentMatch: tournament.currentMatch }, "Match result processed");
-      return reply.send({ tournament, nextMatch });
+      return reply.send({ tournament, nextMatch: processedData.nextMatch });
 
     } catch (error) {
       request.log.error(error, "Match result processing error");
@@ -1259,7 +1206,7 @@ app.post("/api/users/register", async (request, reply) => {
       }
 
       const updated = await UserService.findUserById(userId);
-      return reply.send({ ok: true, user: safeUser(updated) });
+      return reply.send({ ok: true, user: UserService.safeUser(updated) });
     } catch (e) {
       request.log.error(e, "Profile update error");
       return reply.code(500).send({ error: "Profile update failed" });
@@ -1300,7 +1247,7 @@ app.post("/api/users/register", async (request, reply) => {
     if (!u) return reply.code(404).send({ error: "not_found" });
 
     const stats = await StatsService.getUserStats(userId);
-    return reply.send({ user: safeUser(u), stats });
+    return reply.send({ user: UserService.safeUser(u), stats });
   });
 
   app.get("/api/users/:id/profile", async (req, reply) => {
@@ -1313,7 +1260,7 @@ app.post("/api/users/register", async (request, reply) => {
     const stats = await StatsService.getUserStats(id);
     const history = await UserService.getUserHistory(id, 20);
 
-    return reply.send({ user: safeUser(u), stats, history });
+    return reply.send({ user: UserService.safeUser(u), stats, history });
   });
 
   app.get("/api/users/:id/friends", async (req, reply) => {
@@ -1605,12 +1552,56 @@ app.post("/api/users/register", async (request, reply) => {
       const senderId = decoded.userId;
       const { receiverId, message } = req.body as { receiverId: number; message: string };
 
-      if (!receiverId || !message || message.trim() === '') {
-        return reply.code(400).send({ error: 'invalid_data' });
+      // ========== APPEL AU MICROSERVICE CHAT ==========
+      // 1. Valider le message
+      const validationResponse = await fetch("http://chat:8103/validate-message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, senderId, receiverId }),
+      });
+
+      if (!validationResponse.ok) {
+        const error = await validationResponse.json();
+        return reply.code(validationResponse.status).send(error);
       }
 
-      const newMessage = await DirectMessageService.sendMessage(senderId, receiverId, message.trim());
+      const validatedData = await validationResponse.json();
+
+      // 2. Vérifier les blocages
+      const sender = await UserService.findUserById(senderId);
+      const receiver = await UserService.findUserById(receiverId);
+
+      if (!sender || !receiver) {
+        return reply.code(404).send({ error: 'user_not_found' });
+      }
+
+      const blockedByReceiver = await FriendshipService.isBlocked(receiverId, senderId);
+      const blockedBySender = await FriendshipService.isBlocked(senderId, receiverId);
+
+      const canSendResponse = await fetch("http://chat:8103/check-can-send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ senderId, receiverId, blockedByReceiver, blockedBySender }),
+      });
+
+      if (!canSendResponse.ok) {
+        const error = await canSendResponse.json();
+        return reply.code(canSendResponse.status).send(error);
+      }
+
+      const canSendData = await canSendResponse.json();
+      
+      if (!canSendData.canSend) {
+        return reply.code(403).send({ 
+          error: canSendData.reason,
+          message: canSendData.message
+        });
+      }
+
+      // ========== PERSISTENCE EN DB (GATEWAY) ==========
+      const newMessage = await DirectMessageService.sendMessage(senderId, receiverId, validatedData.sanitizedMessage);
       return reply.send({ success: true, message: newMessage });
+
     } catch (error: any) {
       if (error.message === 'Cannot send message to blocked user') {
         return reply.code(403).send({ error: 'user_blocked' });
@@ -1633,10 +1624,19 @@ app.post("/api/users/register", async (request, reply) => {
       const { userId } = req.params as { userId: string };
       const otherUserId = parseInt(userId, 10);
 
-      if (isNaN(otherUserId)) {
-        return reply.code(400).send({ error: 'invalid_user_id' });
+      // ========== APPEL AU MICROSERVICE CHAT ==========
+      const validationResponse = await fetch("http://chat:8103/validate-conversation-params", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: currentUserId, otherUserId }),
+      });
+
+      if (!validationResponse.ok) {
+        const error = await validationResponse.json();
+        return reply.code(validationResponse.status).send(error);
       }
 
+      // ========== RÉCUPÉRATION EN DB (GATEWAY) ==========
       const messages = await DirectMessageService.getConversation(currentUserId, otherUserId);
       return reply.send({ messages: messages.reverse() }); // Inverser pour avoir du plus ancien au plus récent
     } catch (error) {
@@ -1670,10 +1670,19 @@ app.post("/api/users/register", async (request, reply) => {
       const userId = decoded.userId;
       const { otherUserId } = req.body as { otherUserId: number };
 
-      if (!otherUserId) {
-        return reply.code(400).send({ error: 'invalid_data' });
+      // ========== APPEL AU MICROSERVICE CHAT ==========
+      const validationResponse = await fetch("http://chat:8103/validate-conversation-params", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, otherUserId }),
+      });
+
+      if (!validationResponse.ok) {
+        const error = await validationResponse.json();
+        return reply.code(validationResponse.status).send(error);
       }
 
+      // ========== MISE À JOUR EN DB (GATEWAY) ==========
       await DirectMessageService.markAsRead(userId, otherUserId);
       return reply.send({ success: true });
     } catch (error) {

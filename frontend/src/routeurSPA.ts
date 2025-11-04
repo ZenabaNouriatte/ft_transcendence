@@ -2862,8 +2862,8 @@ async function render() {
     } else {
       // Match suivant
       if (nextMatchType) {
-        const matchTypeText = nextMatchInfo.type === 'final' ? '🏆 FINAL' : 
-                             nextMatchInfo.type === 'semifinal' ? `🔥 Semi-Final ${nextMatchInfo.number}` : 
+        const matchTypeText = nextMatchInfo.type === 'final' ? 'FINAL' : 
+                             nextMatchInfo.type === 'semifinal' ? `Semi-Final ${nextMatchInfo.number}` : 
                              'Next Match';
         nextMatchType.textContent = matchTypeText;
       }

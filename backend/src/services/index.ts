@@ -106,14 +106,22 @@ export class UserService {
   static async getUserHistory(userId: number, limit = 20) {
     return all(
       `SELECT g.*, 
-              u1.username as player1_username,
-              u2.username as player2_username,
+              CASE 
+                WHEN g.player1_type = 'user' THEN u1.username
+                WHEN g.player1_type = 'local' THEN lp1.username
+              END as player1_username,
+              CASE 
+                WHEN g.player2_type = 'user' THEN u2.username
+                WHEN g.player2_type = 'local' THEN lp2.username
+              END as player2_username,
               t.name as tournament_name
          FROM games g
-         LEFT JOIN users u1 ON g.player1_id = u1.id
-         LEFT JOIN users u2 ON g.player2_id = u2.id
+         LEFT JOIN users u1 ON g.player1_id = u1.id AND g.player1_type = 'user'
+         LEFT JOIN users u2 ON g.player2_id = u2.id AND g.player2_type = 'user'
+         LEFT JOIN local_players lp1 ON g.player1_id = lp1.id AND g.player1_type = 'local'
+         LEFT JOIN local_players lp2 ON g.player2_id = lp2.id AND g.player2_type = 'local'
          LEFT JOIN tournaments t ON g.tournament_id = t.id
-        WHERE (g.player1_id = ? OR g.player2_id = ?)
+        WHERE ((g.player1_id = ? AND g.player1_type = 'user') OR (g.player2_id = ? AND g.player2_type = 'user'))
            AND g.status != 'cancelled'
         ORDER BY g.created_at DESC
         LIMIT ?`,
@@ -123,6 +131,16 @@ export class UserService {
 
   static defaultAvatar(username: string) {
     return `https://api.dicebear.com/8.x/identicon/svg?seed=${encodeURIComponent(username)}`;
+  }
+
+  /**
+   * Retourne un utilisateur sans le mot de passe (sécurité)
+   * Utilisé pour envoyer les données user au frontend
+   */
+  static safeUser(u: any): any {
+    if (!u) return null;
+    const { password, ...rest } = u;
+    return rest;
   }
 
   static async updateProfile(
