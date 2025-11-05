@@ -640,8 +640,26 @@ function showGameInvitationDialog(senderUsername: string, gameId: string) {
     });
     acceptBtn.addEventListener('click', () => {
       console.log('[DM-DEBUG] 🎮 User ACCEPTED invitation');
+      console.log('[DM-DEBUG] 🎮 Current location.hash:', location.hash);
+      console.log('[DM-DEBUG] 🎮 Navigating to:', `#/online?roomId=${gameId}&join=true`);
+      
       dialog.remove();
-      location.hash = `#/online?roomId=${gameId}`;
+      
+      // Force navigation even if already on #/online page
+      const currentRoute = location.hash.split('?')[0];
+      if (currentRoute === '#/online') {
+        console.log('[DM-DEBUG] 🎮 Already on #/online, forcing reload');
+        // Store the join request for immediate execution
+        sessionStorage.setItem('immediateJoin', gameId);
+        // Force page reload by navigating away and back
+        location.hash = '#/';
+        setTimeout(() => {
+          location.hash = `#/online?roomId=${gameId}&join=true&t=${Date.now()}`;
+        }, 50);
+      } else {
+        console.log('[DM-DEBUG] 🎮 Not on #/online, simple navigation');
+        location.hash = `#/online?roomId=${gameId}&join=true`;
+      }
     });
   }
   

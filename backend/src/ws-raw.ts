@@ -802,7 +802,7 @@ export function registerRawWs(app: FastifyInstance) {
                 }
               } else {
                 // Nettoyer et valider le gameId personnalisé
-                gameId = gameId.trim().replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
+                gameId = gameId.trim().replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 50); // Allow _ and - , increased limit to 50
                 if (gameId.length === 0) {
                   safeSend({ 
                     type: "error", 
