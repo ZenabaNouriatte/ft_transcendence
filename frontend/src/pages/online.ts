@@ -69,34 +69,34 @@ export function getOnlineHTML(): string {
         </div>
         </div>
         </div>
-      </div>
-      
-      <!-- Game controls (hidden until connected) -->
-      <div id="onlineGameControls" class="hidden mb-6">
-        <div class="flex gap-4">
-          <button id="readyBtn" class="retro-btn hover-orange flex-1">
-            ✋ Ready Up!
-          </button>
-        </div>
-      </div>
-      
-      <!-- Game canvas (hidden until game starts) -->
-      <div id="onlineGameArea" class="hidden text-center">
-        <canvas id="onlineCanvas" width="800" height="400" 
-                class="mb-4 border-2 border-blue-500 bg-black rounded-lg"></canvas>
-        <div class="text-sm text-gray-400 mb-4">
-          <strong>Controls:</strong> W/S or ↑/↓ to move • All players can control<br>
-          <strong>Fullscreen:</strong> Double-click canvas or press F11
+        
+        <!-- Game controls (hidden until connected) -->
+        <div id="onlineGameControls" class="hidden mb-6">
+          <div class="flex gap-4">
+            <button id="readyBtn" class="retro-btn hover-orange flex-1">
+              ✋ Ready Up!
+            </button>
+          </div>
         </div>
         
-        <!-- Boutons de contrôle du jeu online -->
-        <div class="flex gap-4 justify-center mb-4">
-          <button id="pauseOnlineBtn" class="retro-btn-small hover-blue">
-            Pause
-          </button>
-          <button id="backFromOnlineGameBtn" class="retro-btn-small hover-blue">
-            Back to Menu
-          </button>
+        <!-- Game canvas (hidden until game starts) -->
+        <div id="onlineGameArea" class="hidden text-center">
+          <canvas id="onlineCanvas" width="800" height="400" 
+                  class="mb-4 border-2 border-blue-500 bg-black rounded-lg"></canvas>
+          <div class="text-sm text-gray-400 mb-4">
+            <strong>Controls:</strong> W/S or ↑/↓ to move • All players can control<br>
+            <strong>Fullscreen:</strong> Double-click canvas or press F11
+          </div>
+          
+          <!-- Boutons de contrôle du jeu online -->
+          <div class="flex gap-4 justify-center mb-4">
+            <button id="pauseOnlineBtn" class="retro-btn-small hover-blue">
+              Pause
+            </button>
+            <button id="backFromOnlineGameBtn" class="retro-btn-small hover-blue">
+              Back to Menu
+            </button>
+          </div>
         </div>
       </div>
       
