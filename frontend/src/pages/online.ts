@@ -88,13 +88,10 @@ export function getOnlineHTML(): string {
             <strong>Fullscreen:</strong> Double-click canvas or press F11
           </div>
           
-          <!-- Boutons de contrôle du jeu online -->
-          <div class="flex gap-4 justify-center mb-4">
+          <!-- Bouton de contrôle du jeu online centré -->
+          <div class="flex justify-center mb-4">
             <button id="pauseOnlineBtn" class="retro-btn-small hover-blue">
               Pause
-            </button>
-            <button id="backFromOnlineGameBtn" class="retro-btn-small hover-blue">
-              Back to Menu
             </button>
           </div>
         </div>
@@ -850,42 +847,76 @@ export function attachOnlineEvents() {
   document.addEventListener('keydown', keyDownHandler);
   document.addEventListener('keyup', keyUpHandler);
   
-  // Attacher les event listeners pour les boutons de jeu après que le DOM soit prêt
-  setTimeout(() => {
-    // Event listener pour le bouton pause du jeu online
-    const pauseButton = document.getElementById("pauseOnlineBtn");
-    console.log('🔍 Bouton pause trouvé:', !!pauseButton);
-    pauseButton?.addEventListener('click', async () => {
-      console.log('🔍 Bouton pause cliqué. CurrentRoomId:', currentRoomId, 'IsConnected:', isConnected, 'IsGameStarted:', isGameStarted);
+  // Event listener pour le bouton pause du jeu online
+  const pauseButton = document.getElementById("pauseOnlineBtn");
+  if (pauseButton) {
+    console.log('✅ Bouton pause trouvé et event listener attaché');
+    pauseButton.addEventListener('click', async () => {
+      console.log('🔍 Bouton pause cliqué');
+      console.log('   - CurrentRoomId:', currentRoomId);
+      console.log('   - IsConnected:', isConnected);
+      console.log('   - IsGameStarted:', isGameStarted);
+      console.log('   - IsPaused:', isPaused);
+      
       if (currentRoomId && isConnected && isGameStarted) {
         try {
           const token = localStorage.getItem('token');
-          if (!token) return;
+          if (!token) {
+            console.warn('❌ Pas de token d\'authentification');
+            return;
+          }
 
           const action = isPaused ? 'resume' : 'pause';
-          const endpoint = `/api/game/remote/${action}`;
+          const endpoint = `/api/games/${currentRoomId}/${action}`;
+          
+          console.log(`🚀 Envoi requête ${action} à ${endpoint}`);
 
           const response = await fetch(endpoint, {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ gameId: currentRoomId })
+              'Authorization': `Bearer ${token}`
+            }
           });
 
           if (response.ok) {
-            console.log(`✅ Jeu ${action}d avec succès`);
+            const result = await response.json();
+            console.log(`✅ Jeu ${action}d avec succès:`, result);
+            
+            // Mettre à jour l'état local
+            isPaused = !isPaused;
+            const pauseBtn = document.getElementById('pauseOnlineBtn');
+            if (pauseBtn) {
+              pauseBtn.textContent = isPaused ? 'Resume' : 'Pause';
+            }
+            updateStatus(isPaused ? '⏸️ Jeu en pause' : '▶️ Jeu repris', isPaused ? 'text-yellow-400' : 'text-green-400');
           } else {
-            const error = await response.json();
-            console.error(`❌ Erreur lors du ${action}:`, error);
+            const errorText = await response.text();
+            console.error(`❌ Erreur lors du ${action}:`, response.status, errorText);
+            
+            if (response.status === 400) {
+              updateStatus(`❌ Impossible de ${action === 'pause' ? 'mettre en pause' : 'reprendre'} - jeu terminé ou invalide`, 'text-red-400');
+            } else {
+              updateStatus(`❌ Erreur ${response.status} lors du ${action}`, 'text-red-400');
+            }
           }
         } catch (error) {
-          console.error('Erreur réseau lors de la pause/reprise:', error);
+          console.error('❌ Erreur réseau lors de la pause/reprise:', error);
+          updateStatus('❌ Erreur réseau', 'text-red-400');
+        }
+      } else {
+        console.warn('⚠️ Impossible de faire pause - Room:', !!currentRoomId, 'Connected:', isConnected, 'GameStarted:', isGameStarted);
+        if (!isGameStarted) {
+          updateStatus('❌ Jeu non démarré ou terminé', 'text-red-400');
+        } else if (!isConnected) {
+          updateStatus('❌ Connexion perdue', 'text-red-400');
+        } else {
+          updateStatus('❌ Conditions non remplies pour la pause', 'text-red-400');
         }
       }
     });
-  }, 100);
+  } else {
+    console.error('❌ Bouton pause non trouvé dans le DOM');
+  }
 }
 
 /**
