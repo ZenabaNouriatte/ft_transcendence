@@ -1,6 +1,9 @@
 // PAGE DE CONNEXION
 
 import { Presence } from '../websocket.js';
+import { handleChatMessage } from '../chat/state.js';
+import { updateChatDisplay } from '../chat/ui.js';
+import { isUserBlocked, loadBlockedUsers } from '../blocking/index.js';
 
 /**
  * Génère le HTML de la page de connexion
@@ -78,6 +81,14 @@ export function attachLoginEvents() {
         if (data.token) {
           localStorage.setItem('token', data.token);
           Presence.connect(data.token);
+          
+          // Charger la liste des utilisateurs bloqués
+          await loadBlockedUsers();
+          
+          // Enregistrer le handler pour les messages de chat
+          Presence.on('chat.message', (data: any) => {
+            handleChatMessage(data, isUserBlocked, updateChatDisplay);
+          });
         }
         
         localStorage.setItem('currentUsername', username);

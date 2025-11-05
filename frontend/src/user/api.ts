@@ -31,7 +31,7 @@ export async function getUserProfile(userId: number): Promise<any> {
     console.log('Données profil reçues:', data);
     return data;
   } catch (error) {
-    console.error('Erreur lors de la récupération du profil:', error);
+    // Erreur silencieuse - peut arriver si l'utilisateur n'est pas encore connecté
     return null;
   }
 }

@@ -15,7 +15,8 @@ export function updateChatDisplay() {
   console.log('[CHAT] Messages to display:', chatMessages.length);
   
   if (!chatMessagesContainer) {
-    console.error('[CHAT] Container #chatMessages not found!');
+    // C'est normal si le chat overlay n'est pas encore créé
+    console.log('[CHAT] Container #chatMessages not found yet (chat overlay not created)');
     return;
   }
 
@@ -88,17 +89,26 @@ export function toggleChat() {
   }
 }
 
+// Variable pour tracker si les event listeners ont été attachés
+let chatEventListenersAttached = false;
+
 /**
  * Injecte le chat overlay dans le DOM s'il n'existe pas déjà
  */
 export function ensureChatOverlayExists() {
-  if (!document.getElementById('chatOverlay')) {
+  const existing = document.getElementById('chatOverlay');
+  if (!existing) {
     const chatContainer = document.createElement('div');
     chatContainer.innerHTML = getChatOverlayHTML();
     document.body.appendChild(chatContainer.firstElementChild as HTMLElement);
     console.log('[CHAT] Chat overlay injected into DOM');
-    // Attacher les event listeners après injection
+    chatEventListenersAttached = false; // Reset flag car nouveau DOM
+  }
+  
+  // Attacher les event listeners seulement s'ils ne l'ont pas encore été
+  if (!chatEventListenersAttached) {
     attachChatEventListeners();
+    chatEventListenersAttached = true;
   }
 }
 

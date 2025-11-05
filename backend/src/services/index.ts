@@ -122,7 +122,7 @@ export class UserService {
          LEFT JOIN local_players lp2 ON g.player2_id = lp2.id AND g.player2_type = 'local'
          LEFT JOIN tournaments t ON g.tournament_id = t.id
         WHERE ((g.player1_id = ? AND g.player1_type = 'user') OR (g.player2_id = ? AND g.player2_type = 'user'))
-           AND g.status != 'cancelled'
+           AND g.status = 'finished'
         ORDER BY g.created_at DESC
         LIMIT ?`,
       [userId, userId, limit]

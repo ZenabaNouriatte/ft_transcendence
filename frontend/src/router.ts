@@ -19,9 +19,9 @@ import {
 
 import { syncAuthFromBackend } from './auth.js';
 import { Presence } from './websocket.js';
-import { handleChatMessage } from './chat/state.js';
+import { handleChatMessage, loadChatMessagesFromStorage } from './chat/state.js';
 import { updateChatDisplay, ensureChatOverlayExists } from './chat/ui.js';
-import { isUserBlocked } from './blocking/index.js';
+import { isUserBlocked, loadBlockedUsers } from './blocking/index.js';
 
 // Type pour les routes
 type PageRenderer = {
@@ -142,17 +142,32 @@ async function initializeApp() {
     console.error('[Router] Error during auth sync:', error);
   }
 
+  // Charger les messages du chat depuis localStorage
+  loadChatMessagesFromStorage();
+
   // Connecter le WebSocket si un token existe
   const token = localStorage.getItem('token');
+  console.log('[Router] Token found:', !!token);
   if (token) {
+    console.log('[Router] Connecting WebSocket...');
     Presence.connect(token);
     
+    // Charger la liste des utilisateurs bloqués
+    await loadBlockedUsers();
+    
+    // Créer le chat overlay immédiatement pour que les messages puissent s'afficher
+    ensureChatOverlayExists();
+    
     // Enregistrer le handler pour les messages de chat
+    console.log('[Router] Registering chat.message handler...');
     Presence.on('chat.message', (data: any) => {
+      console.log('[Router] Handler called!');
       handleChatMessage(data, isUserBlocked, updateChatDisplay);
     });
+    console.log('[Router] Handler registered');
   } else {
     // Pas d'authentification, nettoyer l'UI locale
+    console.log('[Router] No token, cleaning up');
     localStorage.removeItem('currentUsername');
   }
 

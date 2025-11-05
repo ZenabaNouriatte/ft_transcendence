@@ -1,7 +1,5 @@
 // PAGE MODE CLASSIC
 
-import { createGame } from '../game/index.js';
-
 /**
  * Retourne le HTML de la page Classic (copié exactement depuis routes object)
  */
@@ -81,19 +79,52 @@ export function attachClassicEvents() {
       return;
     }
     
-    // Créer le jeu en base de données (le backend validera les pseudos réservés)
-    const gameId = await createGame(player1Name, player2Name);
-    
-    // Stocker les informations du jeu dans localStorage
-    localStorage.setItem('player1Name', player1Name);
-    localStorage.setItem('player2Name', player2Name);
-    localStorage.setItem('currentGameId', gameId ? gameId.toString() : '');
-    
-    // Marquer explicitement qu'on est en mode classique
-    localStorage.setItem('currentGameMode', 'classic');
-    localStorage.removeItem('tournamentPlayers'); // Nettoyer les données de tournoi précédentes
-    
-    location.hash = "#/game";
+    // Créer le jeu via l'API backend (qui fera toutes les validations)
+    try {
+      // Récupérer le token s'il existe
+      const token = localStorage.getItem('token');
+      const isAuthenticated = !!token;
+      
+      // Choisir la route appropriée selon l'authentification
+      const endpoint = isAuthenticated ? '/api/games' : '/api/games/local';
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      // Construire le body selon la route
+      const body = isAuthenticated 
+        ? JSON.stringify({ player2_username: player2Name })
+        : JSON.stringify({ player1: player1Name, player2: player2Name, type: 'pong' });
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body,
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || error.error || 'Failed to create game');
+      }
+      
+      const data = await response.json();
+      const gameId = data.gameId || data.id;
+      
+      // Stocker les informations du jeu dans localStorage
+      localStorage.setItem('player1Name', player1Name);
+      localStorage.setItem('player2Name', player2Name);
+      localStorage.setItem('currentGameId', gameId ? gameId.toString() : '');
+      
+      // Marquer explicitement qu'on est en mode classique
+      localStorage.setItem('currentGameMode', 'classic');
+      localStorage.removeItem('tournamentPlayers'); // Nettoyer les données de tournoi précédentes
+      
+      location.hash = "#/game";
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(errorMessage);
+    }
   };
   
   // Event listeners pour les interactions

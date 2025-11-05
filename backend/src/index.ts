@@ -425,17 +425,32 @@ app.post("/api/users/register", async (request, reply) => {
 
       console.log('🎮 Game creation request:', { player2_username, tournament_id });
 
-      // Si player2_username est fourni, convertir en player2_id
+      // Vérifier que le nom du joueur actuel n'est pas utilisé comme local player
+      const currentUser = await UserService.findUserById(userId);
+      const currentUserUsername = currentUser?.username || null;
+
+      // Si player2_username est fourni, vérifier s'il s'agit d'un utilisateur authentifié
       let player2_id = null;
       if (player2_username && player2_username !== 'CPU') {
         console.log(`🔍 Looking for user: ${player2_username}`);
         const player2 = await UserService.findUserByUsername(player2_username);
-        if (!player2) {
-          console.log(`❌ User '${player2_username}' not found`);
-          return reply.code(404).send({ error: `Joueur '${player2_username}' non trouvé` });
+        
+        if (player2) {
+          // C'est un utilisateur authentifié
+          // Vérifier que ce n'est pas un autre utilisateur (sauf si c'est l'utilisateur connecté lui-même)
+          if (player2.id !== userId) {
+            console.log(`❌ Cannot use authenticated user '${player2_username}' as local player`);
+            return reply.code(400).send({ 
+              error: "username_reserved", 
+              message: `The username "${player2_username}" is reserved by an authenticated user. Please choose another one.`
+            });
+          }
+          player2_id = player2.id;
+          console.log(`✅ Found user '${player2_username}' with ID: ${player2_id}`);
+        } else {
+          // Ce n'est pas un utilisateur authentifié, c'est OK pour un joueur local
+          console.log(`✅ '${player2_username}' is available for local player`);
         }
-        player2_id = player2.id;
-        console.log(`✅ Found user '${player2_username}' with ID: ${player2_id}`);
       } else if (player2_username === 'CPU') {
         console.log('🤖 CPU player detected');
         // Gérer le cas spécial du CPU
@@ -517,7 +532,7 @@ app.post("/api/users/register", async (request, reply) => {
       if (existingUser1 && existingUser1.username !== currentUserUsername) {
         return reply.code(400).send({ 
           error: "username_reserved", 
-          message: `Le pseudo "${p1}" est réservé par un utilisateur authentifié. Veuillez en choisir un autre.`,
+          message: `The username "${p1}" is reserved by an authenticated user. Please choose another one.`,
           field: "player1"
         });
       }
@@ -526,7 +541,7 @@ app.post("/api/users/register", async (request, reply) => {
       if (existingUser2 && existingUser2.username !== currentUserUsername) {
         return reply.code(400).send({ 
           error: "username_reserved", 
-          message: `Le pseudo "${p2}" est réservé par un utilisateur authentifié. Veuillez en choisir un autre.`,
+          message: `The username "${p2}" is reserved by an authenticated user. Please choose another one.`,
           field: "player2"
         });
       }

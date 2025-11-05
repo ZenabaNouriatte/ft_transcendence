@@ -74,7 +74,7 @@ const tournamentPlugin: FastifyPluginAsync = async (app) => {
           return reply.code(400).send({ 
             error: "username_reserved",
             conflictingNames: conflicts,
-            message: `Les pseudos suivants sont réservés: ${conflicts.join(', ')}`
+            message: `The following usernames are reserved: ${conflicts.join(', ')}`
           });
         }
       }

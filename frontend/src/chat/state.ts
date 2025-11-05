@@ -72,7 +72,7 @@ export function saveChatMessagesToStorage() {
  * Appelé par le router au démarrage
  */
 export function handleChatMessage(data: any, isUserBlocked: (userId: number) => boolean, updateChatDisplay: () => void) {
-  console.log('[CHAT] Message reçu:', data);
+  console.log('[CHAT] handleChatMessage called with data:', data);
   
   const newMessage = {
     userId: data.userId || 0,
@@ -81,6 +81,8 @@ export function handleChatMessage(data: any, isUserBlocked: (userId: number) => 
     message: data.message || '',
     timestamp: new Date()
   };
+  
+  console.log('[CHAT] Processed message:', newMessage);
   
   // Ne pas afficher les messages des utilisateurs bloqués
   if (!isUserBlocked(newMessage.userId)) {
