@@ -421,7 +421,9 @@ export function registerRawWs(app: FastifyInstance) {
 
         const ALLOWED_TYPES = [
           "ws.ping",
-          "chat.message", 
+          "chat.message",
+          "dm.message",
+          "game.invitation",
           "game.input",
           "game.pause",
           "game.resume",
@@ -595,6 +597,80 @@ export function registerRawWs(app: FastifyInstance) {
             break;
           }
 
+          case "game.invitation": {
+            console.log('[DEBUG-BACKEND] 🎮🎮🎮 game.invitation case triggered!');
+            console.log('[DEBUG-BACKEND] 🎮 msg.data:', msg.data);
+            
+            // Invitation à une partie online
+            if (!ws.ctx?.userId) {
+              console.log('[DEBUG-BACKEND] 🎮 ❌ No userId in ws.ctx');
+              safeSend({ 
+                type: "error", 
+                data: { message: "authentication_required" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            console.log('[DEBUG-BACKEND] 🎮 Sender userId:', ws.ctx.userId);
+            
+            const { receiverId, gameId, senderUsername } = msg.data || {};
+            
+            console.log('[DEBUG-BACKEND] 🎮 Extracted - receiverId:', receiverId, 'gameId:', gameId, 'senderUsername:', senderUsername);
+            
+            if (!receiverId || typeof receiverId !== "number") {
+              console.log('[DEBUG-BACKEND] 🎮 ❌ Invalid receiverId:', receiverId);
+              safeSend({ 
+                type: "error", 
+                data: { message: "invalid_receiver_id" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            if (!gameId || typeof gameId !== "string") {
+              console.log('[DEBUG-BACKEND] 🎮 ❌ Invalid gameId:', gameId);
+              safeSend({ 
+                type: "error", 
+                data: { message: "invalid_game_id" }, 
+                requestId 
+              });
+              break;
+            }
+            
+            console.log('[DEBUG-BACKEND] 🎮 Validation passed, sending invitation...');
+            
+            // Envoyer l'invitation au destinataire
+            const sent = sendDirectMessage(receiverId, {
+              type: "game.invitation",
+              data: {
+                senderId: ws.ctx.userId,
+                senderUsername: senderUsername || `User${ws.ctx.userId}`,
+                gameId: gameId,
+                timestamp: new Date().toISOString()
+              }
+            });
+            
+            console.log('[DEBUG-BACKEND] 🎮 sendDirectMessage returned:', sent);
+            
+            if (sent) {
+              safeSend({ 
+                type: "game.invitation.sent", 
+                data: { receiverId, gameId },
+                requestId 
+              });
+              console.log(`[DEBUG-BACKEND] 🎮 ✅ Invitation sent from ${ws.ctx.userId} to ${receiverId} for game ${gameId}`);
+            } else {
+              safeSend({ 
+                type: "error", 
+                data: { message: "user_not_connected" }, 
+                requestId 
+              });
+              console.log(`[DEBUG-BACKEND] 🎮 ❌ User ${receiverId} not connected`);
+            }
+            break;
+          }
+
           case "game.input": {
             if (!msg.data || typeof msg.data !== "object") {
               safeSend({ 
@@ -688,7 +764,7 @@ export function registerRawWs(app: FastifyInstance) {
                 }
               } else {
                 // Nettoyer et valider le gameId personnalisé
-                gameId = gameId.trim().replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
+                gameId = gameId.trim().replace(/[^a-zA-Z0-9]/g, '').substring(0, 50); // Increased to 50 for game invitations
                 if (gameId.length === 0) {
                   safeSend({ 
                     type: "error", 

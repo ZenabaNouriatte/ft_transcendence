@@ -22,6 +22,7 @@ import { Presence } from './websocket.js';
 import { handleChatMessage, loadChatMessagesFromStorage } from './chat/state.js';
 import { updateChatDisplay, ensureChatOverlayExists } from './chat/ui.js';
 import { isUserBlocked, loadBlockedUsers } from './blocking/index.js';
+import * as Chat from './chat/index.js';
 
 // Type pour les routes
 type PageRenderer = {
@@ -98,7 +99,12 @@ async function render() {
   const root = document.getElementById('app');
   if (!root) return;
 
-  const route = location.hash || '';
+  // Extraire la route sans les query parameters
+  const fullHash = location.hash || '';
+  const route = fullHash.split('?')[0]; // Prendre seulement la partie avant le ?
+  
+  console.log('[Router] Full hash:', fullHash);
+  console.log('[Router] Route (without params):', route);
 
   // Nettoyer la page précédente si elle a une fonction cleanup
   if (currentRoute && routes[currentRoute]?.cleanup) {
@@ -165,6 +171,25 @@ async function initializeApp() {
       handleChatMessage(data, isUserBlocked, updateChatDisplay);
     });
     console.log('[Router] Handler registered');
+    
+    // Enregistrer le handler pour les messages directs (DM)
+    Presence.on('dm.message', (data: any) => {
+      console.log('[Router] DM message received:', data);
+      if (data.data) {
+        Chat.DM.handleIncomingDm(data.data);
+      }
+    });
+    
+    // Enregistrer le handler pour les invitations de jeu
+    Presence.on('game.invitation', (message: any) => {
+      console.log('[Router] 🎮🎮🎮 Game invitation received, full message:', message);
+      console.log('[Router] 🎮 message.data:', message.data);
+      if (message.data) {
+        Chat.DM.handleGameInvitation(message.data);
+      } else {
+        console.error('[Router] 🎮 ❌ No data in game invitation message!');
+      }
+    });
   } else {
     // Pas d'authentification, nettoyer l'UI locale
     console.log('[Router] No token, cleaning up');

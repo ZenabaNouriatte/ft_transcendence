@@ -4,6 +4,7 @@ import { Presence } from '../websocket.js';
 import { handleChatMessage } from '../chat/state.js';
 import { updateChatDisplay } from '../chat/ui.js';
 import { isUserBlocked, loadBlockedUsers } from '../blocking/index.js';
+import * as Chat from '../chat/index.js';
 
 export function getSignUpHTML(): string {
   return `
@@ -91,6 +92,25 @@ export function attachSignUpEvents() {
           // Enregistrer le handler pour les messages de chat
           Presence.on('chat.message', (data: any) => {
             handleChatMessage(data, isUserBlocked, updateChatDisplay);
+          });
+          
+          // Enregistrer le handler pour les messages directs (DM)
+          Presence.on('dm.message', (data: any) => {
+            console.log('[Signup] DM message received:', data);
+            if (data.data) {
+              Chat.DM.handleIncomingDm(data.data);
+            }
+          });
+          
+          // Enregistrer le handler pour les invitations de jeu
+          Presence.on('game.invitation', (message: any) => {
+            console.log('[Signup] 🎮🎮🎮 Game invitation received, full message:', message);
+            console.log('[Signup] 🎮 message.data:', message.data);
+            if (message.data) {
+              Chat.DM.handleGameInvitation(message.data);
+            } else {
+              console.error('[Signup] 🎮 ❌ No data in game invitation message!');
+            }
           });
         }
         localStorage.setItem('currentUsername', username);

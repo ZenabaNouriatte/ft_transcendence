@@ -487,9 +487,195 @@ function getCurrentUserIdSync(): number {
   }
 }
 
+// Normalize gameId to match backend format (removes underscores and special chars)
+function normalizeGameId(gameId: string): string {
+  // Remove all underscores and convert to lowercase, keeping only alphanumeric
+  return gameId.replace(/_/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// Invite user to an online game
+export async function inviteToGame(userId: number, username: string) {
+  console.log(`[DM] Inviting user ${userId} (${username}) to game`);
+  
+  try {
+    // Create a new online game room
+    const rawGameId = `game_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const gameId = normalizeGameId(rawGameId);
+    console.log(`[DM] 🎮 Generated gameId: ${rawGameId} → normalized: ${gameId}`);
+    
+    // Get current user info
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Vous devez être connecté pour inviter à une partie');
+      return;
+    }
+    
+    const currentUserId = getCurrentUserIdSync();
+    const response = await fetch('/api/users/me', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (!response.ok) {
+      alert('Erreur lors de la récupération de vos informations');
+      return;
+    }
+    
+    const data = await response.json();
+    const currentUsername = data.user.username;
+    
+    // Store invitation data in sessionStorage to send after room is created
+    const invitationPayload = {
+      receiverId: userId,
+      receiverUsername: username,
+      gameId: gameId,
+      senderUsername: currentUsername
+    };
+    
+    console.log('[DM] 💾 Storing invitation in sessionStorage:', invitationPayload);
+    sessionStorage.setItem('pendingGameInvitation', JSON.stringify(invitationPayload));
+    
+    // Verify it was stored
+    const stored = sessionStorage.getItem('pendingGameInvitation');
+    console.log('[DM] 💾 Verified stored value:', stored);
+    
+    // Close chat overlay before navigation
+    const chatOverlay = document.getElementById('chatOverlay');
+    if (chatOverlay) {
+      chatOverlay.style.display = 'none';
+    }
+    
+    // Redirect to online game room with create=true
+    console.log('[DM] Redirecting to online room:', gameId);
+    location.hash = `#/online?roomId=${gameId}&create=true`;
+    
+  } catch (error) {
+    console.error('[DM] Error preparing game invitation:', error);
+    alert('Erreur lors de la préparation de l\'invitation');
+  }
+}
+
+// Handle incoming game invitation
+export function handleGameInvitation(data: any) {
+  console.log('🎮🎮🎮🎮🎮🎮🎮🎮🎮🎮🎮🎮🎮🎮🎮🎮');
+  console.log('🎮 [DM] handleGameInvitation CALLED!');
+  console.log('🎮 [DM] Full data:', data);
+  const { senderId, senderUsername, gameId } = data;
+  console.log('🎮 [DM] Extracted - senderId:', senderId, 'senderUsername:', senderUsername, 'gameId:', gameId);
+  console.log('🎮 [DM] About to show dialog...');
+  
+  // Create a custom invitation overlay instead of confirm() which gets blocked on inactive tabs
+  showGameInvitationDialog(senderUsername, gameId);
+  
+  console.log('🎮 [DM] showGameInvitationDialog called!');
+  console.log('🎮🎮🎮🎮🎮🎮🎮🎮🎮🎮🎮🎮🎮🎮🎮🎮');
+}
+
+// Show a custom game invitation dialog
+function showGameInvitationDialog(senderUsername: string, gameId: string) {
+  console.log('🎮📢📢📢 SHOW GAME INVITATION DIALOG CALLED!');
+  console.log('🎮 senderUsername:', senderUsername);
+  console.log('🎮 gameId:', gameId);
+  
+  // Remove any existing invitation dialog
+  const existingDialog = document.getElementById('gameInvitationDialog');
+  if (existingDialog) {
+    console.log('🎮 Removing existing dialog');
+    existingDialog.remove();
+  }
+  
+  console.log('🎮 Creating new dialog element...');
+  
+  // Create the dialog overlay using the same style as Edit Profile modal
+  const dialog = document.createElement('div');
+  dialog.id = 'gameInvitationDialog';
+  dialog.className = 'profile-modal';
+  dialog.style.display = 'flex';
+  dialog.style.zIndex = '10000'; // Au-dessus du chat
+  
+  console.log('🎮 Dialog element created, adding to body...');
+  
+  dialog.innerHTML = `
+    <div class="profile-modal-content" style="max-width: 500px;">
+      <div class="profile-modal-header">
+        <h2 class="page-title-medium page-title-purple">🎮 Game Invitation</h2>
+        <button id="closeInvitationPopup" class="close-modal-btn">&times;</button>
+      </div>
+      <div style="text-align: center; padding: 2rem 1rem;">
+        <div style="font-size: 4rem; margin-bottom: 1.5rem;">🎮</div>
+        <p class="form-description-purple" style="font-size: 1.25rem; margin-bottom: 2rem;">
+          <strong>${escapeHtml(senderUsername)}</strong> invites you to play!
+        </p>
+        <div class="modal-buttons">
+          <button id="acceptInvitation" class="retro-btn hover-green">
+            ✅ Accept
+          </button>
+          <button id="declineInvitation" class="retro-btn hover-red">
+            ❌ Decline
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  console.log('🎮 Appending dialog to body...');
+  document.body.appendChild(dialog);
+  console.log('🎮 Dialog appended! Should be visible now!');
+  
+  // Event listeners
+  const acceptBtn = document.getElementById('acceptInvitation');
+  const declineBtn = document.getElementById('declineInvitation');
+  const closeBtn = document.getElementById('closeInvitationPopup');
+  
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      console.log('[DM] Closing invitation popup');
+      dialog.remove();
+    });
+  }
+  
+  if (acceptBtn) {
+    acceptBtn.addEventListener('click', () => {
+      console.log('[DM] Accepting invitation, gameId:', gameId);
+      dialog.remove();
+      
+      // Force navigation even if already on #/online page
+      const currentRoute = location.hash.split('?')[0];
+      if (currentRoute === '#/online') {
+        console.log('[DM] Already on online page, forcing reload');
+        // Store the join request for immediate execution
+        sessionStorage.setItem('immediateJoin', gameId);
+        // Force page reload by navigating away and back
+        location.hash = '#/';
+        setTimeout(() => {
+          location.hash = `#/online?roomId=${gameId}&join=true&t=${Date.now()}`;
+        }, 50);
+      } else {
+        console.log('[DM] Navigating to online page');
+        location.hash = `#/online?roomId=${gameId}&join=true`;
+      }
+    });
+  }
+  
+  if (declineBtn) {
+    declineBtn.addEventListener('click', () => {
+      console.log('[DM] Declining invitation');
+      dialog.remove();
+    });
+  }
+  
+  // Close on outside click
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) {
+      console.log('[DM] Closing invitation popup (outside click)');
+      dialog.remove();
+    }
+  });
+}
+
 // Make functions available globally
 (window as any).openDmConversation = openDmConversation;
 (window as any).closeDmConversation = closeDmConversation;
+(window as any).inviteToGame = inviteToGame;
 
 // Export activeDmUserId getter
 export function getActiveDmUserId(): number | null {

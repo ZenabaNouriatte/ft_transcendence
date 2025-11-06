@@ -171,6 +171,17 @@ export function attachChatEventListeners() {
       }
     }
   });
+
+  // Bouton d'invitation à une partie
+  document.getElementById("inviteToGameBtn")?.addEventListener("click", () => {
+    const activeDmUserId = DM.getActiveDmUserId();
+    const usernameEl = document.getElementById("dmActiveUserName");
+    const username = usernameEl?.textContent || 'Player';
+    
+    if (activeDmUserId) {
+      DM.inviteToGame(activeDmUserId, username);
+    }
+  });
 }
 
 /**
@@ -238,6 +249,9 @@ export function getChatOverlayHTML(): string {
                 <div id="dmActiveUserName" class="font-bold" style="color: #ff8c00;"></div>
                 <div id="dmActiveUserStatus" class="text-xs text-gray-400"></div>
               </div>
+              <button id="inviteToGameBtn" class="px-3 py-1 rounded text-sm font-bold bg-green-600 hover:bg-green-700 text-white" title="Inviter à une partie">
+                🎮 Inviter
+              </button>
             </div>
 
             <!-- Messages Container -->

@@ -1,3 +1,5 @@
+import { Presence } from '../websocket.js';
+
 // Variables globales pour gérer l'état du jeu online
 let onlineWS: WebSocket | null = null;
 let isConnected = false;
@@ -26,6 +28,7 @@ let keyUpHandler: ((event: KeyboardEvent) => void) | null = null;
  * Retourne le HTML de la page online
  */
 export function getOnlineHTML(): string {
+  console.log('🎮📄📄📄 getOnlineHTML() called - Online page is loading!');
   return `
     <div class="flex flex-col items-center">
       <h1 class="page-title-large page-title-purple">Online Game</h1>
@@ -111,6 +114,8 @@ export function getOnlineHTML(): string {
  * Attache les event listeners de la page online
  */
 export function attachOnlineEvents() {
+  console.log('🎮⚡⚡⚡ attachOnlineEvents() called - Setting up online page!');
+  
   // Éléments du DOM
   const statusText = document.getElementById("statusText") as HTMLElement;
   const customRoomNameInput = document.getElementById("customRoomNameInput") as HTMLInputElement;
@@ -363,6 +368,45 @@ export function attachOnlineEvents() {
         }
         
         if (roomIdInput && currentRoomId) roomIdInput.value = currentRoomId;
+        
+        console.log('🎮🔍🔍🔍 Checking for pending invitation...');
+        // Check if there's a pending game invitation to send
+        const pendingInvitation = sessionStorage.getItem('pendingGameInvitation');
+        console.log('🎮🔍 pendingInvitation from sessionStorage:', pendingInvitation);
+        
+        if (pendingInvitation) {
+          console.log('🎮✅ FOUND PENDING INVITATION!');
+          try {
+            const invitationData = JSON.parse(pendingInvitation);
+            console.log('🎮 Parsed invitation data:', invitationData);
+            console.log('🎮 About to call Presence.send()...');
+            
+            // Send invitation via Presence WebSocket
+            Presence.send({
+              type: 'game.invitation',
+              data: {
+                receiverId: invitationData.receiverId,
+                gameId: invitationData.gameId,
+                senderUsername: invitationData.senderUsername
+              }
+            });
+            
+            console.log('🎮 Presence.send() called successfully!');
+            
+            // Show notification to sender
+            updateStatus(`🎮 Invitation sent to ${invitationData.receiverUsername}!`, 'text-purple-400');
+            
+            // Clear the pending invitation
+            sessionStorage.removeItem('pendingGameInvitation');
+            console.log('🎮 Pending invitation cleared from sessionStorage');
+            
+          } catch (err) {
+            console.error('🎮❌ [Online] Error sending invitation:', err);
+          }
+        } else {
+          console.log('🎮 No pending invitation found');
+        }
+        
         break;
         
       case 'game.joined':
@@ -471,12 +515,12 @@ export function attachOnlineEvents() {
         console.log('🏁 Jeu terminé:', message.data);
         isGameStarted = false; // Le jeu n'est plus en cours
         
-        // Désactiver le bouton pause
+        // Faire disparaître le bouton pause
         const pauseBtnEnd = document.getElementById('pauseOnlineBtn') as HTMLButtonElement;
         if (pauseBtnEnd) {
           pauseBtnEnd.disabled = true;
-          pauseBtnEnd.textContent = 'Game Over';
-          pauseBtnEnd.style.opacity = '0.5';
+          // pauseBtnEnd.textContent = 'Game Over';
+          pauseBtnEnd.style.opacity = '0';
         }
         
         updateStatus(`🏁 Game finished!`, 'text-yellow-400');
@@ -916,6 +960,28 @@ export function attachOnlineEvents() {
     });
   } else {
     console.error('❌ Bouton pause non trouvé dans le DOM');
+  }
+
+  // Auto-connect if roomId is provided in URL
+  const fullHash = location.hash || '';
+  const urlParams = new URLSearchParams(fullHash.split('?')[1] || '');
+  const roomIdFromUrl = urlParams.get('roomId');
+  const shouldCreate = urlParams.get('create') === 'true';
+  const shouldJoin = urlParams.get('join') === 'true';
+  
+  // Check for immediate join from sessionStorage (used when already on page)
+  const immediateJoin = sessionStorage.getItem('immediateJoin');
+  if (immediateJoin) {
+    console.log(`[Online] Immediate join detected for room: ${immediateJoin}`);
+    sessionStorage.removeItem('immediateJoin');
+    setTimeout(() => {
+      connectToGame(immediateJoin, false); // false = join, not create
+    }, 100);
+  } else if (roomIdFromUrl) {
+    console.log(`[Online] Auto-connecting to room: ${roomIdFromUrl}, create: ${shouldCreate}, join: ${shouldJoin}`);
+    setTimeout(() => {
+      connectToGame(roomIdFromUrl, shouldCreate);
+    }, 100);
   }
 }
 
