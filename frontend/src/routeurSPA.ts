@@ -976,22 +976,24 @@ const routes: Record<string, Route> = {
         </div>
         
         <!-- Game canvas (hidden until game starts) -->
-        <div id="onlineGameArea" class="hidden text-center">
-          <canvas id="onlineCanvas" width="800" height="400" 
-                  class="mb-4 border-2 border-blue-500 bg-black rounded-lg"></canvas>
-          <div class="text-sm text-gray-400 mb-4">
-            <strong>Controls:</strong> W/S or ↑/↓ to move • All players can control<br>
-            <strong>Fullscreen:</strong> Press F11
-          </div>
-          
-          <!-- Boutons de contrôle du jeu online -->
-          <div class="flex gap-4 justify-center mb-4">
+        <div id="onlineGameArea" class="hidden" style="display: none;">
+          <div class="flex flex-col items-center justify-center w-full">
+            <canvas id="onlineCanvas" width="800" height="400" 
+                    class="mb-4 border-2 border-blue-500 bg-black rounded-lg"></canvas>
+            <div class="text-sm text-gray-400 mb-4 text-center">
+              <strong>Controls:</strong> W/S or ↑/↓ to move • All players can control<br>
+              <strong>Fullscreen:</strong> Press F11
+            </div>
+            
+            <!-- Boutons de contrôle du jeu online -->
+            <div class="flex gap-4 justify-center mb-4">
             <button id="pauseOnlineBtn" class="retro-btn-small hover-blue">
               Pause
             </button>
             <button id="backFromOnlineGameBtn" class="retro-btn-small hover-blue">
               Back to Menu
             </button>
+          </div>
           </div>
         </div>
       </div>
@@ -1791,6 +1793,60 @@ async function render() {
       }
     }
     
+    // Fonction pour afficher le popup de victoire
+    function showVictoryPopup(winnerName: string, finalScore: string) {
+      // Remove any existing victory popup
+      const existingPopup = document.getElementById('victoryPopup');
+      if (existingPopup) {
+        existingPopup.remove();
+      }
+      
+      // Create the victory popup modal
+      const popup = document.createElement('div');
+      popup.id = 'victoryPopup';
+      popup.className = 'profile-modal';
+      popup.style.display = 'flex';
+      
+      popup.innerHTML = `
+        <div class="profile-modal-content" style="max-width: 600px;">
+          <div class="profile-modal-header">
+            <h2 class="page-title-medium page-title-blue">🏆 VICTORY 🏆</h2>
+            <button id="closeVictoryPopup" class="close-modal-btn">&times;</button>
+          </div>
+          <div style="text-align: center; padding: 2rem 1rem;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">👑</div>
+            <h3 class="page-title-medium page-title-orange" style="margin-bottom: 1rem;">Winner: ${winnerName}</h3>
+            <p class="form-description-blue" style="font-size: 1.5rem; margin-bottom: 2rem;">
+              Final Score: <strong>${finalScore}</strong>
+            </p>
+            <div class="modal-buttons">
+              <button id="backToMenuBtn" class="retro-btn hover-blue">Back to Menu</button>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      document.body.appendChild(popup);
+      
+      // Event listeners
+      document.getElementById('closeVictoryPopup')?.addEventListener('click', () => {
+        popup.remove();
+        location.hash = '';
+      });
+      
+      document.getElementById('backToMenuBtn')?.addEventListener('click', () => {
+        popup.remove();
+        location.hash = '';
+      });
+      
+      // Close on outside click
+      popup.addEventListener('click', (e) => {
+        if (e.target === popup) {
+          popup.remove();
+        }
+      });
+    }
+    
     // Fonction pour mettre à jour l'affichage du statut Ready
     function updateReadyStatus() {
       if (!readyStatus) return;
@@ -2093,7 +2149,10 @@ async function render() {
           // Masquer les contrôles de room et afficher la zone de jeu
           if (gameControls) gameControls.classList.add('hidden');
           if (playersInfo) playersInfo.classList.add('hidden');
-          if (gameArea) gameArea.classList.remove('hidden');
+          if (gameArea) {
+            gameArea.classList.remove('hidden');
+            gameArea.style.display = 'block';
+          }
           initializeGameCanvas();
           break;
           
@@ -2105,7 +2164,10 @@ async function render() {
               // Afficher le canvas et masquer les contrôles dès le countdown
               if (gameControls) gameControls.classList.add('hidden');
               if (playersInfo) playersInfo.classList.add('hidden');
-              if (gameArea) gameArea.classList.remove('hidden');
+              if (gameArea) {
+                gameArea.classList.remove('hidden');
+                gameArea.style.display = 'block';
+              }
               initializeGameCanvas();
             } else if (message.data.countdown === 0) {
               updateStatus('🚀 GO!', 'text-green-400');
@@ -2164,18 +2226,20 @@ async function render() {
           
           updateStatus(`🏁 Game finished!`, 'text-yellow-400');
           
-          // Afficher le résultat
+          // Afficher le résultat dans un popup
           if (message.data.winner) {
             const winnerName = message.data.winner.name || message.data.winner.id;
-            updateStatus(`🏆 Winner: ${winnerName}`, 'text-green-400');
+            // Les scores sont dans finalState
+            const score1 = message.data.finalState?.score1 || 0;
+            const score2 = message.data.finalState?.score2 || 0;
+            const finalScore = `${score1} - ${score2}`;
+            showVictoryPopup(winnerName, finalScore);
           } else {
-            updateStatus(`🤝 Game ended in a draw`, 'text-blue-400');
+            const score1 = message.data.finalState?.score1 || 0;
+            const score2 = message.data.finalState?.score2 || 0;
+            const finalScore = `${score1} - ${score2}`;
+            showVictoryPopup('Draw', finalScore);
           }
-          
-          // Optionnel: Masquer le canvas ou afficher un bouton "New Game"
-          setTimeout(() => {
-            updateStatus('🤝 Game ended', 'text-gray-400');
-          }, 3000);
           break;
           
         case 'game_paused':

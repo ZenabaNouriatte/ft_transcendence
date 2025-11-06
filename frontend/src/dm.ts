@@ -514,86 +514,49 @@ function showGameInvitationDialog(senderUsername: string, gameId: string) {
     existingDialog.remove();
   }
   
-  // Create the dialog overlay
+  // Create the dialog overlay using the same style as Edit Profile modal
   const dialog = document.createElement('div');
   dialog.id = 'gameInvitationDialog';
-  dialog.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.8);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
-    animation: fadeIn 0.3s ease-in-out;
-  `;
+  dialog.className = 'profile-modal';
+  dialog.style.display = 'flex';
   
   dialog.innerHTML = `
-    <div style="
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      padding: 30px;
-      border-radius: 15px;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-      max-width: 400px;
-      text-align: center;
-      animation: slideIn 0.3s ease-out;
-    ">
-      <div style="font-size: 60px; margin-bottom: 20px;">🎮</div>
-      <h2 style="color: white; font-size: 24px; margin-bottom: 15px; font-weight: bold;">
-        Game Invitation!
-      </h2>
-      <p style="color: #e0e0e0; font-size: 18px; margin-bottom: 25px;">
-        <strong>${escapeHtml(senderUsername)}</strong> invites you to play!
-      </p>
-      <div style="display: flex; gap: 15px; justify-content: center;">
-        <button id="acceptInvitation" style="
-          background: #10b981;
-          color: white;
-          border: none;
-          padding: 12px 30px;
-          border-radius: 8px;
-          font-size: 16px;
-          font-weight: bold;
-          cursor: pointer;
-          transition: transform 0.2s, background 0.2s;
-        ">
-          ✅ Accept
-        </button>
-        <button id="declineInvitation" style="
-          background: #ef4444;
-          color: white;
-          border: none;
-          padding: 12px 30px;
-          border-radius: 8px;
-          font-size: 16px;
-          font-weight: bold;
-          cursor: pointer;
-          transition: transform 0.2s, background 0.2s;
-        ">
-          ❌ Decline
-        </button>
+    <div class="profile-modal-content" style="max-width: 500px;">
+      <div class="profile-modal-header">
+        <h2 class="page-title-medium page-title-purple">🎮 Game Invitation</h2>
+        <button id="closeInvitationPopup" class="close-modal-btn">&times;</button>
+      </div>
+      <div style="text-align: center; padding: 2rem 1rem;">
+        <div style="font-size: 4rem; margin-bottom: 1.5rem;">🎮</div>
+        <p class="form-description-purple" style="font-size: 1.25rem; margin-bottom: 2rem;">
+          <strong>${escapeHtml(senderUsername)}</strong> invites you to play!
+        </p>
+        <div class="modal-buttons">
+          <button id="acceptInvitation" class="retro-btn hover-green">
+            ✅ Accept
+          </button>
+          <button id="declineInvitation" class="retro-btn hover-red">
+            ❌ Decline
+          </button>
+        </div>
       </div>
     </div>
   `;
   
   document.body.appendChild(dialog);
   
-  // Add hover effects via event listeners
+  // Event listeners
   const acceptBtn = document.getElementById('acceptInvitation');
   const declineBtn = document.getElementById('declineInvitation');
+  const closeBtn = document.getElementById('closeInvitationPopup');
+  
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      dialog.remove();
+    });
+  }
   
   if (acceptBtn) {
-    acceptBtn.addEventListener('mouseenter', () => {
-      acceptBtn.style.transform = 'scale(1.05)';
-      acceptBtn.style.background = '#059669';
-    });
-    acceptBtn.addEventListener('mouseleave', () => {
-      acceptBtn.style.transform = 'scale(1)';
-      acceptBtn.style.background = '#10b981';
-    });
     acceptBtn.addEventListener('click', () => {
       dialog.remove();
       
@@ -614,32 +577,17 @@ function showGameInvitationDialog(senderUsername: string, gameId: string) {
   }
   
   if (declineBtn) {
-    declineBtn.addEventListener('mouseenter', () => {
-      declineBtn.style.transform = 'scale(1.05)';
-      declineBtn.style.background = '#dc2626';
-    });
-    declineBtn.addEventListener('mouseleave', () => {
-      declineBtn.style.transform = 'scale(1)';
-      declineBtn.style.background = '#ef4444';
-    });
     declineBtn.addEventListener('click', () => {
       dialog.remove();
     });
   }
   
-  // Add CSS animations
-  const style = document.createElement('style');
-  style.textContent = `
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
+  // Close on outside click
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) {
+      dialog.remove();
     }
-    @keyframes slideIn {
-      from { transform: translateY(-50px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-  `;
-  document.head.appendChild(style);
+  });
 }
 
 // Make functions available globally
