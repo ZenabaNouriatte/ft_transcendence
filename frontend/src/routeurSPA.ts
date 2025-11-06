@@ -80,21 +80,15 @@ const Presence = (() => {
 
     sock.onopen = () => console.log('[presence]✅ WebSocket opened');
     sock.onmessage = (e) => {
-      console.log('[WS-DEBUG] 📨 RAW Message received:', e.data);
-      
       // Ignorer les messages non-JSON comme "hello: connected"
       if (!e.data.startsWith('{')) {
-        console.log('[WS-DEBUG] 📨 Non-JSON message, ignoring');
         return;
       }
       
       try {
         const data = JSON.parse(e.data);
-        console.log('[WS-DEBUG] 📨 Parsed message type:', data.type);
-        console.log('[WS-DEBUG] 📨 Full parsed data:', data);
         
         if (data.type === 'chat.message') {
-          console.log('[CHAT] Message reçu:', data);
           // Nouveau message de chat reçu
           const newMessage = {
             userId: data.userId || 0,
@@ -108,31 +102,17 @@ const Presence = (() => {
           if (!isUserBlocked(newMessage.userId)) {
             chatMessages.push(newMessage);
             saveChatMessagesToStorage(); // Sauvegarder dans localStorage
-            console.log('[CHAT] Total messages:', chatMessages.length);
             updateChatDisplay();
-          } else {
-            console.log('[CHAT] Message from blocked user ignored:', newMessage.username);
           }
         } else if (data.type === 'dm.message' && data.data) {
-          console.log('[DM] Message direct reçu:', data);
           // Message direct reçu
           DM.handleIncomingDm(data.data);
         } else if (data.type === 'dm.sent') {
-          console.log('[WS-DEBUG] 📨 DM sent confirmation:', data);
           // Confirmation que notre message a été envoyé
         } else if (data.type === 'game.invitation') {
-          console.log('[WS-DEBUG] 🎮🎮🎮 GAME INVITATION DETECTED!');
-          console.log('[WS-DEBUG] 🎮 Full invitation data:', data);
-          console.log('[WS-DEBUG] 🎮 data.data exists?', !!data.data);
-          
           if (data.data) {
-            console.log('[WS-DEBUG] 🎮 Calling DM.handleGameInvitation...');
             DM.handleGameInvitation(data.data);
-          } else {
-            console.error('[WS-DEBUG] 🎮 ERROR: data.data is missing!');
           }
-        } else {
-          console.log('[WS-DEBUG] 📨 Unknown message type:', data.type);
         }
       } catch (error) {
         console.warn('[chat] Erreur parsing message:', error);
@@ -168,20 +148,10 @@ const Presence = (() => {
   }
 
   function send(message: any) {
-    console.log('[Presence-DEBUG] 📤 send() called');
-    console.log('[Presence-DEBUG] 📤 Message to send:', message);
-    console.log('[Presence-DEBUG] 📤 sock exists?', !!sock);
-    console.log('[Presence-DEBUG] 📤 sock.readyState:', sock?.readyState);
-    console.log('[Presence-DEBUG] 📤 WebSocket.OPEN =', WebSocket.OPEN);
-    
     if (sock && sock.readyState === WebSocket.OPEN) {
-      const jsonStr = JSON.stringify(message);
-      console.log('[Presence-DEBUG] 📤 ✅ Sending JSON:', jsonStr);
-      sock.send(jsonStr);
-      console.log('[Presence-DEBUG] 📤 ✅ Message sent successfully!');
+      sock.send(JSON.stringify(message));
     } else {
-      console.error('[Presence-DEBUG] 📤 ❌ Cannot send - WebSocket not connected!');
-      console.error('[Presence-DEBUG] 📤 ❌ State:', sock?.readyState);
+      console.error('[Presence] Cannot send - WebSocket not connected!');
     }
   }
 
@@ -2056,10 +2026,8 @@ async function render() {
           // Check if there's a pending game invitation to send
           const pendingInvitation = sessionStorage.getItem('pendingGameInvitation');
           if (pendingInvitation) {
-            console.log('[Online-DEBUG] 🎮 Room created! Now sending pending invitation...');
             try {
               const invitationData = JSON.parse(pendingInvitation);
-              console.log('[Online-DEBUG] 🎮 Invitation data:', invitationData);
               
               // Send invitation via Presence WebSocket
               (window as any).Presence?.send({
@@ -2071,8 +2039,6 @@ async function render() {
                 }
               });
               
-              console.log('[Online-DEBUG] 🎮 ✅ Invitation sent!');
-              
               // Show notification to sender
               updateStatus(`🎮 Invitation sent to ${invitationData.receiverUsername}!`, 'text-purple-400');
               
@@ -2080,7 +2046,7 @@ async function render() {
               sessionStorage.removeItem('pendingGameInvitation');
               
             } catch (err) {
-              console.error('[Online-DEBUG] 🎮 Error sending invitation:', err);
+              console.error('[Online] Error sending invitation:', err);
             }
           }
           

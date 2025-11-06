@@ -9,7 +9,6 @@ let dmUnreadCount = 0;
 
 // Switch between Global Chat and DM tabs
 export function switchToDmTab() {
-  console.log('[DM] Switching to DM tab');
   const globalView = document.getElementById('globalChatView');
   const dmView = document.getElementById('dmView');
   const tabGlobal = document.getElementById('chatTabGlobal');
@@ -28,7 +27,6 @@ export function switchToDmTab() {
   }
   
   // IMPORTANT: Always load conversations when switching to DM tab
-  console.log('[DM] Loading conversations from backend');
   loadDmConversations();
 }
 
@@ -59,8 +57,6 @@ export async function loadDmConversations() {
     return;
   }
   
-  console.log('[DM] Loading conversations from /api/messages/conversations...');
-  
   try {
     const response = await fetch('/api/messages/conversations', {
       headers: {
@@ -70,20 +66,14 @@ export async function loadDmConversations() {
     
     if (!response.ok) {
       console.error('[DM] Failed to load conversations, status:', response.status);
-      const errorText = await response.text();
-      console.error('[DM] Error response:', errorText);
       return;
     }
     
     const data = await response.json();
     dmConversations = data.conversations || [];
     
-    console.log('[DM] ✅ Loaded', dmConversations.length, 'conversation(s) from backend');
-    console.log('[DM] Conversations:', dmConversations);
-    
     // Update unread count
     dmUnreadCount = dmConversations.reduce((sum: number, conv: any) => sum + (conv.unread_count || 0), 0);
-    console.log('[DM] Total unread messages:', dmUnreadCount);
     updateDmUnreadBadge();
     
     displayDmConversations();
@@ -99,8 +89,6 @@ function displayDmConversations() {
     console.error('[DM] Conversations list container not found');
     return;
   }
-  
-  console.log('[DM] Displaying conversations:', dmConversations.length);
   
   if (dmConversations.length === 0) {
     listContainer.innerHTML = `
@@ -133,13 +121,10 @@ function displayDmConversations() {
       </div>
     </div>
   `).join('');
-  
-  console.log('[DM] Conversations displayed successfully');
 }
 
 // Open a conversation with a specific user
 export async function openDmConversation(userId: number) {
-  console.log('[DM] Opening conversation with user:', userId);
   activeDmUserId = userId;
   
   // Hide conversations list, show active conversation
@@ -159,7 +144,6 @@ export async function openDmConversation(userId: number) {
   // This is important for new conversations that don't have messages yet
   const existsInList = dmConversations.some((c: any) => c.other_user_id === userId);
   if (!existsInList) {
-    console.log('[DM] Adding new conversation to local list temporarily');
     // The conversation will be properly loaded from backend when we go back or refresh
     await loadDmConversations();
   }
@@ -179,7 +163,6 @@ async function loadUserInfoAndConversation(userId: number) {
     
     // If not in conversations, fetch user info from API
     if (!conv) {
-      console.log('[DM] User not in conversations, fetching from API');
       const userResponse = await fetch(`/api/users/${userId}/profile`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -264,14 +247,10 @@ function displayDmMessages() {
   if (!messagesContainer) return;
   
   const currentUserId = getCurrentUserIdSync();
-  console.log('[DM] Displaying messages, current user ID:', currentUserId);
-  console.log('[DM] Total messages:', dmMessages.length);
   
   messagesContainer.innerHTML = dmMessages.map((msg, index) => {
     const isSent = msg.sender_id === currentUserId;
     const messageClass = isSent ? 'dm-message-sent' : 'dm-message-received';
-    
-    console.log(`[DM] Message ${index}: sender_id=${msg.sender_id}, currentUserId=${currentUserId}, isSent=${isSent}`);
     
     return `
       <div class="flex w-full ${isSent ? 'justify-end' : 'justify-start'}">
@@ -318,9 +297,6 @@ export async function sendDirectMessage(userId: number, message: string) {
       dmMessages.push(data.message);
       displayDmMessages();
       
-      console.log('[DM] ✅ Message sent successfully, message ID:', data.message.id);
-      console.log('[DM] Updating conversation list...');
-      
       // IMPORTANT: Always reload conversations after sending a message
       // This ensures the conversation appears in the list even if it's new
       await loadDmConversations();
@@ -328,21 +304,11 @@ export async function sendDirectMessage(userId: number, message: string) {
       // Update the specific conversation if it exists in the list now
       const existingConv = dmConversations.find((c: any) => c.other_user_id === userId);
       if (existingConv) {
-        console.log('[DM] Conversation found in list, updating last message');
         existingConv.last_message = message.trim();
         existingConv.last_message_at = data.message.created_at;
-      } else {
-        console.log('[DM] ⚠️ Conversation not found in list after reload - this should not happen');
       }
       
-      // Also send via WebSocket for real-time delivery
-      (window as any).Presence?.send({
-        type: 'dm.message',
-        data: {
-          receiverId: userId,
-          message: message.trim()
-        }
-      });
+      // Note: No need to send via WebSocket - the API already handles real-time delivery
     }
   } catch (error) {
     console.error('Error sending message:', error);
@@ -380,7 +346,6 @@ async function markConversationAsRead(userId: number) {
 
 // Go back to conversations list
 export function closeDmConversation() {
-  console.log('[DM] Closing active conversation');
   activeDmUserId = null;
   dmMessages = [];
   
@@ -394,7 +359,6 @@ export function closeDmConversation() {
   }
   
   // IMPORTANT: Reload conversations from backend to get updated list with any new messages
-  console.log('[DM] Reloading conversations list from backend');
   loadDmConversations();
 }
 
@@ -415,12 +379,14 @@ function updateDmUnreadBadge() {
 export function handleIncomingDm(data: any) {
   const { id, senderId, senderUsername, senderAvatar, message, timestamp } = data;
   
+  const currentUserId = getCurrentUserIdSync();
+  
   // If this is the active conversation, add to messages
   if (activeDmUserId === senderId) {
     dmMessages.push({
       id,
       sender_id: senderId,
-      receiver_id: getCurrentUserIdSync(),
+      receiver_id: currentUserId,
       message,
       created_at: timestamp,
       sender_username: senderUsername,
@@ -515,9 +481,6 @@ export async function inviteToGame(userId: number, username: string) {
     const data = await response.json();
     const currentUsername = data.user.username;
     
-    console.log('[DM-DEBUG] 🔍 Step 1: Navigating to online page and creating room...');
-    
-    // FIRST: Navigate to online page and trigger room creation
     // Store invitation data in sessionStorage to send after room is created
     sessionStorage.setItem('pendingGameInvitation', JSON.stringify({
       receiverId: userId,
@@ -525,9 +488,6 @@ export async function inviteToGame(userId: number, username: string) {
       gameId: gameId,
       senderUsername: currentUsername
     }));
-    
-    console.log('[DM-DEBUG] 🔍 Step 2: Stored pending invitation in sessionStorage');
-    console.log('[DM-DEBUG] 🔍 Step 3: Redirecting to online page with create=true...');
     
     // Redirect to online game room with create=true
     location.hash = `#/online?roomId=${gameId}&create=true`;
@@ -540,11 +500,7 @@ export async function inviteToGame(userId: number, username: string) {
 
 // Handle incoming game invitation
 export function handleGameInvitation(data: any) {
-  console.log('[DM-DEBUG] 🎮🎮🎮 handleGameInvitation called with data:', data);
-  
   const { senderId, senderUsername, gameId } = data;
-  
-  console.log(`[DM-DEBUG] 🎮 Parsed invitation - senderId: ${senderId}, senderUsername: ${senderUsername}, gameId: ${gameId}`);
   
   // Create a custom invitation overlay instead of confirm() which gets blocked on inactive tabs
   showGameInvitationDialog(senderUsername, gameId);
@@ -639,16 +595,11 @@ function showGameInvitationDialog(senderUsername: string, gameId: string) {
       acceptBtn.style.background = '#10b981';
     });
     acceptBtn.addEventListener('click', () => {
-      console.log('[DM-DEBUG] 🎮 User ACCEPTED invitation');
-      console.log('[DM-DEBUG] 🎮 Current location.hash:', location.hash);
-      console.log('[DM-DEBUG] 🎮 Navigating to:', `#/online?roomId=${gameId}&join=true`);
-      
       dialog.remove();
       
       // Force navigation even if already on #/online page
       const currentRoute = location.hash.split('?')[0];
       if (currentRoute === '#/online') {
-        console.log('[DM-DEBUG] 🎮 Already on #/online, forcing reload');
         // Store the join request for immediate execution
         sessionStorage.setItem('immediateJoin', gameId);
         // Force page reload by navigating away and back
@@ -657,7 +608,6 @@ function showGameInvitationDialog(senderUsername: string, gameId: string) {
           location.hash = `#/online?roomId=${gameId}&join=true&t=${Date.now()}`;
         }, 50);
       } else {
-        console.log('[DM-DEBUG] 🎮 Not on #/online, simple navigation');
         location.hash = `#/online?roomId=${gameId}&join=true`;
       }
     });
@@ -673,7 +623,6 @@ function showGameInvitationDialog(senderUsername: string, gameId: string) {
       declineBtn.style.background = '#ef4444';
     });
     declineBtn.addEventListener('click', () => {
-      console.log('[DM-DEBUG] 🎮 User DECLINED invitation');
       dialog.remove();
     });
   }
