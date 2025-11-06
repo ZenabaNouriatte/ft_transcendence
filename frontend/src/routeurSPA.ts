@@ -981,7 +981,7 @@ const routes: Record<string, Route> = {
                   class="mb-4 border-2 border-blue-500 bg-black rounded-lg"></canvas>
           <div class="text-sm text-gray-400 mb-4">
             <strong>Controls:</strong> W/S or ↑/↓ to move • All players can control<br>
-            <strong>Fullscreen:</strong> Double-click canvas or press F11
+            <strong>Fullscreen:</strong> Press F11
           </div>
           
           <!-- Boutons de contrôle du jeu online -->
@@ -2158,8 +2158,8 @@ async function render() {
           const pauseBtnEnd = document.getElementById('pauseOnlineBtn') as HTMLButtonElement;
           if (pauseBtnEnd) {
             pauseBtnEnd.disabled = true;
-            pauseBtnEnd.textContent = 'Game Over';
-            pauseBtnEnd.style.opacity = '0.5';
+            // pauseBtnEnd.textContent = 'Game Over';
+            pauseBtnEnd.style.opacity = '0';
           }
           
           updateStatus(`🏁 Game finished!`, 'text-yellow-400');
@@ -2174,7 +2174,7 @@ async function render() {
           
           // Optionnel: Masquer le canvas ou afficher un bouton "New Game"
           setTimeout(() => {
-            updateStatus('💭 Ready for a new game?', 'text-gray-400');
+            updateStatus('🤝 Game ended', 'text-gray-400');
           }, 3000);
           break;
           
