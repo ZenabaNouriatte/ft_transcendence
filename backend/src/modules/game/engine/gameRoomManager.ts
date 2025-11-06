@@ -324,8 +324,8 @@ export class GameRoomInstance {
     // Trouver le joueur gagnant avec son nom complet
     let winnerPlayer = null;
     if (winnerPaddle) {
-      // Convertir "player1"/"player2" en "left"/"right"
-      const winnerSide = winnerPaddle === 'player1' ? 'left' : 'right';
+      // Convertir "Player 1"/"Player 2" en "left"/"right"
+      const winnerSide = winnerPaddle === 'Player 1' ? 'left' : 'right';
       
       // Trouver le joueur qui a ce paddle
       for (const player of this.players.values()) {

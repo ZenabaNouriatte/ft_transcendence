@@ -58,6 +58,8 @@ export function attachVictoryEvents() {
     // Rediriger vers le mode de jeu approprié
     if (gameMode === 'tournament') {
       location.hash = "#/tournament";
+    } else if (gameMode === 'online') {
+      location.hash = "#/online";
     } else {
       location.hash = "#/classic";
     }

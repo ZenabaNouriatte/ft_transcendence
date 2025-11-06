@@ -519,24 +519,28 @@ export function attachOnlineEvents() {
         const pauseBtnEnd = document.getElementById('pauseOnlineBtn') as HTMLButtonElement;
         if (pauseBtnEnd) {
           pauseBtnEnd.disabled = true;
-          // pauseBtnEnd.textContent = 'Game Over';
           pauseBtnEnd.style.opacity = '0';
         }
         
-        updateStatus(`🏁 Game finished!`, 'text-yellow-400');
-        
-        // Afficher le résultat
+        // Sauvegarder les données pour la page victory
         if (message.data.winner) {
           const winnerName = message.data.winner.name || message.data.winner.id;
-          updateStatus(`🏆 Winner: ${winnerName}`, 'text-green-400');
+          localStorage.setItem('winnerName', winnerName);
         } else {
-          updateStatus(`🤝 Game ended in a draw`, 'text-blue-400');
+          localStorage.setItem('winnerName', 'Draw');
         }
         
-        // Optionnel: Masquer le canvas ou afficher un bouton "New Game"
+        // Récupérer les scores depuis finalState
+        const score1 = message.data.finalState?.score1 || 0;
+        const score2 = message.data.finalState?.score2 || 0;
+        const finalScore = `${score1} - ${score2}`;
+        localStorage.setItem('finalScore', finalScore);
+        localStorage.setItem('gameMode', 'online');
+        
+        // Rediriger vers la page de victoire
         setTimeout(() => {
-          updateStatus('💭 Ready for a new game?', 'text-gray-400');
-        }, 3000);
+          location.hash = '#/victory';
+        }, 1000);
         break;
         
       case 'game_paused':
