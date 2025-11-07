@@ -370,6 +370,18 @@ export function registerRawWs(app: FastifyInstance) {
           if (ws.ctx?.userId && left === 0) {
             await UserService.updateUserStatus(ws.ctx.userId, "offline");
           }
+
+          if (ws.ctx?.userId && gameRoomManager) {
+            try {
+              const userId = String(ws.ctx.userId);
+              console.log(`[GameRoom] Player ${userId} disconnected, removing from all active games`);
+              
+              // Parcourir toutes les rooms pour trouver celles où ce joueur participe
+              gameRoomManager.removePlayerFromAllRooms(userId);
+            } catch (error) {
+              console.error('[GameRoom] Error removing player from rooms:', error);
+            }
+          }
         } catch (e) {
           app.log.error({ e }, "presence:set_offline_failed");
         }

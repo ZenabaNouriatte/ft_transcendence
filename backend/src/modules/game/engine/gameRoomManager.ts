@@ -87,6 +87,31 @@ export class GameRoomManager {
       return false;
     }
   }
+
+  public removePlayerFromAllRooms(userId: string): void {
+    console.log(`[GameRoomManager] Removing player ${userId} from all rooms`);
+    
+    const roomsToCleanup = [];
+    
+    // Parcourir toutes les rooms pour trouver celles où ce joueur participe
+    for (const [roomId, room] of this.rooms.entries()) {
+      if (room.hasPlayer(userId)) {
+        console.log(`[GameRoomManager] Found player ${userId} in room ${roomId}`);
+        room.removePlayer(userId);
+        
+        // Si la room n'a plus de joueurs, marquer pour suppression
+        if (room.getPlayerCount() === 0) {
+          roomsToCleanup.push(roomId);
+        }
+      }
+    }
+    
+    // Supprimer les rooms vides
+    for (const roomId of roomsToCleanup) {
+      console.log(`[GameRoomManager] Cleaning up empty room ${roomId}`);
+      this.deleteRoom(roomId);
+    }
+  }
   
   // Contrôler le paddle d'un jeu spécifique
   public movePaddle(gameId: string, player: 1 | 2, direction: 'up' | 'down' | 'stop'): boolean {

@@ -483,6 +483,20 @@ export function attachOnlineEvents() {
       case 'player_left':
         // Mettre à jour la liste des joueurs
         await updatePlayersList(message.data);
+        
+        // Si on est en cours de jeu, afficher un message et retourner au menu
+        if (isGameStarted) {
+          const playerName = message.data.username || 'Votre adversaire';
+          
+          // Afficher un message informatif
+          alert(`${playerName} a quitté la partie. Retour au menu principal.`);
+          
+          // Nettoyer complètement l'état du jeu
+          cleanupOnline();
+          
+          // Rediriger vers le menu principal
+          location.hash = '';
+        }
         break;
         
       case 'game_ended':
