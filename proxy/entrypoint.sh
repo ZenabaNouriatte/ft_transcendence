@@ -18,7 +18,7 @@ case "$PUBLIC_HOST" in
   *)       ALT_BLOCK="$ALT_BLOCK\nDNS.2 = $PUBLIC_HOST" ;; # Nom DNS
 esac
 
-# 3) (Re)générer le certificat (toujours, pour éviter un vieux cert)
+# 3) (Re)générer le certificat 
 cat > /tmp/openssl.cnf <<EOF
 [req]
 distinguished_name = dn
@@ -53,7 +53,6 @@ done
 : "${FRONTEND_ORIGIN:=https://${PUBLIC_HOST}:8443}"
 
 # Remplace les placeholders dans le template
-# (attention aux quotes pour préserver \n)
 printf "%b" "$(sed -e "s|\${ALLOW_DIRECTIVES}|${ALLOW_DIRECTIVES}|g" \
                    -e "s|\${FRONTEND_ORIGIN}|${FRONTEND_ORIGIN}|g" \
                    "$CONF_TMPL")" > "$CONF_OUT"

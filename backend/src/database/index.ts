@@ -5,15 +5,12 @@ import path from "node:path";
 import sqlite3 from "sqlite3";
 import { fileURLToPath } from "node:url";
 
-// Types (optionnel, juste pour l’auto-complétion)
-import type { User } from "../types/index.js";
+// Types (optionnel, juste pour l'auto-complétion)
+import type { User } from "../services/index.js";
 
 // ────────────────────────── Résolution des chemins ──────────────────────────
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
-
-// schema.sql est placé à côté de ce fichier (src/database/schema.sql en dev,
-// dist/database/schema.sql en prod). On utilise un chemin relatif au dossier courant.
 const SCHEMA_PATH = path.join(__dirname, "schema.sql");
 
 // ──────────────────────────── Singleton SQLite ──────────────────────────────
@@ -30,10 +27,10 @@ export function initDb(): sqlite3.Database {
 
   _db = new sqlite3.Database(DB_PATH);
 
-  // Applique le schéma (idempotent si le SQL utilise IF NOT EXISTS)
+  // Applique le schema
   const schemaSql = safeReadFile(SCHEMA_PATH);
    _db.serialize(() => {
-    // Sécurise le journal (évite les corrupt/locks au restart)
+    // Securise le journal (évite les corrupt/locks au restart)
     _db!.exec(`
       PRAGMA journal_mode = WAL;
       PRAGMA synchronous = NORMAL;
@@ -76,7 +73,7 @@ function safeReadFile(p: string): string | null {
   }
 }
 
-// ─────────────────────────── Helpers promisifiés ────────────────────────────
+// ─────────────────────────── Helpers ────────────────────────────
 export function run(sql: string, params: any[] = []): Promise<void> {
   return new Promise((resolve, reject) => {
     db().run(sql, params, (err) => (err ? reject(err) : resolve()));
@@ -97,8 +94,7 @@ export function all<T = any>(sql: string, params: any[] = []): Promise<T[]> {
 
 
 // ───────────────────────────── Repos (exemples) ────────────────────────────
-// À étoffer avec les besoins du sujet. L’idée est de replacer petit à petit la
-// logique des fichiers legacy/services.ts ici (côté GATEWAY uniquement).
+
 
 export const usersRepo = {
   async create(input: { username: string; email: string; password: string; avatar?: string | null }): Promise<number> {
@@ -107,7 +103,6 @@ export const usersRepo = {
        VALUES (?, ?, ?, ?)`,
       [input.username, input.email, input.password, input.avatar ?? null]
     );
-    // Récupère le dernier id inséré
     const row = await get<{ id: number }>(`SELECT last_insert_rowid() AS id`);
     return row?.id ?? 0;
   },

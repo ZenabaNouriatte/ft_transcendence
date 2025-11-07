@@ -2,94 +2,197 @@
 
 ## Information générale et architecture
 
-### Démarrage rapide
+##  Démarrage rapide
 
 ```bash
-make up       # Lance tout (dev)
-make down     # Arrête tout
-make clean    # Arrête tout et supprime les volumes
-make logs     # Voir les logs
-make restart  # Arrête tout, supprime les volumes et relance
+make up       # Lance tout l'environnement 
+make down     # Arrête tous les services
+make clean    # Arrête tout et supprime les volumes de données
+make logs     # Affiche les logs en temps réel
+make restart  # Nettoyage complet + redémarrage
 ```
 
-## URLs importantes
 
-App : https://localhost:8443 (http://localhost:8080 est redirigé vers la précédente)
+##  URLs d'accès
 
-Grafana : https://localhost:8443/grafana/  (admin/admin123!)
+| Service | URL | Authentification |
+|---------|-----|------------------|
+| **Application principale** | https://localhost:8443 | - |
+| **Grafana** (monitoring) | https://localhost:8443/grafana/ | admin / admin123! |
+| **Prometheus** (métriques) | https://localhost:8443/prometheus/ | - |
+| **Kibana** (logs) | https://localhost:8443/kibana/ | elastic / elastic |
+| **Alertmanager** (alertes) | https://localhost:8443/alertmanager/ | - |
 
-Prometheus : https://localhost:8443/prometheus/ 
+>  **Note** : http://localhost:8080 redirige automatiquement vers HTTPS
 
-Kibana : https://localhost:8443/kibana/
+## 📁 Structure du projet
 
-Alertmanager : https://localhost:8443/alertmanager/
-
-## Structure du projet
-
-``` ft_transcendence/
-├── backend/                  # Node.js/TypeScript (Fastify) — modules = microservices logiques
-│   └── src/modules/{auth,chat,game,tournament, user}/http.ts
-├── frontend/                 # TypeScript
-├── proxy/                    # Nginx (reverse proxy + TLS)
-├── monitoring/               # Observabilité (Prometheus, Grafana, Alertmanager, ELK)
-│   ├── grafana/ (provisioning + dashboards)
-│   ├── prometheus/ (scrape + rules)
-│   ├── alertmanager/
-│   └── elk/ (elasticsearch, logstash, kibana)
-├── scripts/                  # Testeurs, charge, init ELK...
-└── Doc/                      # Documentation (ce fichier)
+```
+ft_transcendence/
+├──  backend/                    # API Gateway + Microservices (Node.js/TypeScript)
+│   ├── src/
+│   │   ├── modules/               # Architecture microservices
+│   │   │   ├── auth/              # Authentification (JWT, bcrypt)
+│   │   │   ├── game/              # Moteur de jeu Pong + validation
+│   │   │   ├── chat/              # Validation messages/DM
+│   │   │   ├── tournament/        # Brackets & matchmaking
+│   │   │   └── user/              # Gestion profils utilisateurs
+│   │   ├── database/              # SQLite + requêtes
+│   │   ├── services/              # 📊 Services métier
+│   │   └── common/                # 🛡️ Validation & sécurité
+│   └── Dockerfile
+├──  frontend/                   # SPA TypeScript + TailwindCSS
+│   ├── src/
+│   │   ├── pages/                 # Pages SPA (home, game, tournament, etc.)
+│   │   ├── game/                  # Client de rendu Pong
+│   │   ├── chat/                  # Interface chat temps réel
+│   │   ├── auth.ts                # Gestion tokens
+│   │   ├── router.ts              # Navigation SPA
+│   │   └── websocket.ts           # WebSocket client
+│   ├── public/images/             # Assets statiques
+│   └── Dockerfile
+├──  proxy/                      # Reverse proxy Nginx + SSL/TLS
+│   ├── nginx.conf.tmpl            # Configuration routes + sécurité
+│   └── certs/                     # Certificats SSL auto-générés
+├──  monitoring/                 # Stack observabilité
+│   ├── grafana/                   # Dashboards & visualisation
+│   ├── prometheus/                # Collecte métriques
+│   ├── alertmanager/              # Gestion alertes
+│   └── elk/                       # Logs (Elasticsearch + Logstash + Kibana)
+├──  scripts/                    # Outils tests
+├──  Doc/                        
+├── docker-compose.yml             
+├── Makefile                       
+└── .env                           
 ```
 
-## Avantages techniques
 
-Scalabilité : architecture microservices containerisée
-Sécurité : SSL/TLS natif, reverse proxy, isolation des services
-Monitoring : observabilité complète (métriques, logs, alertes)
+### Frontend
+- **TypeScript** : mandatory
+- **TailwindCSS** 
+- **SPA Router** : Navigation sans rechargement
+- **WebSocket** : Communication temps réel
 
-Technologies utilisées
+### Backend
+- **Node.js + TypeScript** 
+- **Fastify** : Framework web haute performance
+- **SQLite** : Base de données légère
+- **Architecture microservices** : Services découplés
 
-Frontend : Vanilla TypeScript, TailwindCSS
-Backend : Node.js,TypeScript, WebSocket
-Base de données : SQLite
-Monitoring : Prometheus, Grafana, ELK Stack
-Infrastructure : Docker, Nginx, SSL
+### Infrastructure
+- **Docker Compose** 
+- **Nginx** : Reverse proxy + SSL/TLS
+- **Monitoring Stack** : Prometheus + Grafana + ELK
+- **HTTPS natif** : mandatory
 
-## Containerisation
+##  Sécurité
 
-| **Frontend**             | frontend                 |
-|------------------------|----------------------------------|
-| **Nginx** | proxy |
-| **Backend** | gateway       |
-|             | chat     |
-|             | game          |
-|             | tournament   |
-|             | auth          |
-|             | user          |
-| **Monitoring** | grafana  |
-|             | prometheus          |
-|             | altermanager          |
-|             | elasticsearch          |
-|             | logstash          |
-|             | kibana          |
+- **HTTPS/TLS 1.2+** : Chiffrement transport
+- **JWT sécurisés** : Authentification stateless
+- **bcrypt cost 10** : Hash passwords robust
+- **Protection XSS** : Sanitisation centralisée
+- **SQL paramétrées** : Anti-injection
+- **Headers sécurisés** : HSTS, CSP, X-Frame-Options
+- **Rate limiting** : Protection DDoS
+- **Variables .env** : Credentials isolés
 
-⚠️ Pour garantir l’architecture, ne touchez pas à :
 
-- docker-compose.yml → architecture figée
-- monitoring/ → Prometheus/Grafana configurés
-- elk/ → stack de logs configurée
-- */Dockerfile → bases images, users, ports exposés (sécurité/CI)
-- proxy/nginx.conf.tmpl → routage configuré
-- proxy/certs/, proxy/entrypoint.sh → génération/chargement certs & bootstrap proxy
+### Flux de communication inter-services
 
-## Mise en place d’un testeur
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Communication Pattern                              │
+│                                                                             │
+│  Browser ──HTTPS──► Nginx Proxy ──HTTP──► Gateway (:8000)                  │
+│                                               │                             │
+│                                               ▼                             │
+│                                          SQLite DB                         │
+│                                               ▲                             │
+│                                               │                             │
+│                        ┌──────────────────────┼──────────────────────┐      │
+│                        │                     │                      │      │
+│                        ▼                     ▼                      ▼      │
+│            Auth (:8101) ◄─────► Chat (:8103) ◄────► Tournament (:8104)     │
+│                        │                     │                      │      │
+│                        ▼                     ▼                      ▼      │
+│            Game (:8102) ◄─────────────► User (:8105)                       │
+│                                                                             │
+│  • Microservices ──HTTP calls──► Gateway pour accès DB                     │
+│  • Gateway ──HTTP responses──► Microservices                               │
+│  • Tous les services exposent /healthz et /metrics                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
+##  Architecture des conteneurs
+
+| Couche | Service | Port | Rôle |
+|--------|---------|------|------|
+| ** Frontend** | `frontend` | 80 | SPA TypeScript + assets statiques |
+| ** Proxy** | `proxy` | 80,443 | Nginx reverse proxy + SSL/TLS |
+| ** Backend** | `gateway` | 8000 | API Gateway principal + SQLite |
+| | `auth` | 8101 | Microservice authentification |
+| | `chat` | 8102 | Microservice validation chat |
+| | `game` | 8103 | Microservice logique jeu |
+| | `tournament` | 8104 | Microservice tournois |
+| | `user` | 8105 | Microservice utilisateurs |
+| ** Monitoring** | `prometheus` | 9090 | Collecte métriques |
+| | `grafana` | 3000 | Dashboards & visualisation |
+| | `alertmanager` | 9093 | Gestion alertes |
+| ** Logs** | `elasticsearch` | 9200 | Stockage logs structurés |
+| | `logstash` | 5000 | Traitement logs |
+| | `kibana` | 5601 | Interface exploration logs |
+
+
+##  Tests & Validation
+
+### Script de test automatisé
+```bash
 ./scripts/testeur.sh
+```
 
-Utile pour voir si on a pas casse toute l’archi
-- Proxy & Gateway (Nginx)
-- API (via Gateway)
-- API – Pings par service (via Gateway)
-- WebSockets
-- Prometheus / Grafana
-- ELK
-- Persistance des données de la DB
+**Vérifications effectuées :**
+-  **Infrastructure** : Proxy & Gateway (connectivité Nginx)
+-  **API** : Santé des endpoints et routing microservices
+-  **Communication** : WebSockets temps réel + ping services
+-  **Monitoring** : Prometheus/Grafana/ELK stack complète
+-  **Persistance** : Base de données SQLite + cycle complet utilisateur
+-  **Sécurité** : Tests complets sécurité 
+
+Authentification & Chiffrement :
+-  **bcrypt** : Vérification hashage mots de passe (pattern `$2a$` ou `$2b$`)
+-  **JWT** : Validation tokens et protection routes API (401/403)
+-  **HTTPS/TLS** : Certificats SSL + redirection HTTP→HTTPS
+
+Protection injections :
+-  **XSS** : Test injection `<script>alert(1)</script>` → bloqué
+-  **SQL Injection** : Test `'; DROP TABLE users--` → bloqué
+-  **Validation** : Email/password format + longueur
+
+Contrôles d'accès :
+-  **Routes protégées** : `/api/users/me` sans token → 401
+-  **Sanitisation** : Caractères dangereux dans usernames rejetés
+-  **Rate limiting** : Protection contre brute force
+
+### Autres scripts utiles
+```bash
+./scripts/elk-init.sh     # Initialisation stack ELK
+```
+
+
+## 📈 Monitoring & Observabilité
+
+### Métriques disponibles (Grafana)
+- **Performance** : Latence API, throughput WebSocket
+- **Santé services** : Status codes, erreurs, uptime
+- **Base de données** : Requêtes SQLite, connexions
+- **Système** : CPU, mémoire, réseau des conteneurs
+
+### Logs centralisés (ELK)
+- **Application** : Logs applicatifs structurés
+- **Nginx** : Logs d'accès et erreurs
+- **Système** : Logs des conteneurs Docker
+
+### Alertes (Alertmanager)
+- Services indisponibles (> 30s)
+- Surcharge système (CPU > 80%)
+- Erreurs HTTP (> 5% 5xx)
