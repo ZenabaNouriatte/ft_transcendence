@@ -64,6 +64,20 @@ function broadcastToChat(message: any) {
   console.log('[chat] Broadcast complete');
 }
 
+// Send a system message to the global chat (for tournament notifications, etc.)
+export function sendSystemChatMessage(message: string) {
+  console.log('[chat] Sending system message:', message);
+  broadcastToChat({
+    type: "chat.message",
+    userId: 0, // 0 = system message
+    username: "System",
+    avatar: null,
+    message: message,
+    timestamp: new Date().toISOString(),
+    isSystem: true
+  });
+}
+
 // Send a direct message to a specific user
 function sendDirectMessage(userId: number, message: any) {
   const ws = dmConnections.get(userId);

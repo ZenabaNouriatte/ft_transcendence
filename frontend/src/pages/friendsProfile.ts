@@ -71,7 +71,7 @@ export function getFriendsProfileHTML(): string {
               </div>
               <div class="flex justify-between">
                 <span class="font-semibold">Tournaments Won:</span>
-                <span id="friendTournamentsWon" class="text-purple-600">Loading...</span>
+                <span id="friendTournamentsWon" class="text-yellow-600">Loading...</span>
               </div>
             </div>
           </div>

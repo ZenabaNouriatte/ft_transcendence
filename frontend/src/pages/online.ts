@@ -28,11 +28,10 @@ let keyUpHandler: ((event: KeyboardEvent) => void) | null = null;
  * Retourne le HTML de la page online
  */
 export function getOnlineHTML(): string {
-  console.log('🎮📄📄📄 getOnlineHTML() called - Online page is loading!');
   return `
     <div class="flex flex-col items-center">
       <h1 class="page-title-large page-title-purple">Online Game</h1>
-      <div class="form-box-purple">
+      <div id="onlineFormBox" class="form-box-purple">
         <div id="connectionStatus" class="mb-6 text-center">
           <span id="statusText" class="text-lg font-bold text-red-400">🔴 Disconnected</span>
         </div>
@@ -114,7 +113,6 @@ export function getOnlineHTML(): string {
  * Attache les event listeners de la page online
  */
 export function attachOnlineEvents() {
-  console.log('🎮⚡⚡⚡ attachOnlineEvents() called - Setting up online page!');
   
   // Éléments du DOM
   const statusText = document.getElementById("statusText") as HTMLElement;
@@ -129,6 +127,7 @@ export function attachOnlineEvents() {
   const canvas = document.getElementById("onlineCanvas") as HTMLCanvasElement;
   const readyBtn = document.getElementById("readyBtn") as HTMLButtonElement;
   const readyStatus = document.getElementById("readyStatus") as HTMLElement;
+  const formBox = document.getElementById("onlineFormBox") as HTMLElement;
   
   // Fonction pour mettre à jour le statut
   function updateStatus(message: string, color: string) {
@@ -336,6 +335,7 @@ export function attachOnlineEvents() {
         // Cacher les éléments
         if (playersInfo) playersInfo.classList.add('hidden');
         if (gameArea) gameArea.classList.add('hidden');
+        if (formBox) formBox.classList.remove('game-active');
       };
       
     } catch (error) {
@@ -362,24 +362,18 @@ export function attachOnlineEvents() {
         
         if (autoJoined) {
           updateStatus(`🟢 Room created and joined: ${currentRoomId}`, 'text-green-400');
-          console.log(`✅ Auto-joined room ${currentRoomId}`);
         } else {
           updateStatus(`🟢 Room created: ${currentRoomId}`, 'text-green-400');
         }
         
         if (roomIdInput && currentRoomId) roomIdInput.value = currentRoomId;
         
-        console.log('🎮🔍🔍🔍 Checking for pending invitation...');
         // Check if there's a pending game invitation to send
         const pendingInvitation = sessionStorage.getItem('pendingGameInvitation');
-        console.log('🎮🔍 pendingInvitation from sessionStorage:', pendingInvitation);
         
         if (pendingInvitation) {
-          console.log('🎮✅ FOUND PENDING INVITATION!');
           try {
             const invitationData = JSON.parse(pendingInvitation);
-            console.log('🎮 Parsed invitation data:', invitationData);
-            console.log('🎮 About to call Presence.send()...');
             
             // Send invitation via Presence WebSocket
             Presence.send({
@@ -391,20 +385,15 @@ export function attachOnlineEvents() {
               }
             });
             
-            console.log('🎮 Presence.send() called successfully!');
-            
             // Show notification to sender
             updateStatus(`🎮 Invitation sent to ${invitationData.receiverUsername}!`, 'text-purple-400');
             
             // Clear the pending invitation
             sessionStorage.removeItem('pendingGameInvitation');
-            console.log('🎮 Pending invitation cleared from sessionStorage');
             
           } catch (err) {
             console.error('🎮❌ [Online] Error sending invitation:', err);
           }
-        } else {
-          console.log('🎮 No pending invitation found');
         }
         
         break;
@@ -413,13 +402,8 @@ export function attachOnlineEvents() {
         currentRoomId = message.data.gameId;
         updateStatus(`🟢 Joined room: ${currentRoomId}`, 'text-green-400');
         
-        console.log(`[Debug] game.joined received - currentUserId: ${currentUserId}`);
-        console.log('[Debug] Full message.data:', JSON.stringify(message.data, null, 2));
-        console.log('[Debug] message.data.players:', message.data?.players);
-        
         // Mettre à jour la liste des joueurs si elle est fournie
         if (message.data && message.data.players) {
-          console.log('[Debug] ✅ Calling updatePlayersList with players:', message.data.players);
           await updatePlayersList(message.data);
           
           // Déterminer le numéro de joueur actuel
@@ -427,16 +411,8 @@ export function attachOnlineEvents() {
             const currentPlayer = message.data.players.find((p: any) => p.id === currentUserId);
             if (currentPlayer) {
               currentPlayerNumber = currentPlayer.paddle === 'left' ? 1 : 2;
-              console.log(`[Debug] ✅ Joined as player ${currentPlayerNumber} with paddle ${currentPlayer.paddle}, userId: ${currentUserId}`);
-            } else {
-              console.warn(`[Debug] ❌ Could not find currentPlayer in players list. UserId: ${currentUserId}, Players:`, message.data.players);
             }
-          } else {
-            console.warn(`[Debug] ❌ currentUserId is null`);
           }
-        } else {
-          console.warn('[Debug] ⚠️ game.joined received but NO players data!');
-          console.warn('[Debug] message.data:', message.data);
         }
         break;
         
@@ -456,6 +432,7 @@ export function attachOnlineEvents() {
         // Masquer les infos de room et afficher la zone de jeu
         if (playersInfo) playersInfo.classList.add('hidden');
         if (gameArea) gameArea.classList.remove('hidden');
+        if (formBox) formBox.classList.add('game-active');
         initializeGameCanvas();
         break;
         
@@ -467,6 +444,7 @@ export function attachOnlineEvents() {
             // Afficher le canvas et masquer les infos dès le countdown
             if (playersInfo) playersInfo.classList.add('hidden');
             if (gameArea) gameArea.classList.remove('hidden');
+            if (formBox) formBox.classList.add('game-active');
             initializeGameCanvas();
           } else if (message.data.countdown === 0) {
             updateStatus('🚀 GO!', 'text-green-400');
@@ -491,7 +469,6 @@ export function attachOnlineEvents() {
               const newPlayerNumber = currentPlayer.paddle === 'left' ? 1 : 2;
               if (currentPlayerNumber !== newPlayerNumber) {
                 currentPlayerNumber = newPlayerNumber;
-                console.log(`[Debug] Player number set to ${currentPlayerNumber} for paddle ${currentPlayer.paddle}`);
               }
             }
           }
@@ -499,20 +476,16 @@ export function attachOnlineEvents() {
         break;
         
       case 'player_joined':
-        console.log('[Debug] 📥 player_joined received:', message.data);
         // Mettre à jour la liste des joueurs
         await updatePlayersList(message.data);
-        console.log('[Debug] ✅ updatePlayersList called after player_joined');
         break;
         
       case 'player_left':
-        console.log('[Debug] 📤 player_left received:', message.data);
         // Mettre à jour la liste des joueurs
         await updatePlayersList(message.data);
         break;
         
       case 'game_ended':
-        console.log('🏁 Jeu terminé:', message.data);
         isGameStarted = false; // Le jeu n'est plus en cours
         
         // Faire disparaître le bouton pause
@@ -647,10 +620,8 @@ export function attachOnlineEvents() {
   
   // Fonction pour mettre à jour la liste des joueurs
   async function updatePlayersList(data: any) {
-    console.log('[Debug] 📋 updatePlayersList called with data:', data);
     if (playersList) {
       if (data && data.players && data.players.length > 0) {
-        console.log('[Debug] ✅ Updating players list with', data.players.length, 'players');
         // Mettre à jour la liste des joueurs dans room
         playersInRoom = data.players;
         
@@ -848,7 +819,6 @@ export function attachOnlineEvents() {
     }
     
     if (direction && currentPlayerNumber) {
-      console.log(`[Debug] Sending input - Player: ${currentPlayerNumber}, Direction: ${direction}, RoomId: ${currentRoomId}`);
       sendMessage({
         type: 'game.input',
         data: {
@@ -857,8 +827,6 @@ export function attachOnlineEvents() {
           direction: direction
         }
       });
-    } else if (direction && !currentPlayerNumber) {
-      console.warn(`[Debug] Cannot send input - currentPlayerNumber is null. UserId: ${currentUserId}`);
     }
   }
   
@@ -898,14 +866,7 @@ export function attachOnlineEvents() {
   // Event listener pour le bouton pause du jeu online
   const pauseButton = document.getElementById("pauseOnlineBtn");
   if (pauseButton) {
-    console.log('✅ Bouton pause trouvé et event listener attaché');
     pauseButton.addEventListener('click', async () => {
-      console.log('🔍 Bouton pause cliqué');
-      console.log('   - CurrentRoomId:', currentRoomId);
-      console.log('   - IsConnected:', isConnected);
-      console.log('   - IsGameStarted:', isGameStarted);
-      console.log('   - IsPaused:', isPaused);
-      
       if (currentRoomId && isConnected && isGameStarted) {
         try {
           const token = localStorage.getItem('token');
@@ -916,8 +877,6 @@ export function attachOnlineEvents() {
 
           const action = isPaused ? 'resume' : 'pause';
           const endpoint = `/api/games/${currentRoomId}/${action}`;
-          
-          console.log(`🚀 Envoi requête ${action} à ${endpoint}`);
 
           const response = await fetch(endpoint, {
             method: 'POST',
@@ -928,7 +887,6 @@ export function attachOnlineEvents() {
 
           if (response.ok) {
             const result = await response.json();
-            console.log(`✅ Jeu ${action}d avec succès:`, result);
             
             // Mettre à jour l'état local
             isPaused = !isPaused;
@@ -976,13 +934,11 @@ export function attachOnlineEvents() {
   // Check for immediate join from sessionStorage (used when already on page)
   const immediateJoin = sessionStorage.getItem('immediateJoin');
   if (immediateJoin) {
-    console.log(`[Online] Immediate join detected for room: ${immediateJoin}`);
     sessionStorage.removeItem('immediateJoin');
     setTimeout(() => {
       connectToGame(immediateJoin, false); // false = join, not create
     }, 100);
   } else if (roomIdFromUrl) {
-    console.log(`[Online] Auto-connecting to room: ${roomIdFromUrl}, create: ${shouldCreate}, join: ${shouldJoin}`);
     setTimeout(() => {
       connectToGame(roomIdFromUrl, shouldCreate);
     }, 100);

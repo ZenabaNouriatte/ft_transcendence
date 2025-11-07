@@ -223,6 +223,12 @@ body {
   max-width: 600px;
   width: 100%;
   margin: 0 auto;
+  transition: max-width 0.3s ease;
+}
+
+/* Agrandir la box quand le jeu est actif pour accueillir le canvas */
+.form-box-purple.game-active {
+  max-width: 900px;
 }
 
 /* Boîte de formulaire avec bordure bleue (page Profile) */

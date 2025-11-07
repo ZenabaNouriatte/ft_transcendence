@@ -32,14 +32,35 @@ export function updateChatDisplay() {
         minute: '2-digit' 
       });
       
+      // Vérifier si c'est un message système (userId: 0)
+      const isSystemMessage = msg.userId === 0;
+      
+      // Avatar spécial pour le système
+      const avatarStyle = isSystemMessage
+        ? 'width: 32px; height: 32px; border-radius: 50%; border: 2px solid #ff8c00; overflow: hidden; flex-shrink: 0; background: linear-gradient(135deg, #fbde9c 0%, #f9c574 100%); display: flex; align-items: center; justify-content: center; font-size: 18px;'
+        : `width: 32px; height: 32px; border-radius: 50%; border: 2px solid #ff8c00; overflow: hidden; flex-shrink: 0; background-image: url('${avatarPath}'); background-size: cover; background-position: center;`;
+      
+      const avatarContent = isSystemMessage ? '⚙️' : '';
+      
+      // Si c'est un message système, ne pas ajouter le onclick et changer le style du curseur
+      const usernameStyle = isSystemMessage 
+        ? 'cursor: default; font-weight: bold; color: #ff8c00;'
+        : 'cursor: pointer; font-weight: bold; color: #ff8c00; text-decoration: none; transition: all 0.2s;';
+      
+      const usernameEvents = isSystemMessage
+        ? ''
+        : `onmouseover="this.style.opacity='0.7'; this.style.textDecoration='underline';" 
+           onmouseout="this.style.opacity='1'; this.style.textDecoration='none';"
+           onclick="localStorage.setItem('viewingFriendUserId', '${msg.userId}'); localStorage.setItem('viewingFriendUsername', '${escapeHtml(msg.username)}'); location.hash = '#/friends-profile';"`;
+      
       return `
-        <div class="chat-message" style="display: flex; align-items: center; gap: 4px; padding: 8px 12px;">
-          <div class="chat-avatar" style="width: 32px; height: 32px; border-radius: 50%; border: 2px solid #ff8c00; overflow: hidden; flex-shrink: 0; background-image: url('${avatarPath}'); background-size: cover; background-position: center;"></div>
+        <div class="chat-message" style="display: flex; align-items: flex-start; gap: 4px; padding: 8px 12px;">
+          <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+            <div class="chat-avatar" style="${avatarStyle}">${avatarContent}</div>
+            <span class="chat-username" style="${usernameStyle} flex-shrink: 0;" 
+                  ${usernameEvents}>${escapeHtml(msg.username)}:</span>
+          </div>
           <div style="flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px;">
-            <span class="chat-username" style="cursor: pointer; font-weight: bold; color: #ff8c00; text-decoration: none; transition: all 0.2s; flex-shrink: 0;" 
-                  onmouseover="this.style.opacity='0.7'; this.style.textDecoration='underline';" 
-                  onmouseout="this.style.opacity='1'; this.style.textDecoration='none';"
-                  onclick="localStorage.setItem('viewingFriendUserId', '${msg.userId}'); localStorage.setItem('viewingFriendUsername', '${escapeHtml(msg.username)}'); location.hash = '#/friends-profile';">${escapeHtml(msg.username)}:</span>
             <span class="chat-text" style="flex: 1; min-width: 0; word-break: break-word;">${escapeHtml(msg.message)}</span>
             <span class="chat-time" style="font-size: 0.85em; color: #888; flex-shrink: 0; margin-right: 8px;">${timeString}</span>
           </div>
@@ -249,8 +270,9 @@ export function getChatOverlayHTML(): string {
                 <div id="dmActiveUserName" class="font-bold" style="color: #ff8c00;"></div>
                 <div id="dmActiveUserStatus" class="text-xs text-gray-400"></div>
               </div>
-              <button id="inviteToGameBtn" class="px-3 py-1 rounded text-sm font-bold bg-green-600 hover:bg-green-700 text-white" title="Inviter à une partie">
-                🎮 Inviter
+              <button id="inviteToGameBtn" class="px-3 py-2 text-sm font-bold text-white flex items-center gap-2" style="background-color: #ffcc99; border: 2px solid #ff8c00; border-radius: 20px; box-shadow: 0px 2px 0px #e6a875; transition: all 0.15s ease;" onmouseover="this.style.backgroundColor='#ffd9b3'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0px 3px 0px #e6a875';" onmouseout="this.style.backgroundColor='#ffcc99'; this.style.transform='translateY(0px)'; this.style.boxShadow='0px 2px 0px #e6a875';" title="Inviter à une partie">
+                <img src="/images/victory-page.png" alt="Game" style="width: 20px; height: 20px;">
+                <span>Inviter</span>
               </button>
             </div>
 
