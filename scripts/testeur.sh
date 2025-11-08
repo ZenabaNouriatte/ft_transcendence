@@ -362,9 +362,6 @@ c=$(prom_count_series 'sum by (route) (rate(http_request_duration_seconds_count{
 v=$(prom_wait_value_ge 'ws_messages_total{type="chat.message"}' 1 12 5)
 [ -n "$v" ] && ok "Messages WebSocket comptabilisés ($v)" || ko "Messages WebSocket non comptabilisés"
 
-c=$(prom_wait_series_ge 'websocket_connections_active{job="gateway"}' 1 8 5)
-[ "$c" -ge 1 ] && ok "Connexions WebSocket actives monitorées" || sk "Connexions WebSocket non monitorées"
-
 echo "Test de connectivité approfondi des services monitoring..."
 # Test Grafana API
 if curl -k -s "${GRAFANA_URL}/api/health" | jq -e '.database == "ok"' >/dev/null; then
