@@ -90,6 +90,40 @@
         "justifyMode": "center"
       },
       "gridPos": { "h": 6, "w": 12, "x": 12, "y": 6 }
+    },
+    {
+      "id": 5,
+      "title": "CPU Services - Vue d'ensemble (services actifs)",
+      "type": "bargauge",
+      "datasource": { "type": "prometheus", "uid": "__PROMETHEUS__" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(process_cpu_seconds_total[1m]) * 100",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 3 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "displayMode": "gradient"
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 }
     }
   ],
   "templating": { "list": [] },
