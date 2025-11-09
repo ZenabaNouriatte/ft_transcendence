@@ -1,12 +1,14 @@
-.PHONY: up down re logs ps clean certs
+.PHONY: up down re logs ps clean certs migrate setup
 
 PUBLIC_HOST := $(shell ./scripts/public_host.sh)
 FRONT_ORIGINS := https://$(PUBLIC_HOST):8443,https://localhost:8443
 
 up:
 	PUBLIC_HOST="$(PUBLIC_HOST)" FRONT_ORIGINS="$(FRONT_ORIGINS)" docker compose up -d --build
+	./scripts/migrate-db.sh
 	./scripts/elk-init.sh
 	docker compose restart kibana
+
 
 down:
 	docker compose down
