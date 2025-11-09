@@ -1,17 +1,21 @@
 // PAGE D'INSCRIPTION
 
+// Importe les fonctionnalités qui fonctionnent sur toutes les pages
 import { Presence } from '../websocket.js';
 import { handleChatMessage } from '../chat/state.js';
 import { updateChatDisplay } from '../chat/ui.js';
 import { isUserBlocked, loadBlockedUsers } from '../blocking/index.js';
 import * as Chat from '../chat/index.js';
 
+// Fonction pour générer le HTML de la page d'inscription
 export function getSignUpHTML(): string {
   return `
   <div class="flex flex-col items-center justify-center min-h-screen">
     <h1 class="page-title-large page-title-brown">Sign Up</h1>
     <div class="form-box-auth">
       <form id="signUpForm" class="space-y-4">
+
+      <!-- CHAMPS DE SAISIE DU USERNAME -->
         <div>
           <label for="username" class="auth-label">Username</label>
           <input type="text" id="username" name="username" required
@@ -19,6 +23,7 @@ export function getSignUpHTML(): string {
             placeholder="Enter your username">
         </div>
         
+        <!-- CHAMPS DE SAISIE DE L'EMAIL -->
         <div>
           <label for="email" class="auth-label">Email</label>
           <input type="email" id="email" name="email" required
@@ -26,6 +31,7 @@ export function getSignUpHTML(): string {
             placeholder="Enter your email">
         </div>
         
+        <!-- CHAMPS DE SAISIE DU PASSWORD -->
         <div>
           <label for="password" class="auth-label">Password</label>
           <input type="password" id="password" name="password" required
@@ -33,6 +39,7 @@ export function getSignUpHTML(): string {
             placeholder="Enter your password">
         </div>
         
+        <!-- BOUTON DE SOUMISSION DU FORMULAIRE -->
         <button type="submit" id="signUpSubmit"
           class="retro-btn w-full">
           Create Account
@@ -54,22 +61,28 @@ export function getSignUpHTML(): string {
   `;
 }
 
+// Fonction pour attacher les événements de la page d'inscription
 export function attachSignUpEvents() {
+  // Récupère le formulaire d'inscription
   const signUpForm = document.getElementById('signUpForm') as HTMLFormElement;
   
+  // Gère la soumission du formulaire
   signUpForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    
+
+    // Récupère les données du formulaire
     const formData = new FormData(signUpForm);
     const username = formData.get('username') as string;
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
     
+    // Validation basique des champs
     if (!username || !email || !password) {
       alert('All fields are required');
       return;
     }
     
+    // Envoie les données au backend pour l'inscription
     try {
       const response = await fetch('/api/users/register', {
         method: 'POST',
@@ -79,8 +92,10 @@ export function attachSignUpEvents() {
         body: JSON.stringify({ username, email, password }),
       });
       
+      // Traite la réponse du backend
       const data = await response.json();
-      
+
+      // Si l'inscription a réussi on connecte l'utilisateur et on stocke le token JWT
       if (response.ok) {
         if (data.token) {
           localStorage.setItem('token', data.token);
@@ -89,12 +104,12 @@ export function attachSignUpEvents() {
           // Charger la liste des utilisateurs bloqués
           await loadBlockedUsers();
           
-          // Enregistrer le handler pour les messages de chat
+          // Enregistrer le handler pour les messages de chat global
           Presence.on('chat.message', (data: any) => {
             handleChatMessage(data, isUserBlocked, updateChatDisplay);
           });
           
-          // Enregistrer le handler pour les messages directs (DM)
+          // Enregistrer le handler pour les DM
           Presence.on('dm.message', (data: any) => {
             console.log('[Signup] DM message received:', data);
             if (data.data) {
@@ -104,15 +119,14 @@ export function attachSignUpEvents() {
           
           // Enregistrer le handler pour les invitations de jeu
           Presence.on('game.invitation', (message: any) => {
-            console.log('[Signup] 🎮🎮🎮 Game invitation received, full message:', message);
-            console.log('[Signup] 🎮 message.data:', message.data);
             if (message.data) {
               Chat.DM.handleGameInvitation(message.data);
             } else {
-              console.error('[Signup] 🎮 ❌ No data in game invitation message!');
+              console.error('[Signup] No data in game invitation message!');
             }
           });
         }
+        // Redirige vers le profil utilisateur après inscription
         localStorage.setItem('currentUsername', username);
         location.hash = '#/profile';
       } else {
@@ -123,6 +137,7 @@ export function attachSignUpEvents() {
     }
   });
   
+  // Event du bouton pour revenir au menu principal
   document.getElementById("backToMenuSignup")?.addEventListener("click", () => {
     location.hash = '';
   });

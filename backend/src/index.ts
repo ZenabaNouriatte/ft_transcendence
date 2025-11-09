@@ -294,6 +294,7 @@ app.post("/api/users/register", async (request, reply) => {
       if (!resp.ok) {
         return reply.code(resp.status).send({ error: "auth_validate_failed", details: data });
       }
+      // créer l’utilisateur dans la DB
       const userId = await UserService.createUser(data as any);
       await StatsService.initUserStats(userId);
 

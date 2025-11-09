@@ -1,6 +1,7 @@
 // ROUTER SPA - Version modulaire
 // Ce fichier orchestre la navigation et l'affichage des pages
 
+// Importe pour chaque page son HTML et ses event listeners
 import { 
   getHomeHTML, attachHomeEvents,
   getLoginHTML, attachLoginEvents,
@@ -17,6 +18,7 @@ import {
   getFriendRequestsHTML, attachFriendRequestsEvents
 } from './pages/index.js';
 
+// Importe les fonctionnalités qui fonctionnent sur toutes les pages
 import { syncAuthFromBackend } from './auth.js';
 import { Presence } from './websocket.js';
 import { handleChatMessage, loadChatMessagesFromStorage } from './chat/state.js';
@@ -24,14 +26,15 @@ import { updateChatDisplay, ensureChatOverlayExists } from './chat/ui.js';
 import { isUserBlocked, loadBlockedUsers } from './blocking/index.js';
 import * as Chat from './chat/index.js';
 
-// Type pour les routes
+// Définition des types de l'objet nécessaire à chaque route
 type PageRenderer = {
   getHTML: () => string;
   attachEvents: () => void;
   cleanup?: () => void;
 };
 
-// Objet contenant toutes les routes
+// CREATION DES ROUTES
+// Avec le HTML, les events, et le cleanup si nécessaire
 const routes: Record<string, PageRenderer> = {
   '': {
     getHTML: getHomeHTML,
@@ -89,119 +92,113 @@ const routes: Record<string, PageRenderer> = {
   }
 };
 
-// Variable pour garder trace de la page actuelle
+// Variable pour sauvegarder la route actuellement affichée, afin de pouvoir appeler cleanup() si nécessaire
 let currentRoute: string = '';
 
-/**
- * Fonction principale de rendu
- */
+// FONCTION PRINCIPALE DE RENDU
+// Responsable d'afficher la page correcte selon la route
 async function render() {
+  // Récupère le conteneur principal de l'application
   const root = document.getElementById('app');
   if (!root) return;
 
-  // Extraire la route sans les query parameters
+  // Extrait la route de l'URL
   const fullHash = location.hash || '';
   const route = fullHash.split('?')[0]; // Prendre seulement la partie avant le ?
   
   console.log('[Router] Full hash:', fullHash);
-  console.log('[Router] Route (without params):', route);
 
-  // Nettoyer la page précédente si elle a une fonction cleanup
+  // Nettoie la page précédente si elle a une fonction cleanup
   if (currentRoute && routes[currentRoute]?.cleanup) {
     routes[currentRoute].cleanup!();
   }
 
-  // Mettre à jour la route actuelle
+  // Met à jour la route actuelle
   currentRoute = route;
 
-  // Récupérer le renderer de la page
+  // Récupère le pageRenderer de la page
   const pageRenderer = routes[route];
   
+  // Route non trouvée, rediriger vers l'accueil
   if (!pageRenderer) {
-    // Route non trouvée, rediriger vers l'accueil
     location.hash = '';
     return;
   }
 
-  // Afficher le HTML de la page
+  // Remplace tout le contenu du conteneur de l'app par le HTML de la nouvelle page.
   root.innerHTML = pageRenderer.getHTML();
 
-  // Injecter le chat overlay si l'utilisateur est connecté
+  // Affiche le chat overlay si l'utilisateur est connecté
   const currentUsername = localStorage.getItem('currentUsername');
   const isLoggedIn = currentUsername && currentUsername !== 'Guest';
   if (isLoggedIn) {
     ensureChatOverlayExists();
   }
 
-  // Attacher les event listeners
+  // Attacher les événements spécifiques à la page
   pageRenderer.attachEvents();
 }
 
-/**
- * Initialisation de l'application
- */
+// DÉMARRAGE DE L'APPLICATION
 async function initializeApp() {
+  // Vérifie l'authentification de l'utilisateur avec le backend
   try {
-    // Synchroniser l'authentification avec le backend
     await syncAuthFromBackend();
   } catch (error) {
     console.error('[Router] Error during auth sync:', error);
   }
 
-  // Charger les messages du chat depuis localStorage
+  // Charge les anciens messages du chat depuis localStorage
   loadChatMessagesFromStorage();
 
-  // Connecter le WebSocket si un token existe
+  // Connecte le WebSocket si un token existe pour être connecté en temps réel
   const token = localStorage.getItem('token');
   console.log('[Router] Token found:', !!token);
+
+  // COMMUNICATION CHAT EN TEMPS RÉEL VIA WEBSOCKET
   if (token) {
-    console.log('[Router] Connecting WebSocket...');
+    // Connecte le WebSocket
     Presence.connect(token);
     
-    // Charger la liste des utilisateurs bloqués
+    // Charge la liste des utilisateurs bloqués
     await loadBlockedUsers();
     
-    // Créer le chat overlay immédiatement pour que les messages puissent s'afficher
+    // Crée le chat overlay immédiatement pour que les messages puissent s'afficher
     ensureChatOverlayExists();
-    
-    // Enregistrer le handler pour les messages de chat
-    console.log('[Router] Registering chat.message handler...');
+
+    // Initialisation du handler qui gère les messages entrants du chat global
     Presence.on('chat.message', (data: any) => {
-      console.log('[Router] Handler called!');
       handleChatMessage(data, isUserBlocked, updateChatDisplay);
     });
-    console.log('[Router] Handler registered');
-    
-    // Enregistrer le handler pour les messages directs (DM)
+
+    // Initialisation du handler qui gère les messages entrants des DM
     Presence.on('dm.message', (data: any) => {
-      console.log('[Router] DM message received:', data);
       if (data.data) {
         Chat.DM.handleIncomingDm(data.data);
       }
     });
-    
-    // Enregistrer le handler pour les invitations de jeu
+
+    // Initialisation du handler qui gère les invitations de jeu entrantes
     Presence.on('game.invitation', (message: any) => {
-      console.log('[Router] 🎮🎮🎮 Game invitation received, full message:', message);
-      console.log('[Router] 🎮 message.data:', message.data);
       if (message.data) {
         Chat.DM.handleGameInvitation(message.data);
       } else {
-        console.error('[Router] 🎮 ❌ No data in game invitation message!');
+        console.error('[Router] No data in game invitation message!');
       }
     });
   } else {
     // Pas d'authentification, nettoyer l'UI locale
-    console.log('[Router] No token, cleaning up');
     localStorage.removeItem('currentUsername');
   }
 
-  // Premier rendu
+  // Affiche la page initiale
   render();
 }
 
-// Écouter les événements de navigation
+// ÉCOUTER LES ÉVÉNEMENTS DE NAVIGATION
+// Une fois que le navigateur a chargé le HTML, le style et les images il envoie l'événement DOMContentLoaded et on peut initialiser l'app
 window.addEventListener('DOMContentLoaded', initializeApp);
+// A chaque changement de hash, on appelle render pour afficher la nouvelle page
 window.addEventListener('hashchange', render);
 
 // Exporter la fonction render pour utilisation externe si nécessaire
