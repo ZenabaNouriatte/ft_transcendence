@@ -21,8 +21,7 @@ CREATE TABLE IF NOT EXISTS friendships (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (friend_id) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE(user_id, friend_id),
-    CHECK (user_id != friend_id)
+    UNIQUE(user_id, friend_id)
 );
 
 -- Table des jeux
@@ -119,6 +118,27 @@ CREATE TABLE IF NOT EXISTS local_players (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_used DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- MIGRATION DÉSACTIVÉE : friendships CHECK constraint
+-- Cette migration tentait d'ajouter CHECK (user_id != friend_id) à la table friendships
+-- Problème : non-idempotente, causait des crashs au redémarrage (INSERT sur table inexistante)
+-- Si nécessaire, créer un script de migration séparé comme migrate-db.sh
+/*
+CREATE TABLE IF NOT EXISTS friendships_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  friend_id INTEGER NOT NULL,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'blocked')),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (friend_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE(user_id, friend_id),
+  CHECK (user_id != friend_id)
+);
+INSERT INTO friendships_new SELECT * FROM friendships;
+DROP TABLE friendships;
+ALTER TABLE friendships_new RENAME TO friendships;
+*/
 
 -- Index pour optimiser les requêtes
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
