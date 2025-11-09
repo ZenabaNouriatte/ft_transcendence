@@ -1,15 +1,29 @@
+// CONFIGURATION DE TYPESCRIPT
+
 {
   "compilerOptions": {
+    // Version JavaScript après compilation
     "target": "ES6",
     "module": "ES6",
+
+    // Bibliothèques incluses (DOM pour le navigateur, ES6 pour les fonctionnalités modernes)
     "lib": ["DOM", "ES6"],
+
+    // Dossier contenant les fichiers .ts
     "rootDir": "src",
+
+    // Dossier de sortie pour les fichiers .js compilés
     "outDir": "dist",
+
+    // Active toutes les vérifications strictes de type
     "strict": true,
+
     "esModuleInterop": true,
     "moduleResolution": "node",
     "allowJs": true
   },
+
+  // Fichiers à compiler ou à ignorer
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }
