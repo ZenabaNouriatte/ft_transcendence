@@ -144,8 +144,12 @@ else
 fi
 
 # === Injecter 1 log d'erreur de démonstration dans Logstash (TCP 5000) ===
-echo "Injecting demo error log into Logstash ..."
-docker compose exec -T logstash bash -lc '
+# Cette section est optionnelle et ne fait pas échouer le script si elle échoue
+if [ "${SKIP_DEMO_LOGS:-false}" != "true" ]; then
+  echo "Injecting demo error log into Logstash ..."
+  
+  # Tentative d'injection avec gestion d'erreur non bloquante
+  if docker compose exec -T logstash bash -lc '
 i=0
 while [ $i -lt 30 ]; do
   if (echo > /dev/tcp/127.0.0.1/5000) >/dev/null 2>&1; then
@@ -155,5 +159,12 @@ while [ $i -lt 30 ]; do
   i=$((i+1))
 done
 printf "{\"event\":{\"ts\":\"$(date -u +%FT%TZ)\",\"service\":\"backend\",\"env\":\"dev\",\"level\":\"error\",\"msg\":\"Simulated error for Kibana\",\"kind\":\"game\",\"action\":\"start\"}}\\n" > /dev/tcp/127.0.0.1/5000
-'
+' >/dev/null 2>&1; then
+    echo "Demo log injected successfully"
+  else
+    echo "WARN: Demo log injection failed (not critical for CI)"
+  fi
+else
+  echo "SKIP: Demo log injection disabled via SKIP_DEMO_LOGS=true"
+fi
 
