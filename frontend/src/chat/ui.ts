@@ -6,9 +6,7 @@ import { Presence } from '../websocket.js';
 import { getCurrentUserId } from '../auth.js';
 import * as DM from './dm.js';
 
-/**
- * Met à jour l'affichage du chat avec les derniers messages
- */
+// Met à jour l'affichage du chat avec les derniers messages
 export async function updateChatDisplay() {
   console.log('[CHAT] updateChatDisplay called');
   const chatMessagesContainer = document.getElementById('chatMessages');
@@ -92,9 +90,7 @@ export async function updateChatDisplay() {
   chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
 }
 
-/**
- * Envoie un message de chat global via WebSocket
- */
+// Envoie un message de chat global via WebSocket
 export function sendChatMessage(message: string) {
   console.log('[CHAT] sendChatMessage called with:', message);
   if (!message.trim()) {
@@ -112,9 +108,7 @@ export function sendChatMessage(message: string) {
   Presence.send(payload);
 }
 
-/**
- * Toggle l'ouverture/fermeture du chat overlay
- */
+// Toggle l'ouverture/fermeture du chat overlay
 export function toggleChat() {
   setIsChatOpen(!isChatOpen);
   const chatOverlay = document.getElementById('chatOverlay');
@@ -130,9 +124,7 @@ export function toggleChat() {
 // Variable pour tracker si les event listeners ont été attachés
 let chatEventListenersAttached = false;
 
-/**
- * Injecte le chat overlay dans le DOM s'il n'existe pas déjà
- */
+// Injecte le chat overlay dans le DOM s'il n'existe pas déjà
 export function ensureChatOverlayExists() {
   const existing = document.getElementById('chatOverlay');
   if (!existing) {
@@ -150,9 +142,7 @@ export function ensureChatOverlayExists() {
   }
 }
 
-/**
- * Attache tous les event listeners du chat
- */
+// Attache tous les event listeners du chat
 export function attachChatEventListeners() {
   console.log('[CHAT] Attaching event listeners');
   

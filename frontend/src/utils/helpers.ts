@@ -1,19 +1,15 @@
 // FONCTIONS UTILITAIRES
 
-/**
- * Échappe les caractères HTML pour éviter les injections XSS
- */
+// Échappe les caractères HTML pour éviter les injections XSS
 export function escapeHtml(text: string): string {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
 }
 
-/**
- * Retourne le chemin de l'avatar d'un utilisateur
- * Si l'utilisateur a uploadé un avatar personnalisé, l'utiliser
- * Sinon, utiliser l'image par défaut basée sur l'ID
- */
+// Retourne le chemin de l'avatar d'un utilisateur
+// Si l'utilisateur a uploadé un avatar personnalisé, l'utiliser
+// Sinon, utiliser l'image par défaut basée sur l'ID
 export function getUserAvatarPath(userId: number, userAvatar?: string | null): string {
   // Si l'utilisateur a uploadé un avatar personnalisé, l'utiliser
   if (userAvatar && userAvatar.startsWith('/uploads/')) {
@@ -27,9 +23,7 @@ export function getUserAvatarPath(userId: number, userAvatar?: string | null): s
   return `/images/${imageNumber}.JPG`;
 }
 
-/**
- * Formate un timestamp en format HH:MM
- */
+// Formate un timestamp en format HH:MM
 export function formatTime(date: Date): string {
   const hours = date.getHours();
   const minutes = date.getMinutes();

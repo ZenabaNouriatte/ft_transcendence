@@ -42,9 +42,7 @@ export async function syncAuthFromBackend(): Promise<void> {
   }
 }
 
-/**
- * Fonction pour récupérer l'ID utilisateur via API
- */
+// Fonction pour récupérer l'ID utilisateur via API
 export async function getCurrentUserId(): Promise<number> {
   const t = localStorage.getItem('token');
   

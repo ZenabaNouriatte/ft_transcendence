@@ -2,9 +2,7 @@
 
 import { blockedUserIds, setBlockedUserIds } from './state.js';
 
-/**
- * Charge la liste des utilisateurs bloqués depuis l'API
- */
+// Charge la liste des utilisateurs bloqués depuis l'API
 export async function loadBlockedUsers(): Promise<void> {
   try {
     const token = localStorage.getItem('token');
@@ -24,9 +22,7 @@ export async function loadBlockedUsers(): Promise<void> {
   }
 }
 
-/**
- * Bloque un utilisateur
- */
+// Bloque un utilisateur
 export async function blockUser(targetId: number): Promise<boolean> {
   try {
     const token = localStorage.getItem('token');
@@ -51,9 +47,7 @@ export async function blockUser(targetId: number): Promise<boolean> {
   }
 }
 
-/**
- * Débloque un utilisateur
- */
+// Débloque un utilisateur
 export async function unblockUser(targetId: number): Promise<boolean> {
   try {
     const token = localStorage.getItem('token');
@@ -78,9 +72,7 @@ export async function unblockUser(targetId: number): Promise<boolean> {
   }
 }
 
-/**
- * Vérifie si un utilisateur est bloqué
- */
+// Vérifie si un utilisateur est bloqué
 export function isUserBlocked(userId: number): boolean {
   return blockedUserIds.indexOf(userId) !== -1;
 }

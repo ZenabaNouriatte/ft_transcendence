@@ -99,6 +99,7 @@ export function getProfileHTML(): string {
                 <img id="avatarPreview" class="avatar-preview" src="" alt="Avatar preview">
                 <div class="avatar-overlay">Click to change</div>
               </div>
+              <!-- OUVERTURE DU SELECTEUR DE FICHIERS -->
               <input type="file" id="avatarInput" accept="image/png,image/jpeg,image/jpg,image/gif" style="display: none;">
               <button type="button" id="removeAvatarBtn" class="retro-btn-small hover-red mt-2" style="display: none;">
                 Remove
@@ -390,7 +391,7 @@ export function attachProfileEvents() {
     avatarInput?.click();
   });
   
-  // Gestion du changement de fichier
+  // Gestion de l'upload de l'avatar
   avatarInput?.addEventListener('change', (e) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;

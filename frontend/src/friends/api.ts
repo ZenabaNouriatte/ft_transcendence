@@ -1,8 +1,6 @@
 // API AMIS
 
-/**
- * Envoie une demande d'ami
- */
+// Envoie une demande d'ami
 export async function sendFriendRequest(targetId: number): Promise<{success: boolean, status?: string, error?: string, message?: string}> {
   try {
     const token = localStorage.getItem('token');
@@ -26,9 +24,7 @@ export async function sendFriendRequest(targetId: number): Promise<{success: boo
   }
 }
 
-/**
- * Récupère le statut d'amitié avec un utilisateur
- */
+// Récupère le statut d'amitié avec un utilisateur
 export async function getFriendshipStatus(targetId: number): Promise<string> {
   try {
     const token = localStorage.getItem('token');
@@ -48,9 +44,7 @@ export async function getFriendshipStatus(targetId: number): Promise<string> {
   return 'none';
 }
 
-/**
- * Récupère la liste des demandes d'amis reçues
- */
+// Récupère la liste des demandes d'amis reçues
 export async function getFriendRequests(): Promise<any[]> {
   try {
     const token = localStorage.getItem('token');

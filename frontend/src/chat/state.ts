@@ -1,32 +1,22 @@
 // ÉTAT DU SYSTÈME DE CHAT
 
-/**
- * État d'ouverture du chat
- */
+// État d'ouverture du chat
 export let isChatOpen = false;
 
-/**
- * Messages du chat global
- */
+// Messages du chat global
 export let chatMessages: Array<{userId: number, username: string, avatar: string | null, message: string, timestamp: Date}> = [];
 
-/**
- * Définit l'état d'ouverture du chat
- */
+// Définit l'état d'ouverture du chat
 export function setIsChatOpen(value: boolean) {
   isChatOpen = value;
 }
 
-/**
- * Ajoute un message au chat
- */
+// Ajoute un message au chat
 export function addChatMessage(message: {userId: number, username: string, avatar: string | null, message: string, timestamp: Date}) {
   chatMessages.push(message);
 }
 
-/**
- * Charger les messages depuis localStorage au démarrage
- */
+// Charger les messages depuis localStorage au démarrage
 export function loadChatMessagesFromStorage() {
   try {
     const stored = localStorage.getItem('chatMessages');
@@ -45,18 +35,14 @@ export function loadChatMessagesFromStorage() {
   }
 }
 
-/**
- * Vider les messages du chat (appelé au logout ou clean)
- */
+// Vider les messages du chat (appelé au logout ou clean)
 export function clearChatMessages() {
   chatMessages = [];
   localStorage.removeItem('chatMessages');
   console.log('[CHAT] Chat messages cleared');
 }
 
-/**
- * Sauvegarder les messages dans localStorage
- */
+// Sauvegarder les messages dans localStorage
 export function saveChatMessagesToStorage() {
   try {
     // Garder seulement les 100 derniers messages pour ne pas surcharger localStorage
@@ -67,10 +53,8 @@ export function saveChatMessagesToStorage() {
   }
 }
 
-/**
- * Handler pour les messages de chat WebSocket
- * Appelé par le router au démarrage
- */
+// Handler pour les messages de chat WebSocket
+// Appelé par le router au démarrage
 export function handleChatMessage(data: any, isUserBlocked: (userId: number) => boolean, updateChatDisplay: () => Promise<void>) {
   console.log('[CHAT] handleChatMessage called with data:', data);
   
