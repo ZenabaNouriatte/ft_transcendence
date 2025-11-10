@@ -1,16 +1,17 @@
+// PAGE DU PROFIL UTILISATEUR
+
 import { getCurrentUserId } from '../auth.js';
 import { getUserProfile } from '../user/index.js';
 import { getUserAvatarPath } from '../utils/helpers.js';
 import { Presence } from '../websocket.js';
 import { clearChatMessages } from '../chat/index.js';
 
-/**
- * Retourne le HTML de la page de profil
- */
+// Retourne le HTML de la page de profil
 export function getProfileHTML(): string {
   const currentUsername = localStorage.getItem('currentUsername') || 'Player';
   return `
   <div class="min-h-screen">
+
     <!-- Boutons navigation en haut à gauche -->
     <div class="fixed top-8 left-8 z-10 flex flex-col items-start gap-3">
       <button id="backToHomeBtn" class="retro-btn flex items-center gap-2 w-fit">
@@ -81,7 +82,7 @@ export function getProfileHTML(): string {
       </div>
     </div>
     
-    <!-- Modal de modification du profil -->
+    <!-- MODAL DE MODIFICATION DU PROFIL -->
     <div id="editProfileModal" class="profile-modal" style="display: none;">
       <div class="profile-modal-content">
         <div class="profile-modal-header">
@@ -140,49 +141,51 @@ export function getProfileHTML(): string {
   `;
 }
 
-/**
- * Attache les event listeners de la page de profil
- */
+// Attache les event listeners de la page de profil
 export function attachProfileEvents() {
+  // Récupérer le nom d'utilisateur courant depuis le localStorage
   const username = localStorage.getItem('currentUsername') || 'Player';
   
-  // Afficher le nom d'utilisateur
+  // Afficher le nom d'utilisateur dans le profil
   const profileUsername = document.getElementById('profileUsername');
   if (profileUsername) {
     profileUsername.textContent = username;
   }
 
-  // Charger l'avatar depuis l'API
+  // Récuperer les données de l'utilisateur
   async function loadUserAvatar() {
     try {
       const userId = await getCurrentUserId();
       const profileData = await getUserProfile(userId);
       const avatarImg = document.getElementById('profileAvatar') as HTMLImageElement;
       
+      // Utiliser getUserAvatarPath avec l'avatar path de l'utilisateur
       if (avatarImg) {
-        // Utiliser getUserAvatarPath avec l'avatar de l'utilisateur
         const avatarPath = getUserAvatarPath(userId, profileData?.user?.avatar);
         avatarImg.src = avatarPath;
       }
     } catch (error) {
-      console.error('Erreur chargement avatar:', error);
       // Erreur silencieuse pour l'avatar
+      console.error('Erreur chargement avatar:', error);
     }
   }
 
   // Charger l'avatar
   loadUserAvatar();
   
-  // Charger les statistiques utilisateur et l'historique
+  // Charger les statistiques utilisateur et l'historique des matchs
   async function loadUserData() {
     try {
+      // Récupérer l'ID de l'utilisateur courant
       const userId = await getCurrentUserId();
       const profile = await getUserProfile(userId);
       
+      // Mettre à jour les statistiques
       if (profile && profile.stats) {
         const stats = profile.stats;
         const winRate = stats.games_played > 0 ? ((stats.games_won / stats.games_played) * 100).toFixed(1) : '0';
         
+        // Remplir les statistiques avec les données récupérées
         document.getElementById('gamesPlayed')!.textContent = stats.games_played.toString();
         document.getElementById('gamesWon')!.textContent = stats.games_won.toString();
         document.getElementById('gamesLost')!.textContent = stats.games_lost.toString();
@@ -200,6 +203,7 @@ export function attachProfileEvents() {
       // Charger l'historique des matchs
       const historyContainer = document.getElementById('matchHistory')!;
       
+      // Vérifier si l'historique existe et n'est pas vide
       if (profile && profile.history && profile.history.length > 0) {
         const matches = profile.history;
         
@@ -460,13 +464,9 @@ export function attachProfileEvents() {
     }
   });
   
-  // Soumission du formulaire
+  // SOUMISSION DU FORMULAIRE DE MODIFICATION DU PROFIL
   editProfileForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    
-    console.log('[DEBUG] Form submitted!');
-    console.log('[DEBUG] selectedAvatarFile:', selectedAvatarFile);
-    console.log('[DEBUG] removeAvatar:', removeAvatar);
     
     if (!editProfileError || !editProfileSuccess) return;
     

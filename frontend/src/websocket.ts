@@ -1,13 +1,9 @@
 // WEBSOCKET SINGLETON POUR LE SYSTÈME DE PRÉSENCE ET CHAT
 
-/**
- * Type pour les handlers de messages WebSocket
- */
+// Type pour les handlers de messages WebSocket
 type MessageHandler = (data: any) => void;
 
-/**
- * Singleton WebSocket pour la présence et le chat
- */
+// Singleton WebSocket pour la présence et le chat
 export const Presence = (() => {
   const MODULE_ID = Math.random().toString(36).substring(7);
   console.log(`[WS] 🆔 Module instance created with ID: ${MODULE_ID}`);
@@ -19,9 +15,7 @@ export const Presence = (() => {
   // Handlers pour les différents types de messages
   const messageHandlers: Record<string, MessageHandler[]> = {};
 
-  /**
-   * Enregistre un handler pour un type de message spécifique
-   */
+  // Enregistre un handler pour un type de message spécifique
   function on(messageType: string, handler: MessageHandler) {
     console.log(`[WS] 📝 Module ${MODULE_ID}: Registering handler for type: ${messageType}`);
     console.log(`[WS] 📦 Module ${MODULE_ID}: Current messageHandlers:`, Object.keys(messageHandlers));
@@ -32,9 +26,7 @@ export const Presence = (() => {
     console.log(`[WS] ✅ Module ${MODULE_ID}: Handler registered for type: ${messageType}. Total handlers:`, messageHandlers[messageType].length);
   }
 
-  /**
-   * Émet un message aux handlers enregistrés
-   */
+  // Émet un message aux handlers enregistrés
   function emit(messageType: string, data: any) {
     console.log(`[WS] 🔔 Module ${MODULE_ID}: emit called for type: ${messageType}`);
     console.log(`[WS] 📦 Module ${MODULE_ID}: Current messageHandlers:`, Object.keys(messageHandlers));

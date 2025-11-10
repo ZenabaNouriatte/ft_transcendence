@@ -5,9 +5,7 @@ import { getCurrentUserId } from '../auth.js';
 import { getUserProfile } from '../user/index.js';
 import { getUserAvatarPath } from '../utils/helpers.js';
 
-/**
- * Retourne le HTML de la page d'accueil
- */
+// Retourne le HTML de la page d'accueil
 export function getHomeHTML(): string {
   // Vérifier si un utilisateur est connecté
   const currentUsername = localStorage.getItem('currentUsername');
@@ -67,9 +65,7 @@ export function getHomeHTML(): string {
   `;
 }
 
-/**
- * Attache les event listeners de la page d'accueil
- */
+// Attache les event listeners de la page d'accueil
 export function attachHomeEvents() {
   const currentUsername = localStorage.getItem('currentUsername');
   const isLoggedIn = currentUsername && currentUsername !== 'Guest';
@@ -83,27 +79,26 @@ export function attachHomeEvents() {
   document.getElementById("classicBtn")?.addEventListener("click", () => {
     location.hash = "#/classic";
   });
-  
   document.getElementById("onlineBtn")?.addEventListener("click", () => {
     location.hash = "#/online";
   });
-  
   document.getElementById("tournamentBtn")?.addEventListener("click", () => {
     location.hash = "#/tournament";
   });
   
+  // Gestions des boutons en fonction de l'état de connexion
   if (isLoggedIn) {
-    // Bouton Chat
+    // Ouvre le modale de chat
     document.getElementById("chatBtn")?.addEventListener("click", () => {
       toggleChat();
     });
     
-    // Utilisateur connecté : bouton profil
+    // Dirige vers le profil utilisateur
     document.getElementById("userProfileBtn")?.addEventListener("click", () => {
       location.hash = "#/profile";
     });
     
-    // Bouton Find Friends
+    // Dirige vers la recherche d'amis
     document.getElementById("findFriendsBtn")?.addEventListener("click", () => {
       location.hash = "#/friends";
     });
@@ -127,11 +122,11 @@ export function attachHomeEvents() {
     // Charger le mini avatar
     loadUserMiniAvatar();
   } else {
-    // Utilisateur non connecté : boutons login/signup
+    // Dirige vers la page de login
     document.getElementById("loginBtn")?.addEventListener("click", () => {
       location.hash = "#/login";
     });
-    
+    // Dirige vers la page de sign up
     document.getElementById("signUpBtn")?.addEventListener("click", () => {
       location.hash = "#/sign-up";
     });

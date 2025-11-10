@@ -1,13 +1,26 @@
+<!-- POINT D'ENTRÉE DE L'APPLICATION -->
+<!-- Premier fichier chargé par le navigateur, il est copié tel quel dans le dossier de distribution -->
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+  <!-- Encodage des caractères -->
   <meta charset="UTF-8" />
+
+  <!-- Configuration pour un affichage responsive sur mobile -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+  <!-- Titre de la page -->
   <title>Pong</title>
+
+  <!-- Lien vers la feuille de styles compilée -->
   <link href="output.css" rel="stylesheet" />
 </head>
+
 <body class="text-white flex items-center justify-center min-h-screen">
+  <!-- Unique conteneur de l'application, ce qui garantit une SPA -->
   <div id="app"></div>
+  <!-- main.js va remplir dynamiquement ce conteneur -->
   <script type="module" src="main.js"></script>
 </body>
 </html>

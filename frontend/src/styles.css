@@ -1,8 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Raleway:wght@700;900&display=swap');
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@tailwind base; /* Importation des styles de base */
+@tailwind components; /* Importation des composants */
+@tailwind utilities; /* Importation des classes pré définies qu'on utilise dans le HTML */
 
 /* Background global avec image de fond */
 body {
