@@ -71,7 +71,7 @@ export function saveChatMessagesToStorage() {
  * Handler pour les messages de chat WebSocket
  * Appelé par le router au démarrage
  */
-export function handleChatMessage(data: any, isUserBlocked: (userId: number) => boolean, updateChatDisplay: () => void) {
+export function handleChatMessage(data: any, isUserBlocked: (userId: number) => boolean, updateChatDisplay: () => Promise<void>) {
   console.log('[CHAT] handleChatMessage called with data:', data);
   
   const newMessage = {
