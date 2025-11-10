@@ -3,12 +3,13 @@
 import { chatMessages, isChatOpen, setIsChatOpen, addChatMessage, saveChatMessagesToStorage } from './state.js';
 import { escapeHtml, getUserAvatarPath } from '../utils/helpers.js';
 import { Presence } from '../websocket.js';
+import { getCurrentUserId } from '../auth.js';
 import * as DM from './dm.js';
 
 /**
  * Met à jour l'affichage du chat avec les derniers messages
  */
-export function updateChatDisplay() {
+export async function updateChatDisplay() {
   console.log('[CHAT] updateChatDisplay called');
   const chatMessagesContainer = document.getElementById('chatMessages');
   console.log('[CHAT] Container found:', !!chatMessagesContainer);
@@ -19,6 +20,9 @@ export function updateChatDisplay() {
     console.log('[CHAT] Container #chatMessages not found yet (chat overlay not created)');
     return;
   }
+
+  // Récupérer l'ID de l'utilisateur actuel pour la logique de redirection
+  const currentUserId = await getCurrentUserId();
 
   const html = chatMessages
     .slice(-50) // Garde seulement les 50 derniers messages
@@ -35,6 +39,9 @@ export function updateChatDisplay() {
       // Vérifier si c'est un message système (userId: 0)
       const isSystemMessage = msg.userId === 0;
       
+      // Vérifier si c'est un message de l'utilisateur actuel
+      const isOwnMessage = msg.userId === currentUserId;
+      
       // Avatar spécial pour le système
       const avatarStyle = isSystemMessage
         ? 'width: 32px; height: 32px; border-radius: 50%; border: 2px solid #ff8c00; overflow: hidden; flex-shrink: 0; background: linear-gradient(135deg, #fbde9c 0%, #f9c574 100%); display: flex; align-items: center; justify-content: center; font-size: 18px;'
@@ -47,11 +54,21 @@ export function updateChatDisplay() {
         ? 'cursor: default; font-weight: bold; color: #ff8c00;'
         : 'cursor: pointer; font-weight: bold; color: #ff8c00; text-decoration: none; transition: all 0.2s;';
       
-      const usernameEvents = isSystemMessage
-        ? ''
-        : `onmouseover="this.style.opacity='0.7'; this.style.textDecoration='underline';" 
-           onmouseout="this.style.opacity='1'; this.style.textDecoration='none';"
-           onclick="localStorage.setItem('viewingFriendUserId', '${msg.userId}'); localStorage.setItem('viewingFriendUsername', '${escapeHtml(msg.username)}'); location.hash = '#/friends-profile';"`;
+      // Gestion des événements selon le type de message
+      let usernameEvents = '';
+      if (!isSystemMessage) {
+        if (isOwnMessage) {
+          // Si c'est son propre message, rediriger vers #/profile
+          usernameEvents = `onmouseover="this.style.opacity='0.7'; this.style.textDecoration='underline';" 
+                           onmouseout="this.style.opacity='1'; this.style.textDecoration='none';"
+                           onclick="location.hash = '#/profile';"`;
+        } else {
+          // Si c'est le message d'un autre utilisateur, rediriger vers #/friends-profile
+          usernameEvents = `onmouseover="this.style.opacity='0.7'; this.style.textDecoration='underline';" 
+                           onmouseout="this.style.opacity='1'; this.style.textDecoration='none';"
+                           onclick="localStorage.setItem('viewingFriendUserId', '${msg.userId}'); localStorage.setItem('viewingFriendUsername', '${escapeHtml(msg.username)}'); location.hash = '#/friends-profile';"`;
+        }
+      }
       
       return `
         <div class="chat-message" style="display: flex; align-items: flex-start; gap: 4px; padding: 8px 12px;">
@@ -105,7 +122,7 @@ export function toggleChat() {
     chatOverlay.style.display = isChatOpen ? 'flex' : 'none';
     // Afficher les messages quand on ouvre le chat
     if (isChatOpen) {
-      updateChatDisplay();
+      updateChatDisplay().catch(console.error);
     }
   }
 }
