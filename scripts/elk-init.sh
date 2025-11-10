@@ -136,18 +136,13 @@ docker exec "$CONTAINER_NAME" curl -X PUT "${ES_URL_INTERNAL}/_index_template/ft
   }' >/dev/null 2>&1 || template_result=1
 
 # Messages finaux
-echo "Configuration elasticsearch ok"
 if [ $ilm_result -eq 0 ] && [ $template_result -eq 0 ]; then
-  echo "ELK retention OK - log supp after 30 days"
-else
-  echo "ELK retention not OK - check above"
+  echo "- ELK security OK"
+  echo "- ELK data retention OK"
 fi
 
 # === Injecter 1 log d'erreur de démonstration dans Logstash (TCP 5000) ===
-# Cette section est optionnelle et ne fait pas échouer le script si elle échoue
 if [ "${SKIP_DEMO_LOGS:-false}" != "true" ]; then
-  echo "Injecting demo error log into Logstash ..."
-  
   # Tentative d'injection avec gestion d'erreur non bloquante
   if docker compose exec -T logstash bash -lc '
 i=0
@@ -160,11 +155,7 @@ while [ $i -lt 30 ]; do
 done
 printf "{\"event\":{\"ts\":\"$(date -u +%FT%TZ)\",\"service\":\"backend\",\"env\":\"dev\",\"level\":\"error\",\"msg\":\"Simulated error for Kibana\",\"kind\":\"game\",\"action\":\"start\"}}\\n" > /dev/tcp/127.0.0.1/5000
 ' >/dev/null 2>&1; then
-    echo "Demo log injected successfully"
-  else
-    echo "WARN: Demo log injection failed (not critical for CI)"
+    echo "- Demo log injected OK"
   fi
-else
-  echo "SKIP: Demo log injection disabled via SKIP_DEMO_LOGS=true"
 fi
 

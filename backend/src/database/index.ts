@@ -40,6 +40,12 @@ export function initDb(): sqlite3.Database {
     const schemaSql = safeReadFile(SCHEMA_PATH);
     if (schemaSql) _db!.exec(schemaSql);
 
+    // Migration : ajouter les colonnes manquantes dans games (idempotent)
+    _db!.exec(`ALTER TABLE games ADD COLUMN player1_type TEXT DEFAULT 'user';`, () => {});
+    _db!.exec(`ALTER TABLE games ADD COLUMN player2_type TEXT DEFAULT 'user';`, () => {});
+    _db!.exec(`ALTER TABLE games ADD COLUMN winner_type TEXT;`, () => {});
+    _db!.exec(`ALTER TABLE games ADD COLUMN duration INTEGER DEFAULT 0;`, () => {});
+
   });
 
   // --- Logs de démarrage utiles pour le test persistance
