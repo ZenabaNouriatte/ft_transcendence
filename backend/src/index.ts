@@ -434,6 +434,19 @@ app.post("/api/users/register", async (request, reply) => {
       let player2_id = null;
       if (player2_username && player2_username !== 'CPU') {
         console.log(`🔍 Looking for user: ${player2_username}`);
+        
+        // Valider le format du username avant de continuer
+        try {
+          validateUsername(player2_username);
+        } catch (validationError) {
+          const errorMsg = validationError instanceof Error ? validationError.message : 'Invalid username format';
+          console.log(`❌ Username validation failed: ${errorMsg}`);
+          return reply.code(400).send({ 
+            error: "invalid_username", 
+            message: errorMsg
+          });
+        }
+        
         const player2 = await UserService.findUserByUsername(player2_username);
         
         if (player2) {
