@@ -16,16 +16,15 @@ dist/
 # macOS files
 .DS_Store
 
-# Editor directories and files
 .vscode/
 
 # Temporary Docker or system files
 *.pid
 
 # Local environment variables
-# .env
-#*.sqlite
-#*.db
+.env
+.sqlite
+*.db
 
 node_modules/
 backend/node_modules/
