@@ -137,7 +137,7 @@ await app.register(cors, {
 
 
 await app.register(rateLimit, {
-  max: 2000,
+  max: 2500,
   timeWindow: "1 minute",
   skipOnError: true,
 
