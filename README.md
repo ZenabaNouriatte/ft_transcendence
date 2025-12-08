@@ -9,30 +9,32 @@
 
 ---
 
-## 📋 Table des matières
+##  Table des matières
 
-- [À propos du projet](#-à-propos-du-projet)
+- [À propos du projet](#à-propos-du-projet)
 - [Contraintes du sujet](#-contraintes-du-sujet)
-- [Stack technique imposée](#️-stack-technique-imposée)
+- [Stack technique imposée](#-stack-technique-imposée)
 - [Démarrage rapide](#-démarrage-rapide)
 - [Architecture DevOps](#-architecture-devops)
 - [Architecture microservices](#-architecture-microservices)
 - [Monitoring & Observabilité](#-monitoring--observabilité)
 - [Points d'amélioration](#-points-damélioration)
 - [Captures d'écran](#-captures-décran)
+- [Apprentissages clés](#-apprentissages-clés)
 
 ---
 
-## 📖 À propos du projet
+
+##  À propos du projet
 
 **ft_transcendence** est le projet final du cursus 42, visant à créer une plateforme web complète de jeu Pong multijoueur avec :
 
-- 🎯 **Jeu Pong en temps réel** : Moteur de jeu côté serveur avec synchronisation WebSocket
-- 🏆 **Système de tournois** : Brackets automatiques, matchmaking, historique des parties
-- 💬 **Chat temps réel** : Messages directs (DM), chat de tournoi, gestion des bloqués
-- 👥 **Système social** : Amis, invitations de jeu, profils utilisateurs
-- 🔐 **Authentification sécurisée** : JWT, bcrypt, protection XSS/SQL injection
-- 📊 **Monitoring complet** : Prometheus, Grafana, ELK Stack (13 conteneurs Docker)
+-  **Jeu Pong en temps réel** : Moteur de jeu côté serveur avec synchronisation WebSocket
+-  **Système de tournois** : Brackets automatiques, matchmaking, historique des parties
+-  **Chat temps réel** : Messages directs (DM), chat de tournoi, gestion des bloqués
+-  **Système social** : Amis, invitations de jeu, profils utilisateurs
+-  **Authentification sécurisée** : JWT, bcrypt, protection XSS/SQL injection
+-  **Monitoring complet** : Prometheus, Grafana, ELK Stack (13 conteneurs Docker)
 
 Ce projet démontre une architecture **production-ready** avec séparation des responsabilités, observabilité complète et bonnes pratiques de sécurité.
 
@@ -48,23 +50,22 @@ Le projet **ft_transcendence** impose des contraintes strictes pour valider l'ap
 |-----------|----------|
 | **Jeu** | Pong multijoueur fonctionnel en temps réel |
 | **Sécurité** | HTTPS/TLS obligatoire, hashage bcrypt, protection injections |
-| **Framework Backend** | Utilisation d'un framework (Fastify choisi ici) |
+| **Framework Backend** | Utilisation d'un framework (Fastify imposé) |
 | **Base de données** | Persistance des utilisateurs, parties, statistiques |
 | **Frontend** | SPA (Single Page Application) sans rechargement |
 | **Temps réel** | WebSocket pour le jeu et le chat |
 | **Authentification** | Système d'inscription/connexion sécurisé |
 
-### Modules supplémentaires choisis 🎯
+### Modules supplémentaires choisis 
 
 - ✅ **Architecture microservices** : Backend découpé en services spécialisés
 - ✅ **Monitoring avancé** : Stack complète Prometheus + Grafana + ELK
-- ✅ **Docker Compose** : Infrastructure conteneurisée (13 services)
 - ✅ **Système de tournois** : Brackets automatiques avec gestion des rounds
 - ✅ **Chat avancé** : DM, bloquage utilisateurs, historique persistant
 
 ---
 
-## 🛠️ Stack technique imposée
+##  Stack technique imposée
 
 ### Frontend (obligatoire TypeScript)
 
@@ -97,7 +98,7 @@ Le projet **ft_transcendence** impose des contraintes strictes pour valider l'ap
 
 ---
 
-## 🚀 Démarrage rapide
+##  Démarrage rapide
 
 ### Prérequis
 
@@ -148,7 +149,7 @@ GF_SERVER_ROOT_URL=https://localhost:8443/grafana/
 GF_SERVER_SERVE_FROM_SUB_PATH=true
 ```
 
-> 🔒 **Note de sécurité** : Ces valeurs sont des exemples pour l'environnement de développement. 
+>  **Note de sécurité** : Ces valeurs sont des exemples pour l'environnement de développement. 
 > En production, utilisez des secrets générés aléatoirement (ex: `openssl rand -hex 32`).
 
 3. **Lancer l'infrastructure complète**
@@ -158,7 +159,7 @@ make up
 # Ou manuellement : docker compose up -d --build
 ```
 
-4. **Attendre l'initialisation** (~2-3 minutes pour ELK)
+4. **Attendre l'initialisation** (~2 minutes pour ELK)
 
 Surveillez les logs :
 ```bash
@@ -170,11 +171,11 @@ make logs
 
 | Service | URL | Identifiants |
 |---------|-----|--------------|
-| **🎮 Application** | https://localhost:8443 | Créer un compte |
-| **📊 Grafana** | https://localhost:8443/grafana/ | admin / admin123! |
-| **🔍 Kibana** | https://localhost:8443/kibana/ | elastic / elastic |
-| **📈 Prometheus** | https://localhost:8443/prometheus/ | - |
-| **🚨 Alertmanager** | https://localhost:8443/alertmanager/ | - |
+| ** Application** | https://localhost:8443 | Créer un compte |
+| ** Grafana** | https://localhost:8443/grafana/ | admin / admin123! |
+| ** Kibana** | https://localhost:8443/kibana/ | elastic / elastic |
+| ** Prometheus** | https://localhost:8443/prometheus/ | - |
+| ** Alertmanager** | https://localhost:8443/alertmanager/ | - |
 
 > ⚠️ **Certificat SSL** : Le certificat est auto-signé. Acceptez l'exception de sécurité dans votre navigateur.
 
@@ -254,12 +255,6 @@ L'architecture repose sur **13 conteneurs Docker orchestrés** par Docker Compos
 
 ![Architecture ft_transcendence](./Doc/ARCHI%20FT_TRANSCENDENCE.png)
 
-> **Légende** :
-> - Les flèches vertes = communication HTTP/HTTPS
-> - Les flèches bleues = WebSocket temps réel
-> - Les flèches orange = métriques Prometheus
-> - Les flèches violettes = logs vers ELK
-
 ---
 
 ## 🔬 Architecture microservices
@@ -276,7 +271,7 @@ Le choix d'une architecture microservices (au lieu d'un monolithe) répond à pl
 4. **Déploiement indépendant** : Mise à jour d'un service sans tout redéployer
 5. **Apprentissage** : Compréhension des architectures distribuées modernes
 
-#### ⚠️ Inconvénients assumés (contexte éducatif)
+#### ⚠️ Inconvénients (contexte éducatif)
 
 - **Complexité accrue** : Plus de conteneurs à gérer
 - **Latence réseau** : Communication inter-services HTTP (vs appels de fonctions)
@@ -471,7 +466,7 @@ Configurées dans `monitoring/prometheus/rules.yml` :
 
 ---
 
-## 🚧 Points d'amélioration
+##  Points d'amélioration
 
 Ce projet est **fonctionnel et complet**, mais des améliorations sont possibles pour une vraie mise en production :
 
@@ -515,108 +510,22 @@ backend/
   - `chat-db` : Messages, conversations
 - **Accès direct** : Chaque service gère sa propre base
 
-**Pourquoi SQLite ici ?**
-- Simplicité : Pas de serveur DB supplémentaire
-- Adapté au contexte éducatif et à la volumétrie
-- Facilite les tests locaux
-
 ### 3. Logging
 
 #### ❌ Problème actuel
 - **console.log() partout** : ~100+ logs de debug dans le code
 - **Pas de niveaux de logs** : Impossible de filtrer (debug/info/error)
 
-#### ✅ Solution idéale
-```typescript
-// Utiliser un logger structuré
-import pino from 'pino';
 
-const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: {
-    target: 'pino-pretty' // Dev uniquement
-  }
-});
-
-// Au lieu de console.log
-logger.info({ userId, gameId }, 'Game started');
-logger.error({ err, userId }, 'Failed to authenticate');
-```
-
-**Avantages** :
-- Logs structurés JSON (facilite parsing ELK)
-- Contrôle du niveau de verbosité (production vs dev)
-- Rotation automatique des fichiers de logs
-
-### 4. Gestion des erreurs
-
-#### ❌ Problème actuel
-```typescript
-try {
-  await doSomething();
-} catch (err) {
-  console.error(err);
-  return reply.status(500).send({ error: 'Internal error' });
-}
-```
-
-#### ✅ Solution idéale
-```typescript
-// Créer des erreurs custom
-class GameNotFoundError extends Error {
-  statusCode = 404;
-  code = 'GAME_NOT_FOUND';
-}
-
-// Middleware global de gestion d'erreurs
-app.setErrorHandler((error, request, reply) => {
-  logger.error({ 
-    err: error, 
-    requestId: request.id,
-    path: request.url 
-  });
-  
-  if (error instanceof GameNotFoundError) {
-    return reply.status(404).send({
-      error: 'Game not found',
-      code: error.code
-    });
-  }
-  
-  // Erreur générique
-  return reply.status(500).send({ error: 'Internal server error' });
-});
-```
-
-### 5. Tests
+### 4. Tests
 
 #### ❌ Manque actuel
+- Tests manuels uniquement (`scripts/testeur.sh`)
 - Pas de tests unitaires
 - Pas de tests d'intégration automatisés
-- Tests manuels uniquement (`scripts/testeur.sh`)
 
-#### ✅ Solution idéale
-```typescript
-// Tests unitaires (Jest/Vitest)
-describe('GameService', () => {
-  it('should create a new game', async () => {
-    const gameId = await GameService.createGame({
-      player1_id: 1,
-      status: 'waiting'
-    });
-    expect(gameId).toBeGreaterThan(0);
-  });
-});
 
-// Tests E2E (Playwright/Cypress)
-test('user can play pong game', async ({ page }) => {
-  await page.goto('https://localhost:8443');
-  await page.click('text=Play Classic');
-  await expect(page.locator('canvas')).toBeVisible();
-});
-```
-
-### 6. CI/CD
+### 5. CI/CD
 
 #### ❌ Manque actuel
 - Déploiement manuel uniquement
@@ -641,27 +550,6 @@ jobs:
         run: docker scan backend:latest
 ```
 
-### 7. Secrets management
-
-#### ❌ Problème actuel
-```typescript
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret"; // ⚠️  Fallback dangereux
-```
-
-#### ✅ Solution idéale
-```typescript
-// Forcer les secrets en production
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET is required in production');
-}
-
-// Ou utiliser un service de secrets
-// - Docker Secrets (Swarm)
-// - Kubernetes Secrets
-// - HashiCorp Vault
-// - AWS Secrets Manager
-```
 
 ---
 
@@ -711,53 +599,8 @@ Ce projet m'a permis d'acquérir des compétences sur :
 - **TypeScript full-stack** : Cohérence backend/frontend avec typage statique
 - **Game engine** : Physique 2D, collision detection, synchronisation réseau
 
----
 
-## 📝 Notes techniques
 
-### Stratégie de logging
+**Projet réalisé par** : Anais CATUSSE , Zenaba MOGNE et Lukas GOURE 
+**École 42** validé à 110% en Novembre 2025
 
-Les `console.log()` sont utilisés pour le développement et le debugging. Dans un environnement Docker, ces logs sont capturés par :
-- Docker daemon (`docker logs <container>`)
-- Logstash → Elasticsearch → Kibana (ELK stack)
-- Prometheus pour les métriques agrégées
-
-Pour un déploiement production, il est recommandé de remplacer `console.log()` par un logger structuré comme **Pino** ou **Winston** avec niveaux de logs et rotation.
-
-### Limitations connues
-
-- **SQLite single-threaded** : Limite la scalabilité horizontale (1 seule instance Gateway possible)
-- **WebSocket sans reconnexion auto** : En cas de déconnexion réseau, le client doit rafraîchir
-- **Pas de persistence Redis** : Les données temps réel (présence, parties actives) sont en mémoire
-- **Certificat SSL auto-signé** : Nécessite une exception navigateur (normal en dev)
-
----
-
-## 📄 License
-
-Ce projet est un **projet éducatif** réalisé dans le cadre du cursus 42.  
-Code libre d'utilisation à des fins pédagogiques.
-
----
-
-## 👤 Auteur
-
-**Projet réalisé par** : [Votre nom]  
-**École** : 42  
-**Année** : 2024-2025
-
----
-
-## 🙏 Remerciements
-
-- L'équipe pédagogique de 42 pour le sujet
-- La communauté open-source pour les outils utilisés
-- Les camarades de promo pour les tests et feedbacks
-
----
-
-<div align="center">
-
-**⭐ Si ce projet vous a plu, n'hésitez pas à laisser une étoile !**
-
-</div>
