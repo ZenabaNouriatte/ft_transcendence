@@ -22,7 +22,7 @@ dist/
 *.pid
 
 # Local environment variables
-.env
+#.env
 .sqlite
 *.db
 

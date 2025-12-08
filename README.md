@@ -1,4 +1,7 @@
 # 🎮 ft_transcendence
+**Projet réalisé par** : Anais CATUSSE , Zenaba MOGNE et Lukas GOURE 
+
+**École 42** validé à 110% en Novembre 2025
 
 > **Projet éducatif** - Plateforme web de jeu Pong multijoueur en temps réel avec système de tournois, chat et monitoring avancé.
 
@@ -40,11 +43,11 @@ Ce projet démontre une architecture **production-ready** avec séparation des r
 
 ---
 
-## 📜 Contraintes du sujet
+##  Contraintes du sujet
 
 Le projet **ft_transcendence** impose des contraintes strictes pour valider l'apprentissage :
 
-### Contraintes obligatoires ✅
+### Contraintes obligatoires 
 
 | Catégorie | Exigence |
 |-----------|----------|
@@ -177,7 +180,7 @@ make logs
 | ** Prometheus** | https://localhost:8443/prometheus/ | - |
 | ** Alertmanager** | https://localhost:8443/alertmanager/ | - |
 
-> ⚠️ **Certificat SSL** : Le certificat est auto-signé. Acceptez l'exception de sécurité dans votre navigateur.
+>  **Certificat SSL** : Le certificat est auto-signé. Acceptez l'exception de sécurité dans votre navigateur.
 
 ### Commandes utiles
 
@@ -186,12 +189,13 @@ make up        # Démarrer tous les services
 make down      # Arrêter tous les services
 make restart   # Redémarrer complètement (nettoyage + rebuild)
 make logs      # Afficher les logs en temps réel
-make clean     # Arrêter et supprimer les volumes (⚠️  perte de données)
+make clean     # Arrêter et supprimer les volumes ( perte de données)
 ```
-
+![Docker ps](./Doc/screenshots/docker_ps.png)
+*Containers*
 ---
 
-## 🏗️ Architecture DevOps
+##  Architecture DevOps
 
 ### Vue d'ensemble : 13 conteneurs Docker
 
@@ -200,54 +204,54 @@ L'architecture repose sur **13 conteneurs Docker orchestrés** par Docker Compos
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                       COUCHE PRÉSENTATION                           │
-│  ┌──────────────┐        ┌──────────────────────────────┐          │
-│  │   Browser    │◄──HTTPS──►│   Nginx Proxy (TLS)      │          │
-│  └──────────────┘        └──────────────────────────────┘          │
+│  ┌──────────────┐        ┌──────────────────────────────┐           │
+│  │   Browser    │◄──HTTPS──►│   Nginx Proxy (TLS)      │            │
+│  └──────────────┘        └──────────────────────────────┘           │
 └─────────────────────────────────────────────────────────────────────┘
                                     │
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      COUCHE APPLICATION                             │
 │                                                                     │
-│  ┌─────────────────────┐      ┌─────────────────────────┐          │
-│  │   Frontend SPA      │      │   Gateway (API)         │          │
-│  │  TypeScript + Vite  │      │   Fastify + SQLite      │          │
-│  └─────────────────────┘      └─────────────────────────┘          │
+│  ┌─────────────────────┐      ┌─────────────────────────┐           │
+│  │   Frontend SPA      │      │   Gateway (API)         │           │
+│  │  TypeScript + Vite  │      │   Fastify + SQLite      │           │
+│  └─────────────────────┘      └─────────────────────────┘           │
 └─────────────────────────────────────────────────────────────────────┘
                                     │
 ┌─────────────────────────────────────────────────────────────────────┐
 │                   COUCHE MICROSERVICES (Backend)                    │
 │                                                                     │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐          │
-│  │   Auth   │  │   Game   │  │   Chat   │  │Tournament│          │
-│  │  :8101   │  │  :8102   │  │  :8103   │  │  :8104   │          │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘          │
-│       └──────────────┬───────────────────────────┘                 │
-│  ┌──────────┐       │                                              │
-│  │   User   │       │   Tous communiquent avec le Gateway          │
-│  │  :8105   │◄──────┘   pour accéder à la base SQLite             │
-│  └──────────┘                                                      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐             │
+│  │   Auth   │  │   Game   │  │   Chat   │  │Tournament│             │
+│  │  :8101   │  │  :8102   │  │  :8103   │  │  :8104   │             │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘             │
+│       └─────────────┬───────────────────────────┘                   │
+│  ┌──────────┐       │                                               │
+│  │   User   │       │   Tous communiquent avec le Gateway           │
+│  │  :8105   │◄──────┘   pour accéder à la base SQLite               │
+│  └──────────┘                                                       │
 └─────────────────────────────────────────────────────────────────────┘
                                     │
 ┌─────────────────────────────────────────────────────────────────────┐
 │                     COUCHE MONITORING (Métriques)                   │
 │                                                                     │
-│  ┌────────────────┐   ┌────────────────┐   ┌──────────────────┐   │
-│  │  Prometheus    │──►│    Grafana     │   │  Alertmanager    │   │
-│  │  (collecte)    │   │  (dashboards)  │   │   (alertes)      │   │
-│  └────────────────┘   └────────────────┘   └──────────────────┘   │
-│         ▲                                                          │
-│         └──── Scrape /metrics depuis tous les services             │
+│  ┌────────────────┐   ┌────────────────┐   ┌──────────────────┐     │
+│  │  Prometheus    │──►│    Grafana     │   │  Alertmanager    │     │
+│  │  (collecte)    │   │  (dashboards)  │   │   (alertes)      │     │
+│  └────────────────┘   └────────────────┘   └──────────────────┘     │
+│         ▲                                                           │
+│         └──── Scrape /metrics depuis tous les services              │
 └─────────────────────────────────────────────────────────────────────┘
                                     │
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      COUCHE LOGS (ELK Stack)                        │
 │                                                                     │
-│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐          │
-│  │  Logstash   │────►│Elasticsearch│◄────│   Kibana    │          │
-│  │  (pipeline) │     │  (stockage) │     │ (interface) │          │
-│  └─────────────┘     └─────────────┘     └─────────────┘          │
-│         ▲                                                          │
-│         └──── Collecte logs stdout/stderr Docker                   │
+│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐            │
+│  │  Logstash   │────►│Elasticsearch│◄────│   Kibana    │            │
+│  │  (pipeline) │     │  (stockage) │     │ (interface) │            │
+│  └─────────────┘     └─────────────┘     └─────────────┘            │
+│         ▲                                                           │
+│         └──── Collecte logs stdout/stderr Docker                    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -256,6 +260,25 @@ L'architecture repose sur **13 conteneurs Docker orchestrés** par Docker Compos
 ![Architecture ft_transcendence](./Doc/ARCHI%20FT_TRANSCENDENCE.png)
 
 ---
+
+L'infrastructure est **automatisée** via deux outils clés :
+
+- Makefile : Orchestration des commandes
+- Docker Compose : Orchestration des conteneurs
+
+**13 conteneurs gérés via `docker-compose.yml` = Déploiement en < 2 min ** :
+
+```bash
+$ make up
+[+] Building 45.2s (12/12) FINISHED          # Build images
+[+] Running 13/13                            # Démarre conteneurs
+✅ Gateway ready on port 8000
+✅ Frontend ready on https://localhost:8443
+✅ ELK initializing...
+✅ Prometheus scraping metrics
+✅ Ready for traffic!
+```
+
 
 ## 🔬 Architecture microservices
 
@@ -315,31 +338,27 @@ if (ROLE === "gateway") {
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Client fait : POST /api/users/profile                      │
-│         │                                                    │
-│         ▼                                                    │
+│         │                                                   │
+│         ▼                                                   │
 │  1. Nginx Proxy (HTTPS→HTTP)                                │
-│         │                                                    │
-│         ▼                                                    │
+│         │                                                   │
+│         ▼                                                   │
 │  2. Gateway reçoit la requête                               │
-│         │                                                    │
+│         │                                                   │
 │         ├──► Middleware JWT : vérifie le token              │
-│         │                                                    │
+│         │                                                   │
 │         ├──► Appel HTTP interne : http://user:8105/internal │
 │         │    (Service User traite la logique métier)        │
-│         │                                                    │
+│         │                                                   │
 │         ├──► Service User accède à SQLite via Gateway       │
 │         │    (appel HTTP de retour si nécessaire)           │
-│         │                                                    │
-│         ▼                                                    │
+│         │                                                   │
+│         ▼                                                   │
 │  3. Réponse JSON renvoyée au client                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Pourquoi cette approche ?**
 
-- **Base de données centralisée** : SQLite ne supporte qu'une connexion active (limitations technique)
-- **Gateway = Point d'entrée unique** : Simplifie l'authentification et le routage
-- **Services = Logique métier pure** : Chaque service expose des endpoints internes pour validation/transformation
 
 ### Exemple concret : Création d'une partie
 
@@ -388,20 +407,11 @@ return reply.send({ gameId, status: 'created' });
 - `active_games` : Parties Pong en cours
 - `users_online` : Utilisateurs connectés dans les 5 dernières minutes
 
-**Exemple de requête PromQL** :
-```promql
-# Latence moyenne API par endpoint
-rate(http_request_duration_seconds_sum[5m]) 
-/ 
-rate(http_request_duration_seconds_count[5m])
-
-# Taux d'erreurs 5xx
-sum(rate(http_request_total{status=~"5.."}[5m])) 
-/ 
-sum(rate(http_request_total[5m]))
-```
 
 #### 2. Dashboards Grafana
+
+![Grafana](./Doc/screenshots/grafana.png)
+*Monitoring des performances et métriques métier en temps réel* 
 
 Un dashboard personnalisé `ft-transcendence-dashboard-core.json` affiche :
 
@@ -411,6 +421,8 @@ Un dashboard personnalisé `ft-transcendence-dashboard-core.json` affiche :
 - **Système** : CPU, RAM, réseau des conteneurs Docker
 
 #### 3. Logs centralisés ELK
+![Kibana](./Doc/screenshots/kibana.png)
+*Exploration et recherche dans les logs centralisés*
 
 **Pipeline Logstash** :
 ```
@@ -423,22 +435,15 @@ Docker containers (stdout/stderr)
     │                     └──► Kibana (recherche + visualisation)
 ```
 
-**Types de logs collectés** :
-- Logs applicatifs (Fastify, erreurs TypeScript)
-- Logs d'accès Nginx (requêtes HTTPS, IPs, user-agents)
-- Logs système Docker (conteneurs, healthchecks)
+**Dashboards Kibana** :
 
-**Requêtes Kibana utiles** :
-```
-# Rechercher les erreurs 500
-status:500 AND service:gateway
-
-# Messages de chat contenant "tournament"
-message:*tournament* AND service:chat
-
-# Authentifications échouées
-"Authentication failed" OR status:401
-```
+1. **Dashboard `ftt_dashboard`** : Analyse des logs applicatifs
+   - Total de logs (métrique : nombre total)
+   - Total logs error (métrique : nombre d'erreurs)
+   - Error Rate (jauge : pourcentage erreurs / total logs)
+   - Top error sources (donut : services avec le plus d'erreurs)
+   - Logs per service (donut : distribution logs par service)
+   - Log volume over time (ligne : tendance temporelle)
 
 #### 4. Alertes Alertmanager
 
@@ -554,40 +559,35 @@ jobs:
 ---
 
 ## 📸 Captures d'écran
+###  Authentification
 
-### 🎮 Interface de jeu
+![Login](./Doc/screenshots/sign_up.png)
+*Interface de connexion et inscription sécurisée*
 
-![Jeu Pong](./screenshots/game.png)
-*Partie de Pong en temps réel avec synchronisation WebSocket*
+###  Profil utilisateur
 
-### 🏆 Système de tournois
-
-![Tournois](./screenshots/tournament.png)
-*Brackets automatiques et suivi des matchs*
-
-### 💬 Chat temps réel
-
-![Chat](./screenshots/chat.png)
-*Messages directs et chat de tournoi*
-
-### 👤 Profil utilisateur
-
-![Profil](./screenshots/profile.png)
+![Profil](./Doc/screenshots/profil.png)
 *Statistiques, historique des parties et amis*
 
-### 📊 Dashboard Grafana
+###  Interface de jeu
 
-![Grafana](./screenshots/grafana.png)
-*Monitoring des performances et métriques métier*
+![Jeu Pong](./Doc/screenshots/game.png)
+*Partie de Pong en temps réel avec synchronisation WebSocket*
 
-### 🔍 Logs Kibana
+###  Système de tournois
 
-![Kibana](./screenshots/kibana.png)
-*Exploration et recherche dans les logs centralisés*
+![Tournois](./Doc/screenshots/tournament.png)
+*Brackets automatiques et suivi des matchs*
+
+###  Chat temps réel
+
+![Chat](./Doc/screenshots/chat.png)
+*Messages directs et chat de tournoi*
+
 
 ---
 
-## 🎓 Apprentissages clés
+##  Apprentissages clés
 
 Ce projet m'a permis d'acquérir des compétences sur :
 
@@ -601,6 +601,5 @@ Ce projet m'a permis d'acquérir des compétences sur :
 
 
 
-**Projet réalisé par** : Anais CATUSSE , Zenaba MOGNE et Lukas GOURE 
-**École 42** validé à 110% en Novembre 2025
+
 
